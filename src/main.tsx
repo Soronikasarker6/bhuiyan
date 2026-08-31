@@ -19,9 +19,26 @@ import './styles.css'
  */
 const Router = window.location.protocol === 'file:' ? HashRouter : BrowserRouter
 
+/**
+ * The sub-path this app is mounted under, if any.
+ *
+ * On GitHub Pages this is a project site — https://<user>.github.io/bhuiyan/
+ * — not a domain root, so every route the app knows about ("/", "/production",
+ * …) has to be matched against the URL *after* that "/bhuiyan/" prefix, not
+ * against the whole path. `import.meta.env.BASE_URL` is set at build time from
+ * `vite.config.ts`'s `base` (see the `GH_PAGES` flag there) and mirrors
+ * whatever prefix the app was actually deployed under, so this needs no
+ * hard-coded repo name here. Locally that value is the relative './' used for
+ * the office file:// build, which is not a valid `basename` — passing it
+ * through unguarded would break routing in every environment except GitHub
+ * Pages, so anything that is not an absolute path falls back to the router's
+ * own default ('/').
+ */
+const basename = import.meta.env.BASE_URL.startsWith('/') ? import.meta.env.BASE_URL : undefined
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Router>
+    <Router basename={basename}>
       <AppDataProvider>
         <TooltipProvider delayDuration={200}>
           <PrintProvider>

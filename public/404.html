@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>BHUIYAN INDUSTRY</title>
+    <script type="text/javascript">
+      // GitHub Pages has no server-side rewrite, so it serves this file for
+      // any URL that isn't a real file — which, for a client-routed app, is
+      // every deep link and every hard refresh except the site root
+      // (e.g. /bhuiyan/sales). Rather than show a dead end, this encodes the
+      // path the visitor actually asked for into a query string and sends
+      // them to the real index.html, which decodes it back (see the
+      // matching script in index.html's <head>) and hands it to the router
+      // before the app ever renders — so the visitor lands exactly where
+      // they meant to, not on the dashboard.
+      //
+      // pathSegmentsToKeep = 1 because this is a *project* site
+      // (github.io/bhuiyan/…), not a user/org site at the domain root.
+      // Pattern: https://github.com/rafgraph/spa-github-pages
+      var pathSegmentsToKeep = 1;
+      var l = window.location;
+      l.replace(
+        l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+        l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/?/' +
+        l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
+        (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
+        l.hash
+      );
+    </script>
+  </head>
+  <body></body>
+</html>

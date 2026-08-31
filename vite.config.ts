@@ -6,12 +6,23 @@ import { fileURLToPath, URL } from 'node:url'
 /** `SINGLE=1 vite build` produces one self-contained, double-clickable file. */
 const single = process.env.SINGLE === '1'
 
+/**
+ * `GH_PAGES=true vite build` (set by .github/workflows/deploy.yml) builds
+ * for GitHub Pages, which serves this project from a sub-path —
+ * https://<user>.github.io/bhuiyan/ — rather than a domain root. Every
+ * asset URL has to carry that `/bhuiyan/` prefix, and `import.meta.env.BASE_URL`
+ * (which mirrors this value at runtime) is what tells the router the same
+ * thing — see the `basename` logic in `src/main.tsx`.
+ *
+ * Everywhere else this stays relative: a build with an absolute '/assets/...'
+ * base only works when served from a known root, whereas './assets/...'
+ * also works when someone double-clicks index.html out of a folder, which is
+ * how this is actually opened in the office.
+ */
+const ghPages = process.env.GH_PAGES === 'true'
+
 export default defineConfig({
-  // Relative, not absolute. A build with '/assets/...' only works when it is
-  // served from a web root; with './assets/...' the same build also works
-  // when someone double-clicks index.html out of a folder, which is how this
-  // will actually be opened in the office.
-  base: './',
+  base: ghPages ? '/bhuiyan/' : './',
   plugins: [react()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
