@@ -25,9 +25,17 @@ export function productOf(products: Product[], productId: ID): Product | undefin
   return products.find((p) => p.id === productId)
 }
 
-export function meshSizeNameOf(meshSizes: MeshSize[], meshSizeId?: ID): string | undefined {
-  if (!meshSizeId) return undefined
-  return meshSizes.find((m) => m.id === meshSizeId)?.name
+export function meshSizeNameOf(meshSizes: MeshSize[], meshSizeId: ID): string {
+  return meshSizes.find((m) => m.id === meshSizeId)?.name ?? 'Unknown mesh'
+}
+
+export function meshSizeOf(meshSizes: MeshSize[], meshSizeId: ID): MeshSize | undefined {
+  return meshSizes.find((m) => m.id === meshSizeId)
+}
+
+/** kg per bag for a mesh size — the one fact Production and Sales both convert through. */
+export function bagKgOf(meshSizes: MeshSize[], meshSizeId: ID): number {
+  return meshSizes.find((m) => m.id === meshSizeId)?.bagKg ?? 0
 }
 
 export function usageCountByProduct<T extends { productId: ID }>(

@@ -10,22 +10,33 @@ import type {
   SaleItemRow,
   SaleSummary,
 } from '@/types'
-import { meshSizeNameOf, productNameOf } from './products'
+import { bagKgOf, meshSizeNameOf, productNameOf } from './products'
 import { customerNameOf } from './customerLedger'
 import { isWithin } from './format'
+import { kgToTons } from './imports'
 
 /**
  * Sales.
  *
  * A sale is a header (customer, date, truck) plus one or more items (product,
- * mesh size, weight, rate). A customer buying two products in one visit is
+ * mesh size, bags, rate). A customer buying two products in one visit is
  * one invoice with two items — never two invoices, and never a page per
  * product. Every figure below is computed from the header and its items;
  * nothing here is a second source of truth for an amount already on a line.
+ *
+ *     Weight (Ton) = Bags × Bag Weight (kg) / 1000
+ *     Amount       = Weight (Ton) × Rate / Ton
+ *
+ * Bags is the figure a person actually counts and the figure stock is
+ * deducted by; weight and amount are always derived from it, never entered.
  */
 
-export function saleItemAmount(item: Pick<SaleItem, 'weightTon' | 'ratePerTon'>): number {
-  return (Number(item.weightTon) || 0) * (Number(item.ratePerTon) || 0)
+export function saleItemWeightTon(bags: number, bagKg: number): number {
+  return kgToTons((Number(bags) || 0) * (Number(bagKg) || 0))
+}
+
+export function saleItemAmount(weightTon: number, ratePerTon: number): number {
+  return (Number(weightTon) || 0) * (Number(ratePerTon) || 0)
 }
 
 export function itemsForSale(saleItems: SaleItem[], saleId: ID): SaleItem[] {
@@ -37,12 +48,19 @@ export function buildSaleItemRows(
   products: Product[],
   meshSizes: MeshSize[],
 ): SaleItemRow[] {
-  return items.map((item) => ({
-    ...item,
-    productName: productNameOf(products, item.productId),
-    meshSizeName: meshSizeNameOf(meshSizes, item.meshSizeId),
-    amount: saleItemAmount(item),
-  }))
+  return items.map((item) => {
+    const bagKg = bagKgOf(meshSizes, item.meshSizeId)
+    const weightTon = saleItemWeightTon(item.bags, bagKg)
+
+    return {
+      ...item,
+      productName: productNameOf(products, item.productId),
+      meshSizeName: meshSizeNameOf(meshSizes, item.meshSizeId),
+      bagKg,
+      weightTon,
+      amount: saleItemAmount(weightTon, item.ratePerTon),
+    }
+  })
 }
 
 export function itemsTotal(rows: Array<{ amount: number }>): number {
@@ -51,6 +69,10 @@ export function itemsTotal(rows: Array<{ amount: number }>): number {
 
 export function itemsWeightTotal(rows: Array<{ weightTon: number }>): number {
   return rows.reduce((sum, r) => sum + (Number(r.weightTon) || 0), 0)
+}
+
+export function itemsBagsTotal(rows: Array<{ bags: number }>): number {
+  return rows.reduce((sum, r) => sum + (Number(r.bags) || 0), 0)
 }
 
 /**
@@ -316,13 +338,14 @@ export function salesByTruck(
 /** Sales revenue per mesh size, biggest first — "mesh-wise sales". */
 export function salesByMeshSize(
   sales: SaleSummary[],
-): Array<{ meshSizeName: string; amount: number; weightTon: number }> {
-  const totals = new Map<string, { amount: number; weightTon: number }>()
+): Array<{ meshSizeName: string; bags: number; amount: number; weightTon: number }> {
+  const totals = new Map<string, { bags: number; amount: number; weightTon: number }>()
 
   for (const sale of sales) {
     for (const item of sale.items) {
-      const key = item.meshSizeName ?? 'Unspecified'
-      const existing = totals.get(key) ?? { amount: 0, weightTon: 0 }
+      const key = item.meshSizeName
+      const existing = totals.get(key) ?? { bags: 0, amount: 0, weightTon: 0 }
+      existing.bags += Number(item.bags) || 0
       existing.amount += item.amount
       existing.weightTon += item.weightTon
       totals.set(key, existing)

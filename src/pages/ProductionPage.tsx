@@ -1,6 +1,6 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Boxes, Factory, Package, Printer, Scale } from 'lucide-react'
+import { Boxes, Factory, Package, Receipt, Scale, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader, Section } from '@/components/PageHeader'
 import { StatCard, StatGrid } from '@/components/StatCard'
@@ -8,48 +8,80 @@ import { Num } from '@/components/Money'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
 import { PageSkeleton } from '@/components/PageSkeleton'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/misc'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ProductionEntryForm, type ProductionSubmit } from '@/features/production/ProductionEntryForm'
-import { ProductionTable } from '@/features/production/ProductionTable'
-import { usePrint } from '@/features/reports/PrintSheet'
+import { MeshStockSummary } from '@/features/production/MeshStockSummary'
+import { ProductionStockTable, type StockLedgerDisplayRow } from '@/features/production/ProductionStockTable'
 import { useAppData } from '@/hooks/useAppData'
 import type { ProductionEntry } from '@/types'
-import { activeProducts } from '@/utils/products'
-import { buildProductionRows, productionTotals, todaysProduction } from '@/utils/production'
-import { productStock, totalStock } from '@/utils/stock'
-import { formatDate, formatNumber, formatTons, todayISO } from '@/utils/format'
+import { activeProducts, activeMeshSizes, meshSizeNameOf } from '@/utils/products'
+import {
+  buildStockLedger,
+  meshStockSummary,
+  productionRowsForProduct,
+  todaysProductionBags,
+  todaysSoldBags,
+  totalProductionBags,
+  totalStockBags,
+  totalStockTon,
+} from '@/utils/productionStock'
+import { formatDate, formatNumber, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
 
 /**
- * Production — how much stone we made.
+ * Production & Stock — how much of each limestone is bagged, mesh by mesh,
+ * and how much is left.
  *
- * Deliberately separate from Sales: this page never asks who a load was sold
- * to or at what rate. It answers one question — gross weight in, tare weight
- * out, net weight recorded — and the available-stock table below it is the
- * only place this page and Sales meet, and only as a read-only total.
+ * Deliberately separate from Raw Material Import (how much arrived) and from
+ * Sales (who bought what) — this page only answers "what's in the yard right
+ * now", and the only thing it reads from Sales is a read-only count of bags
+ * sold, never an amount or a customer.
  */
 export default function ProductionPage() {
   const { data, loading, update } = useAppData()
-  const { print } = usePrint()
 
   const products = useMemo(() => activeProducts(data.products), [data.products])
+  const meshSizes = useMemo(() => activeMeshSizes(data.meshSizes), [data.meshSizes])
 
-  const rows = useMemo(
-    () => buildProductionRows(data.productionEntries, data.products),
-    [data.productionEntries, data.products],
+  const [activeProductId, setActiveProductId] = useState(products[0]?.id ?? '')
+  const selectedProductId = products.some((p) => p.id === activeProductId) ? activeProductId : products[0]?.id ?? ''
+  const [pendingDelete, setPendingDelete] = useState<ProductionEntry | null>(null)
+
+  const today = todayISO()
+
+  const meshStock = useMemo(
+    () =>
+      selectedProductId
+        ? meshStockSummary(selectedProductId, data.meshSizes, data.productionEntries, data.saleItems, data.sales)
+        : [],
+    [selectedProductId, data.meshSizes, data.productionEntries, data.saleItems, data.sales],
   )
 
-  const totals = useMemo(() => productionTotals(data.productionEntries), [data.productionEntries])
-  const todayTotals = useMemo(
-    () => productionTotals(todaysProduction(data.productionEntries, todayISO())),
-    [data.productionEntries],
-  )
+  const ledgerRows: StockLedgerDisplayRow[] = useMemo(() => {
+    if (!selectedProductId) return []
 
-  const stock = useMemo(
-    () => productStock(data.products, data.productionEntries, data.saleItems),
-    [data.products, data.productionEntries, data.saleItems],
+    const rows: StockLedgerDisplayRow[] = []
+    for (const mesh of meshSizes) {
+      const { rows: meshRows } = buildStockLedger(selectedProductId, mesh.id, data.productionEntries, data.saleItems, data.sales)
+      for (const row of meshRows) {
+        rows.push({ ...row, meshName: mesh.name, bagKg: mesh.bagKg })
+      }
+    }
+    return rows.sort((a, b) => (a.date === b.date ? a.meshName.localeCompare(b.meshName) : a.date < b.date ? 1 : -1))
+  }, [selectedProductId, meshSizes, data.productionEntries, data.saleItems, data.sales])
+
+  const todayBags = todaysProductionBags(data.productionEntries, today, selectedProductId)
+  const totalBags = totalProductionBags(data.productionEntries, selectedProductId)
+  const todaySold = todaysSoldBags(data.saleItems, data.sales, today, selectedProductId)
+  const stockBags = totalStockBags(meshStock)
+  const stockTon = totalStockTon(meshStock)
+
+  const rawEntries = useMemo(
+    () => (selectedProductId ? productionRowsForProduct(selectedProductId, data.productionEntries) : []),
+    [selectedProductId, data.productionEntries],
   )
-  const stockTotals = useMemo(() => totalStock(stock), [stock])
 
   const addEntry = useCallback(
     (values: ProductionSubmit) => {
@@ -57,73 +89,32 @@ export default function ProductionPage() {
         id: uid(),
         date: values.date,
         productId: values.productId,
-        grossWeightKg: values.grossWeightKg,
-        tareWeightKg: values.tareWeightKg,
+        meshId: values.meshId,
+        bags: values.bags,
         notes: values.notes?.trim() || undefined,
         createdAt: now(),
       }
 
       update('productionEntries', [entry, ...data.productionEntries])
-
-      const net = values.grossWeightKg - values.tareWeightKg
-      toast.success('Production recorded', {
-        description: `Net weight ${formatNumber(net)} kg (${formatTons(net / 1000)} Ton)`,
-      })
+      toast.success('Production recorded', { description: `${formatNumber(values.bags)} bags` })
     },
     [data.productionEntries, update],
   )
 
   const deleteEntry = useCallback(
     (id: string) => {
-      update(
-        'productionEntries',
-        data.productionEntries.filter((entry) => entry.id !== id),
-      )
-      toast.success('Entry deleted', { description: 'Available stock has been recalculated.' })
+      update('productionEntries', data.productionEntries.filter((entry) => entry.id !== id))
+      toast.success('Entry deleted', { description: 'Stock has been recalculated.' })
     },
     [data.productionEntries, update],
   )
-
-  const printRegister = useCallback(() => {
-    print({
-      title: 'Production Register',
-      subtitle: `${rows.length} entries`,
-      meta: [
-        { label: 'Total gross weight', value: `${formatNumber(totals.grossWeightKg)} kg` },
-        { label: 'Total tare weight', value: `${formatNumber(totals.tareWeightKg)} kg` },
-        { label: 'Total net weight', value: `${formatNumber(totals.netWeightKg)} kg (${formatTons(totals.netWeightTon)} Ton)` },
-      ],
-      columns: [
-        { key: 'date', label: 'Date' },
-        { key: 'product', label: 'Product' },
-        { key: 'gross', label: 'Gross (kg)', align: 'right' },
-        { key: 'tare', label: 'Tare (kg)', align: 'right' },
-        { key: 'net', label: 'Net (kg)', align: 'right' },
-        { key: 'notes', label: 'Notes' },
-      ],
-      rows: [...rows].reverse().map((r) => ({
-        date: formatDate(r.date),
-        product: r.productName,
-        gross: formatNumber(r.grossWeightKg),
-        tare: formatNumber(r.tareWeightKg),
-        net: formatNumber(r.netWeightKg),
-        notes: r.notes ?? '',
-      })),
-      totals: {
-        date: 'Total',
-        gross: formatNumber(totals.grossWeightKg),
-        tare: formatNumber(totals.tareWeightKg),
-        net: formatNumber(totals.netWeightKg),
-      },
-    })
-  }, [rows, totals, print])
 
   if (loading) return <PageSkeleton />
 
   if (data.products.length === 0) {
     return (
       <div>
-        <PageHeader title="Production" />
+        <PageHeader title="Production & Stock" />
         <Section>
           <EmptyState
             icon={Package}
@@ -141,90 +132,120 @@ export default function ProductionPage() {
     )
   }
 
+  if (meshSizes.length === 0) {
+    return (
+      <div>
+        <PageHeader title="Production & Stock" />
+        <Section>
+          <EmptyState
+            icon={Scale}
+            size="lg"
+            title="No mesh sizes set up"
+            description="Add the mesh sizes your yard bags into before recording production."
+            action={
+              <Button asChild>
+                <Link to="/products">Add a mesh size</Link>
+              </Button>
+            }
+          />
+        </Section>
+      </div>
+    )
+  }
+
   return (
     <div>
-      <PageHeader
-        title="Production"
-        description="Gross weight in, tare weight out — net weight is worked out for you."
-        actions={
-          <Button variant="outline" size="sm" onClick={printRegister} disabled={rows.length === 0}>
-            <Printer />
-            Print register
-          </Button>
-        }
-      />
+      <PageHeader title="Production & Stock" description="Today's bagging, mesh by mesh, and what's left in the yard." />
 
-      <StatGrid className="mb-4">
-        <StatCard
-          label="Today's production"
-          icon={Factory}
-          accent="primary"
-          value={<Num value={todayTotals.netWeightTon} suffix="Ton" size="2xl" className="font-bold" />}
-        />
-        <StatCard
-          label="Total production"
-          icon={Scale}
-          accent="brass"
-          value={<Num value={totals.netWeightTon} suffix="Ton" size="2xl" className="font-bold" />}
-          footer={<span className="text-2xs text-muted-foreground">{totals.entryCount} entries</span>}
-        />
-        <StatCard
-          label="Total sold"
-          icon={Boxes}
-          accent="success"
-          value={<Num value={stockTotals.soldTon} suffix="Ton" size="2xl" className="font-bold" />}
-        />
-        <StatCard
-          label="Available stock"
-          icon={Boxes}
-          accent={stockTotals.availableTon < 0 ? 'primary' : 'success'}
-          value={
-            <Num
-              value={stockTotals.availableTon}
-              suffix="Ton"
-              size="2xl"
-              className="font-bold"
-              tone={stockTotals.availableTon < 0 ? 'negative' : 'neutral'}
-            />
-          }
-        />
-      </StatGrid>
+      <Tabs value={selectedProductId} onValueChange={setActiveProductId} className="mb-4">
+        <TabsList className="mb-4 flex-wrap justify-start">
+          {products.map((product) => (
+            <TabsTrigger key={product.id} value={product.id}>
+              {product.name}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      <div className="mb-4 grid gap-4 xl:grid-cols-[27rem_minmax(0,1fr)]">
-        <ProductionEntryForm products={products} onSubmit={addEntry} />
+        {products.map((product) => (
+          <TabsContent key={product.id} value={product.id}>
+            <StatGrid className="mb-4">
+              <StatCard label="Today's production" icon={Factory} accent="primary" value={<Num value={todayBags} suffix="Bag" size="2xl" className="font-bold" />} />
+              <StatCard label="Total production" icon={Boxes} accent="brass" value={<Num value={totalBags} suffix="Bag" size="2xl" className="font-bold" />} />
+              <StatCard label="Today's sales" icon={Receipt} accent="success" value={<Num value={todaySold} suffix="Bag" size="2xl" className="font-bold" />} />
+              <StatCard
+                label="Current stock"
+                icon={Scale}
+                accent={stockBags <= 0 ? 'primary' : 'success'}
+                value={<Num value={stockBags} suffix="Bag" size="2xl" className="font-bold" tone={stockBags <= 0 ? 'negative' : 'neutral'} />}
+                footer={<span className="text-2xs text-muted-foreground">{formatNumber(stockTon)} Ton total</span>}
+              />
+            </StatGrid>
 
-        <Section title="Available stock" description="Produced minus sold, per product" noPadding>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead numeric>Produced</TableHead>
-                <TableHead numeric>Sold</TableHead>
-                <TableHead numeric>Available</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {stock.map((s) => (
-                <TableRow key={s.productId}>
-                  <TableCell className="font-medium">{s.productName}</TableCell>
-                  <TableCell numeric>{formatTons(s.producedTon)}</TableCell>
-                  <TableCell numeric className="text-muted-foreground">
-                    {formatTons(s.soldTon)}
-                  </TableCell>
-                  <TableCell
-                    numeric
-                    className={s.availableTon < 0 ? 'font-semibold text-destructive' : 'font-semibold text-success-700'}
-                  >
-                    {formatTons(s.availableTon)} {s.unit}
-                  </TableCell>
+            <div className="mb-4">
+              <MeshStockSummary rows={meshStock} />
+            </div>
+          </TabsContent>
+        ))}
+      </Tabs>
+
+      <div className="mb-4">
+        <ProductionEntryForm products={products} meshSizes={meshSizes} onSubmit={addEntry} />
+      </div>
+
+      <div className="mb-4">
+        <Section title="Production entries" description={`${rawEntries.length} entries for this product`} noPadding>
+          {rawEntries.length === 0 ? (
+            <EmptyState icon={Boxes} size="sm" title="No entries yet" description="Record today's bagging above to see it here." />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Mesh</TableHead>
+                  <TableHead numeric>Bags</TableHead>
+                  <TableHead>Notes</TableHead>
+                  <TableHead />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {rawEntries.map((entry) => (
+                  <TableRow key={entry.id}>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(entry.date)}</TableCell>
+                    <TableCell className="font-medium">{meshSizeNameOf(data.meshSizes, entry.meshId)}</TableCell>
+                    <TableCell numeric>{formatNumber(entry.bags)}</TableCell>
+                    <TableCell className="max-w-[16rem] truncate text-muted-foreground">{entry.notes || '—'}</TableCell>
+                    <TableCell numeric>
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => setPendingDelete(entry)}
+                        aria-label="Delete entry"
+                      >
+                        <Trash2 />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </Section>
       </div>
 
-      <ProductionTable rows={rows} onDelete={deleteEntry} />
+      <ProductionStockTable rows={ledgerRows} />
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title="Delete this production entry?"
+        description="This removes it from the register and reduces available stock. This cannot be undone."
+        confirmLabel="Delete entry"
+        onConfirm={() => {
+          if (pendingDelete) deleteEntry(pendingDelete.id)
+          setPendingDelete(null)
+        }}
+      />
     </div>
   )
 }

@@ -1,18 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import type { Product, ProductionEntry } from '@/types'
+import type { Product, RawMaterialImport } from '@/types'
 import {
-  buildProductionRows,
+  buildImportRows,
+  importTotals,
+  importsByProduct,
   kgToTons,
-  monthlyProductionSeries,
+  monthlyImportSeries,
   netWeightKg,
-  productionByProduct,
-  productionTotals,
   tonsToKg,
-} from '@/utils/production'
+} from '@/utils/imports'
 
 /**
- * Production arithmetic, tested against the numbers a person would work out
- * by hand — the same rule that protects the rest of the system's figures.
+ * Raw material import arithmetic, tested against the numbers a person would
+ * work out by hand — the same rule that protects the rest of the system's
+ * figures.
  */
 
 const PRODUCTS: Product[] = [
@@ -20,13 +21,14 @@ const PRODUCTS: Product[] = [
   { id: 'p2', name: 'Gray Limestone', code: 'GRL', unit: 'Ton', active: true, createdAt: '2026-01-01T00:00:00Z' },
 ]
 
-function entry(id: string, date: string, productId: string, grossWeightKg: number, tareWeightKg: number): ProductionEntry {
+function entry(id: string, date: string, productId: string, grossWeightKg: number, tareWeightKg: number): RawMaterialImport {
   return { id, date, productId, grossWeightKg, tareWeightKg, createdAt: `${date}T08:00:00.000Z` }
 }
 
 describe('net weight', () => {
-  it('is gross minus tare — the spec\'s own worked example', () => {
-    expect(netWeightKg(25_000, 8_000)).toBe(17_000)
+  it('is gross minus tare — the spec\'s own worked example: 28,480 - 7,820 = 20,660', () => {
+    expect(netWeightKg(28_480, 7_820)).toBe(20_660)
+    expect(kgToTons(netWeightKg(28_480, 7_820))).toBe(20.66)
   })
 
   it('never goes negative, even with a mistyped tare', () => {
@@ -45,14 +47,14 @@ describe('kg / ton conversion', () => {
   })
 })
 
-describe('production rows', () => {
+describe('import rows', () => {
   const entries = [
     entry('a', '2026-08-01', 'p1', 32_000, 9_000),
     entry('b', '2026-08-02', 'p2', 25_000, 8_000),
   ]
 
   it('resolves the product name and net weight for every entry', () => {
-    const rows = buildProductionRows(entries, PRODUCTS)
+    const rows = buildImportRows(entries, PRODUCTS)
 
     expect(rows).toHaveLength(2)
     expect(rows.find((r) => r.id === 'a')).toMatchObject({
@@ -63,20 +65,20 @@ describe('production rows', () => {
   })
 
   it('returns rows newest first', () => {
-    const rows = buildProductionRows(entries, PRODUCTS)
+    const rows = buildImportRows(entries, PRODUCTS)
     expect(rows[0]!.id).toBe('b')
     expect(rows[1]!.id).toBe('a')
   })
 })
 
-describe('production totals', () => {
+describe('import totals', () => {
   it('sums gross, tare and net across every entry', () => {
     const entries = [
       entry('a', '2026-08-01', 'p1', 32_000, 9_000), // net 23,000
       entry('b', '2026-08-02', 'p1', 25_000, 8_000), // net 17,000
     ]
 
-    const totals = productionTotals(entries)
+    const totals = importTotals(entries)
 
     expect(totals.entryCount).toBe(2)
     expect(totals.grossWeightKg).toBe(57_000)
@@ -86,11 +88,11 @@ describe('production totals', () => {
   })
 
   it('is zero for an empty log', () => {
-    expect(productionTotals([])).toMatchObject({ entryCount: 0, netWeightKg: 0, netWeightTon: 0 })
+    expect(importTotals([])).toMatchObject({ entryCount: 0, netWeightKg: 0, netWeightTon: 0 })
   })
 })
 
-describe('product-wise production', () => {
+describe('product-wise import', () => {
   it('keeps each product entirely separate and ranks the biggest first', () => {
     const entries = [
       entry('a', '2026-08-01', 'p1', 32_000, 9_000), // p1: 23t
@@ -98,20 +100,20 @@ describe('product-wise production', () => {
       entry('c', '2026-08-03', 'p1', 30_000, 9_200), // p1: +20.8t = 43.8t
     ]
 
-    const byProduct = productionByProduct(entries, PRODUCTS)
+    const byProduct = importsByProduct(entries, PRODUCTS)
 
     expect(byProduct[0]).toMatchObject({ productId: 'p1', netTon: 43.8, entryCount: 2 })
     expect(byProduct[1]).toMatchObject({ productId: 'p2', netTon: 17, entryCount: 1 })
   })
 
   it('lists a product with no entries at zero, not missing', () => {
-    const byProduct = productionByProduct([], PRODUCTS)
+    const byProduct = importsByProduct([], PRODUCTS)
     expect(byProduct).toHaveLength(2)
     expect(byProduct.every((p) => p.netTon === 0 && p.entryCount === 0)).toBe(true)
   })
 })
 
-describe('monthly production series', () => {
+describe('monthly import series', () => {
   it('buckets net tons by month and ignores other years', () => {
     const entries = [
       entry('a', '2026-01-05', 'p1', 32_000, 9_000), // 23t
@@ -120,7 +122,7 @@ describe('monthly production series', () => {
       entry('d', '2025-01-01', 'p1', 20_000, 8_000), // different year, excluded
     ]
 
-    const series = monthlyProductionSeries(entries, 2026)
+    const series = monthlyImportSeries(entries, 2026)
 
     expect(series).toHaveLength(12)
     expect(series[0]!.netTon).toBe(40)

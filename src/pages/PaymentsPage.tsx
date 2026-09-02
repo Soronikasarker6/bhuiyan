@@ -13,15 +13,17 @@ import { CustomerLedgerTable } from '@/features/customerLedger/CustomerLedgerTab
 import { useAppData } from '@/hooks/useAppData'
 import type { Transaction } from '@/types'
 import { buildSaleSummaries } from '@/utils/sales'
-import { buildCustomerLedgerRows, buildPayment, customerNameOf, nextReference } from '@/utils/customerLedger'
+import { allocateCashIn, buildCustomerLedgerRows, customerNameOf, nextReference } from '@/utils/customerLedger'
 import { formatCurrency } from '@/utils/format'
 import { now, uid } from '@/utils/id'
 
 /**
- * Payments — money received against a due invoice, or on account.
+ * Cash In — money received against a due invoice, or on account.
  *
- * A due invoice's amount owed drops the moment a linked payment is recorded
- * here — there is no separate step that "recalculates" it.
+ * A due invoice's amount owed drops the moment a Cash In is recorded — there
+ * is no separate step that "recalculates" it — and an amount beyond what a
+ * customer actually owes is never left as an invalid negative due; it's
+ * tracked as Advance instead (§12/§13).
  */
 export default function PaymentsPage() {
   const { data, loading, updateMany } = useAppData()
@@ -53,23 +55,28 @@ export default function PaymentsPage() {
   const totalCollected = useMemo(() => paymentRows.reduce((sum, r) => sum + r.credit, 0), [paymentRows])
   const totalDue = useMemo(() => dueSales.reduce((sum, s) => sum + s.amountDue, 0), [dueSales])
 
-  const recordPayment = (values: PaymentSubmit) => {
+  const recordCashIn = (values: PaymentSubmit) => {
     const stamp = now()
-    const reference = nextReference('payment', data.customerTransactions)
+    const paymentReference = nextReference('payment', data.customerTransactions)
 
-    const row = buildPayment({
-      id: uid(),
+    const rows = allocateCashIn({
       customerId: values.customerId,
       date: values.date,
-      reference,
       amount: values.amount,
-      referenceSaleId: values.saleId,
+      dueSales: dueSales.filter((s) => s.customerId === values.customerId),
+      targetSaleId: values.saleId,
+      paymentReference,
+      // Computed once up front so a same-call advance row never collides
+      // with the payment reference above, however many invoices it settles.
+      advanceReference: nextReference('advance', data.customerTransactions),
+      method: values.method,
       linkedAccountId: values.accountId,
       createdAt: stamp,
+      makeId: uid,
     })
 
     const patch: { customerTransactions: typeof data.customerTransactions; transactions?: Transaction[] } = {
-      customerTransactions: [row, ...data.customerTransactions],
+      customerTransactions: [...rows, ...data.customerTransactions],
     }
 
     if (values.accountId) {
@@ -77,7 +84,7 @@ export default function PaymentsPage() {
         {
           id: uid(),
           date: values.date,
-          details: `Payment received — ${customerNameOf(data.customers, values.customerId)} (${reference})`,
+          details: `Cash In — ${customerNameOf(data.customers, values.customerId)} (${paymentReference})`,
           accountId: values.accountId,
           direction: 'in',
           category: 'Customer Payment',
@@ -89,7 +96,13 @@ export default function PaymentsPage() {
     }
 
     updateMany(patch)
-    toast.success(`${reference} recorded`, { description: formatCurrency(values.amount) })
+
+    const advanceRow = rows.find((r) => r.type === 'advance')
+    toast.success(`${paymentReference} recorded`, {
+      description: advanceRow
+        ? `${formatCurrency(values.amount - advanceRow.credit)} applied to due · ${formatCurrency(advanceRow.credit)} added to Advance`
+        : formatCurrency(values.amount),
+    })
   }
 
   if (loading) return <PageSkeleton />
@@ -97,9 +110,9 @@ export default function PaymentsPage() {
   if (data.customers.length === 0) {
     return (
       <div>
-        <PageHeader title="Payments" />
+        <PageHeader title="Cash In" />
         <Section>
-          <EmptyState icon={Users} size="lg" title="No customers set up" description="Add a customer before recording a payment." action={<Button asChild><Link to="/customers">Add a customer</Link></Button>} />
+          <EmptyState icon={Users} size="lg" title="No customers set up" description="Add a customer before recording a Cash In." action={<Button asChild><Link to="/customers">Add a customer</Link></Button>} />
         </Section>
       </div>
     )
@@ -107,18 +120,18 @@ export default function PaymentsPage() {
 
   return (
     <div>
-      <PageHeader title="Payments" description="Money received against a due invoice, or on account." />
+      <PageHeader title="Cash In" description="Money received against a due invoice, or on account." />
 
       <StatGrid columns={2} className="mb-4">
-        <StatCard label="Total payments collected" icon={Banknote} accent="success" value={<Money value={totalCollected} size="2xl" weight="bold" tone="positive" />} />
+        <StatCard label="Total cash in collected" icon={Banknote} accent="success" value={<Money value={totalCollected} size="2xl" weight="bold" tone="positive" />} />
         <StatCard label="Still outstanding" icon={Banknote} accent={totalDue > 0 ? 'primary' : 'success'} value={<Money value={totalDue} size="2xl" weight="bold" tone={totalDue > 0 ? 'negative' : 'positive'} />} />
       </StatGrid>
 
       <div className="mb-4">
-        <PaymentForm customers={data.customers} dueSales={dueSales} accounts={data.accounts} onSubmit={recordPayment} />
+        <PaymentForm customers={data.customers} dueSales={dueSales} accounts={data.accounts} onSubmit={recordCashIn} />
       </div>
 
-      <Section title="Payment history" description={`${paymentRows.length} payments recorded`} noPadding>
+      <Section title="Cash In history" description={`${paymentRows.length} payments recorded`} noPadding>
         <CustomerLedgerTable rows={paymentRows} showCustomer />
       </Section>
     </div>

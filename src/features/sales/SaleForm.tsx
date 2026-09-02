@@ -9,8 +9,9 @@ import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Money } from '@/components/Money'
-import { saleItemAmount } from '@/utils/sales'
-import { formatCurrency, todayISO } from '@/utils/format'
+import { bagKgOf, meshSizeNameOf } from '@/utils/products'
+import { saleItemAmount, saleItemWeightTon } from '@/utils/sales'
+import { formatCurrency, formatNumber, todayISO } from '@/utils/format'
 
 /**
  * Record a sale — one header, one or more items.
@@ -19,57 +20,108 @@ import { formatCurrency, todayISO } from '@/utils/format'
  * one visit is one invoice with two items, never two invoices — this is the
  * one form that has to hold both, which is why it is built around a
  * repeatable row rather than a flat set of fields.
+ *
+ * Bags is what a person actually counts and what stock is deducted by —
+ * weight and amount are always derived from it (§10/§17: never let a sale
+ * exceed available stock). `availableBags` is the same function the
+ * Production & Stock page's cards use, so this form can never show a
+ * different number than the stock it's checking against.
  */
 
 const itemSchema = z.object({
   productId: z.string().min(1, 'Choose a product.'),
-  meshSizeId: z.string().optional(),
-  weightTon: z.coerce
-    .number({ invalid_type_error: 'Enter the weight.' })
-    .positive('Weight must be more than zero.'),
+  meshSizeId: z.string().min(1, 'Choose a mesh size.'),
+  bags: z.coerce
+    .number({ invalid_type_error: 'Enter the number of bags.' })
+    .int('Bags must be a whole number.')
+    .positive('Bags must be more than zero.'),
   ratePerTon: z.coerce
     .number({ invalid_type_error: 'Enter the rate.' })
     .positive('Rate must be more than zero.'),
 })
 
-const schema = z
-  .object({
-    date: z.string().min(1, 'Pick the date.'),
-    customerId: z.string().min(1, 'Choose a customer.'),
-    truckNo: z.string().max(40).optional(),
-    notes: z.string().max(300).optional(),
-    paidAtSale: z.coerce.number().min(0, 'Cannot be negative.').optional(),
-    items: z.array(itemSchema).min(1, 'Add at least one item.'),
-  })
-  .superRefine((values, ctx) => {
-    const total = values.items.reduce((sum, item) => sum + item.weightTon * item.ratePerTon, 0)
-    if ((values.paidAtSale ?? 0) > total) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['paidAtSale'],
-        message: 'Cannot collect more than the invoice total.',
+function buildSchema(
+  availableBags: (productId: string, meshSizeId: string) => number,
+  bagKg: (meshSizeId: string) => number,
+  meshName: (meshSizeId: string) => string,
+) {
+  return z
+    .object({
+      date: z.string().min(1, 'Pick the date.'),
+      customerId: z.string().min(1, 'Choose a customer.'),
+      truckNo: z.string().max(40).optional(),
+      notes: z.string().max(300).optional(),
+      paidAtSale: z.coerce.number().min(0, 'Cannot be negative.').optional(),
+      items: z.array(itemSchema).min(1, 'Add at least one item.'),
+    })
+    .superRefine((values, ctx) => {
+      // §7: never allow a sale to exceed available stock. Bags requested
+      // against the same (product, mesh) accumulate across lines in this one
+      // invoice — two lines selling the same grade must be checked together,
+      // not each against the full stock independently.
+      const requested = new Map<string, number>()
+      values.items.forEach((item, index) => {
+        if (!item.productId || !item.meshSizeId) return
+        const key = `${item.productId}::${item.meshSizeId}`
+        const after = (requested.get(key) ?? 0) + (Number(item.bags) || 0)
+        requested.set(key, after)
+
+        const available = availableBags(item.productId, item.meshSizeId)
+        if (after > available) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['items', index, 'bags'],
+            message: `Insufficient stock. Only ${formatNumber(available)} bags are currently available for Mesh ${meshName(item.meshSizeId)}.`,
+          })
+        }
       })
-    }
-  })
 
-export type SaleFormValues = z.input<typeof schema>
-export type SaleSubmit = z.output<typeof schema>
+      const total = values.items.reduce(
+        (sum, item) => sum + saleItemAmount(saleItemWeightTon(item.bags, bagKg(item.meshSizeId)), item.ratePerTon),
+        0,
+      )
+      if ((values.paidAtSale ?? 0) > total) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['paidAtSale'],
+          message: 'Cannot collect more than the invoice total.',
+        })
+      }
+    })
+}
 
-const NONE = '__none__'
+export type SaleFormValues = {
+  date: string
+  customerId: string
+  truckNo?: string
+  notes?: string
+  paidAtSale?: number
+  items: Array<{ productId: string; meshSizeId: string; bags: number; ratePerTon: number }>
+}
+export type SaleSubmit = SaleFormValues
 
 export function SaleForm({
   customers,
   products,
   meshSizes,
   nextInvoiceNo,
+  availableBags,
   onSubmit,
 }: {
   customers: Customer[]
   products: Product[]
   meshSizes: MeshSize[]
   nextInvoiceNo: string
+  /** Stock currently available for one (product, mesh) — see `utils/productionStock.ts`. */
+  availableBags: (productId: string, meshSizeId: string) => number
   onSubmit: (values: SaleSubmit) => void
 }) {
+  const schema = buildSchema(
+    availableBags,
+    (meshSizeId) => bagKgOf(meshSizes, meshSizeId),
+    (meshSizeId) => meshSizeNameOf(meshSizes, meshSizeId),
+  )
+
   const {
     register,
     control,
@@ -86,7 +138,7 @@ export function SaleForm({
       truckNo: '',
       notes: '',
       paidAtSale: '' as unknown as number,
-      items: [{ productId: products[0]?.id ?? '', meshSizeId: NONE, weightTon: '' as unknown as number, ratePerTon: '' as unknown as number }],
+      items: [{ productId: products[0]?.id ?? '', meshSizeId: meshSizes[0]?.id ?? '', bags: '' as unknown as number, ratePerTon: '' as unknown as number }],
     },
   })
 
@@ -96,26 +148,24 @@ export function SaleForm({
   const items = watch('items')
   const paidAtSale = Number(watch('paidAtSale')) || 0
 
-  const total = items.reduce((sum, item) => sum + saleItemAmount({ weightTon: Number(item?.weightTon) || 0, ratePerTon: Number(item?.ratePerTon) || 0 }), 0)
+  const itemAmount = (bags: number, meshSizeId: string, ratePerTon: number) => {
+    const bagKg = bagKgOf(meshSizes, meshSizeId)
+    const weightTon = saleItemWeightTon(Number(bags) || 0, bagKg)
+    return { weightTon, amount: saleItemAmount(weightTon, Number(ratePerTon) || 0) }
+  }
+
+  const total = items.reduce((sum, item) => sum + itemAmount(item?.bags, item?.meshSizeId, item?.ratePerTon).amount, 0)
   const due = Math.max(0, total - paidAtSale)
 
   const submit = handleSubmit((values) => {
-    const cleaned: SaleSubmit = {
-      ...(values as SaleSubmit),
-      paidAtSale: Number(values.paidAtSale) || 0,
-      items: values.items.map((item) => ({
-        ...item,
-        meshSizeId: item.meshSizeId === NONE ? undefined : item.meshSizeId,
-      })),
-    }
-    onSubmit(cleaned)
+    onSubmit(values)
     reset({
       date: values.date,
       customerId: values.customerId,
       truckNo: '',
       notes: '',
       paidAtSale: '' as unknown as number,
-      items: [{ productId: products[0]?.id ?? '', meshSizeId: NONE, weightTon: '' as unknown as number, ratePerTon: '' as unknown as number }],
+      items: [{ productId: products[0]?.id ?? '', meshSizeId: meshSizes[0]?.id ?? '', bags: '' as unknown as number, ratePerTon: '' as unknown as number }],
     })
   })
 
@@ -155,15 +205,13 @@ export function SaleForm({
 
           {fields.map((field, index) => {
             const item = items[index]
-            const amount = saleItemAmount({
-              weightTon: Number(item?.weightTon) || 0,
-              ratePerTon: Number(item?.ratePerTon) || 0,
-            })
+            const { weightTon, amount } = itemAmount(item?.bags, item?.meshSizeId, item?.ratePerTon)
             const itemErrors = errors.items?.[index]
+            const available = item?.productId && item?.meshSizeId ? availableBags(item.productId, item.meshSizeId) : 0
 
             return (
               <div key={field.id} className="rounded-lg border border-border bg-secondary/30 p-3">
-                <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr_0.8fr_0.9fr_1fr_auto] sm:items-end">
+                <div className="grid gap-3 sm:grid-cols-[1.3fr_1fr_0.8fr_0.9fr_1fr_auto] sm:items-end">
                   <Field label="Product" error={itemErrors?.productId?.message}>
                     <Controller
                       control={control}
@@ -185,20 +233,19 @@ export function SaleForm({
                     />
                   </Field>
 
-                  <Field label="Mesh / size">
+                  <Field label="Mesh / size" error={itemErrors?.meshSizeId?.message}>
                     <Controller
                       control={control}
                       name={`items.${index}.meshSizeId`}
                       render={({ field: f }) => (
-                        <Select value={f.value || NONE} onValueChange={f.onChange}>
+                        <Select value={f.value} onValueChange={f.onChange}>
                           <SelectTrigger>
-                            <SelectValue placeholder="None" />
+                            <SelectValue placeholder="Mesh" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value={NONE}>None</SelectItem>
                             {meshSizes.map((mesh) => (
                               <SelectItem key={mesh.id} value={mesh.id}>
-                                {mesh.name}
+                                {mesh.name} · {mesh.bagKg}kg
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -207,15 +254,19 @@ export function SaleForm({
                     />
                   </Field>
 
-                  <Field label="Weight (Ton)" error={itemErrors?.weightTon?.message}>
-                    <Input type="number" min={0} step="0.01" inputMode="decimal" placeholder="0" {...register(`items.${index}.weightTon`)} />
+                  <Field
+                    label="Bags"
+                    error={itemErrors?.bags?.message}
+                    hint={item?.productId && item?.meshSizeId ? `Available: ${formatNumber(available)}` : undefined}
+                  >
+                    <Input type="number" min={0} step="1" inputMode="numeric" placeholder="0" {...register(`items.${index}.bags`)} />
                   </Field>
 
                   <Field label="Rate / Ton (৳)" error={itemErrors?.ratePerTon?.message}>
                     <Input type="number" min={0} step="1" inputMode="numeric" placeholder="0" {...register(`items.${index}.ratePerTon`)} />
                   </Field>
 
-                  <Field label="Amount">
+                  <Field label="Amount" hint={weightTon > 0 ? `${formatNumber(weightTon)} Ton` : undefined}>
                     <div className="flex h-9 items-center rounded-md border border-transparent bg-card px-3">
                       <Money value={amount} size="sm" weight="semibold" />
                     </div>
@@ -245,7 +296,14 @@ export function SaleForm({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => append({ productId: products[0]?.id ?? '', meshSizeId: NONE, weightTon: '' as unknown as number, ratePerTon: '' as unknown as number })}
+            onClick={() =>
+              append({
+                productId: products[0]?.id ?? '',
+                meshSizeId: meshSizes[0]?.id ?? '',
+                bags: '' as unknown as number,
+                ratePerTon: '' as unknown as number,
+              })
+            }
           >
             <Plus />
             Add item
@@ -282,15 +340,15 @@ export function SaleForm({
           size="lg"
           className="mt-4 w-full"
           loading={isSubmitting}
-          disabled={customers.length === 0 || products.length === 0}
+          disabled={customers.length === 0 || products.length === 0 || meshSizes.length === 0}
         >
           <Receipt />
           Record sale — {formatCurrency(total)}
         </Button>
 
-        {(customers.length === 0 || products.length === 0) && (
+        {(customers.length === 0 || products.length === 0 || meshSizes.length === 0) && (
           <p className="mt-2 text-center text-xs text-muted-foreground">
-            Add {customers.length === 0 ? 'a customer' : 'a product'} before recording a sale.
+            Add {customers.length === 0 ? 'a customer' : products.length === 0 ? 'a product' : 'a mesh size'} before recording a sale.
           </p>
         )}
       </form>

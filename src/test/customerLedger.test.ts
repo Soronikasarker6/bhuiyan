@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { CustomerTransaction } from '@/types'
+import type { CustomerTransaction, SaleSummary } from '@/types'
 import {
+  allocateCashIn,
   availableAdvance,
   buildAdvance,
   buildAdvanceAdjustment,
@@ -11,6 +12,24 @@ import {
   customerBalance,
   nextReference,
 } from '@/utils/customerLedger'
+
+function dueSale(id: string, date: string, totalAmount: number, amountDue: number): SaleSummary {
+  return {
+    id,
+    invoiceNo: `INV-${id}`,
+    date,
+    customerId: 'c1',
+    paidAtSale: totalAmount - amountDue,
+    createdAt: `${date}T00:00:00Z`,
+    customerName: 'ABC Trading',
+    items: [],
+    totalAmount,
+    totalWeightTon: 0,
+    amountPaid: totalAmount - amountDue,
+    amountDue,
+    status: amountDue === 0 ? 'paid' : amountDue < totalAmount ? 'partial' : 'due',
+  }
+}
 
 /**
  * The customer ledger — tested against the spec's own worked example (§10),
@@ -88,6 +107,109 @@ describe('opening balance', () => {
     const row = buildOpeningBalance({ id: 't1', customerId: 'c1', date: '2026-01-01', reference: 'OPN-001', amount: -20_000, createdAt: '' })
     expect(row).toMatchObject({ debit: 0, credit: 20_000 })
     expect(customerBalance([row])).toBe(-20_000)
+  })
+})
+
+describe('Cash In allocation (§12/§13)', () => {
+  it('§12: 50,000 due, 20,000 paid, leaves exactly 30,000 due', () => {
+    const rows = allocateCashIn({
+      customerId: 'c1',
+      date: '2026-09-03',
+      amount: 20_000,
+      dueSales: [dueSale('s1', '2026-09-01', 50_000, 50_000)],
+      paymentReference: 'PAY-001',
+      advanceReference: 'ADV-001',
+      createdAt: '2026-09-03T00:00:00Z',
+      makeId: (() => {
+        let n = 0
+        return () => `id-${++n}`
+      })(),
+    })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ type: 'payment', credit: 20_000, referenceSaleId: 's1' })
+  })
+
+  it('on account, settles the oldest due invoice first', () => {
+    const rows = allocateCashIn({
+      customerId: 'c1',
+      date: '2026-09-10',
+      amount: 30_000,
+      dueSales: [dueSale('newer', '2026-09-05', 40_000, 40_000), dueSale('older', '2026-09-01', 10_000, 10_000)],
+      paymentReference: 'PAY-002',
+      advanceReference: 'ADV-002',
+      createdAt: '2026-09-10T00:00:00Z',
+      makeId: (() => {
+        let n = 0
+        return () => `id-${++n}`
+      })(),
+    })
+
+    // 10,000 clears the older invoice in full; the remaining 20,000 goes
+    // toward the newer one, which still owes 20,000 of its 40,000.
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({ referenceSaleId: 'older', credit: 10_000 })
+    expect(rows[1]).toMatchObject({ referenceSaleId: 'newer', credit: 20_000 })
+  })
+
+  it('§13: an amount beyond what is owed becomes Advance, never a negative due', () => {
+    const rows = allocateCashIn({
+      customerId: 'c1',
+      date: '2026-09-10',
+      amount: 15_000,
+      dueSales: [dueSale('s1', '2026-09-01', 10_000, 10_000)],
+      paymentReference: 'PAY-003',
+      advanceReference: 'ADV-003',
+      createdAt: '2026-09-10T00:00:00Z',
+      makeId: (() => {
+        let n = 0
+        return () => `id-${++n}`
+      })(),
+    })
+
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({ type: 'payment', credit: 10_000, referenceSaleId: 's1' })
+    expect(rows[1]).toMatchObject({ type: 'advance', credit: 5_000 })
+    expect(availableAdvance(rows)).toBe(5_000)
+  })
+
+  it('targeting one specific invoice never touches another due invoice', () => {
+    const rows = allocateCashIn({
+      customerId: 'c1',
+      date: '2026-09-10',
+      amount: 5_000,
+      dueSales: [dueSale('s1', '2026-09-01', 10_000, 10_000), dueSale('s2', '2026-09-02', 8_000, 8_000)],
+      targetSaleId: 's2',
+      paymentReference: 'PAY-004',
+      advanceReference: 'ADV-004',
+      createdAt: '2026-09-10T00:00:00Z',
+      makeId: (() => {
+        let n = 0
+        return () => `id-${++n}`
+      })(),
+    })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ referenceSaleId: 's2', credit: 5_000 })
+  })
+
+  it('a customer with no due at all has the whole amount become Advance', () => {
+    const rows = allocateCashIn({
+      customerId: 'c1',
+      date: '2026-09-10',
+      amount: 12_000,
+      dueSales: [],
+      paymentReference: 'PAY-005',
+      advanceReference: 'ADV-005',
+      createdAt: '2026-09-10T00:00:00Z',
+      makeId: (() => {
+        let n = 0
+        return () => `id-${++n}`
+      })(),
+    })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ type: 'advance', credit: 12_000 })
   })
 })
 

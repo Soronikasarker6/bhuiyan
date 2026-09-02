@@ -140,6 +140,7 @@ export function SalesTable({
                                 <tr className="text-2xs uppercase tracking-wider text-muted-foreground">
                                   <th className="pb-1.5 text-left font-semibold">Product</th>
                                   <th className="pb-1.5 text-left font-semibold">Mesh</th>
+                                  <th className="pb-1.5 text-right font-semibold">Bags</th>
                                   <th className="pb-1.5 text-right font-semibold">Weight (Ton)</th>
                                   <th className="pb-1.5 text-right font-semibold">Rate / Ton</th>
                                   <th className="pb-1.5 text-right font-semibold">Amount</th>
@@ -149,8 +150,9 @@ export function SalesTable({
                                 {sale.items.map((item) => (
                                   <tr key={item.id} className="border-t border-border/60">
                                     <td className="py-1.5 font-medium">{item.productName}</td>
-                                    <td className="py-1.5 text-muted-foreground">{item.meshSizeName ?? '—'}</td>
-                                    <td className="py-1.5 text-right font-mono tabular">{item.weightTon}</td>
+                                    <td className="py-1.5 text-muted-foreground">{item.meshSizeName}</td>
+                                    <td className="py-1.5 text-right font-mono tabular">{item.bags}</td>
+                                    <td className="py-1.5 text-right font-mono tabular">{item.weightTon.toFixed(2)}</td>
                                     <td className="py-1.5 text-right font-mono tabular">{formatCurrency(item.ratePerTon)}</td>
                                     <td className="py-1.5 text-right font-mono tabular font-medium">{formatCurrency(item.amount)}</td>
                                   </tr>

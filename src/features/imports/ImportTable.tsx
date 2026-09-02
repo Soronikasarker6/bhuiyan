@@ -1,35 +1,44 @@
 import { useState } from 'react'
-import { Search, Trash2 } from 'lucide-react'
-import type { ProductionRow } from '@/types'
+import { Factory, Search, Trash2 } from 'lucide-react'
+import type { ImportRow } from '@/types'
 import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Input } from '@/components/ui/input'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { SortableHead } from '@/components/SortableHead'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Button } from '@/components/ui/button'
 import { useSortableSearch } from '@/hooks/useSortableSearch'
 import { formatDate, formatNumber, formatTons } from '@/utils/format'
-import { Factory } from 'lucide-react'
+import { importTotals } from '@/utils/imports'
 
 const PAGE_SIZE = 25
 
-export function ProductionTable({
+export function ImportTable({
   rows,
   onDelete,
 }: {
-  rows: ProductionRow[]
+  rows: ImportRow[]
   onDelete: (id: string) => void
 }) {
   const [page, setPage] = useState(0)
-  const [pendingDelete, setPendingDelete] = useState<ProductionRow | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<ImportRow | null>(null)
 
   const { search, setSearch, sortKey, direction, toggleSort, rows: sorted } = useSortableSearch({
     rows,
-    searchText: (r) => `${r.productName} ${r.notes ?? ''}`,
+    searchText: (r) => `${r.productName} ${r.shipName ?? ''} ${r.truckNo ?? ''} ${r.serialNo ?? ''} ${r.notes ?? ''}`,
     sorters: {
       date: (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0),
       product: (a, b) => a.productName.localeCompare(b.productName),
+      truck: (a, b) => (a.truckNo ?? '').localeCompare(b.truckNo ?? ''),
       gross: (a, b) => a.grossWeightKg - b.grossWeightKg,
       tare: (a, b) => a.tareWeightKg - b.tareWeightKg,
       net: (a, b) => a.netWeightKg - b.netWeightKg,
@@ -37,12 +46,13 @@ export function ProductionTable({
     defaultSortKey: 'date',
   })
 
+  const totals = importTotals(rows)
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
   const pageRows = sorted.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
 
   return (
     <Section
-      title="Production register"
+      title="Raw material import register"
       description={`${rows.length} entries · net weight is always gross − tare`}
       actions={
         <div className="relative">
@@ -53,8 +63,8 @@ export function ProductionTable({
               setSearch(e.target.value)
               setPage(0)
             }}
-            placeholder="Search product or notes…"
-            className="h-8 w-48 pl-8 text-xs"
+            placeholder="Search product, ship, truck…"
+            className="h-8 w-52 pl-8 text-xs"
           />
         </div>
       }
@@ -64,7 +74,7 @@ export function ProductionTable({
         <EmptyState
           icon={Factory}
           size="sm"
-          title="No production recorded yet"
+          title="No imports recorded yet"
           description="Record today's gross and tare weight above to see it here."
         />
       ) : sorted.length === 0 ? (
@@ -76,10 +86,13 @@ export function ProductionTable({
               <TableRow>
                 <SortableHead label="Date" sortKey="date" activeKey={sortKey} direction={direction} onSort={toggleSort} />
                 <SortableHead label="Product" sortKey="product" activeKey={sortKey} direction={direction} onSort={toggleSort} />
+                <TableHead>Ship</TableHead>
+                <TableHead>Ser</TableHead>
+                <SortableHead label="Truck No." sortKey="truck" activeKey={sortKey} direction={direction} onSort={toggleSort} />
                 <SortableHead label="Gross (kg)" sortKey="gross" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
                 <SortableHead label="Tare (kg)" sortKey="tare" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
                 <SortableHead label="Net weight" sortKey="net" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
-                <TableHead>Notes</TableHead>
+                <TableHead numeric>Ton</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -88,15 +101,17 @@ export function ProductionTable({
                 <TableRow key={row.id}>
                   <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.date)}</TableCell>
                   <TableCell className="font-medium">{row.productName}</TableCell>
+                  <TableCell className="text-muted-foreground">{row.shipName || '—'}</TableCell>
+                  <TableCell className="font-mono text-2xs text-muted-foreground">{row.serialNo || '—'}</TableCell>
+                  <TableCell className="font-mono text-2xs text-muted-foreground">{row.truckNo || '—'}</TableCell>
                   <TableCell numeric>{formatNumber(row.grossWeightKg)}</TableCell>
                   <TableCell numeric>{formatNumber(row.tareWeightKg)}</TableCell>
                   <TableCell numeric className="font-semibold text-success-700">
                     {formatNumber(row.netWeightKg)} kg
-                    <span className="ml-1.5 font-normal text-2xs text-muted-foreground">
-                      ({formatTons(row.netWeightTon)}t)
-                    </span>
                   </TableCell>
-                  <TableCell className="max-w-[12rem] truncate text-muted-foreground">{row.notes || '—'}</TableCell>
+                  <TableCell numeric className="font-mono tabular text-muted-foreground">
+                    {formatTons(row.netWeightTon)}
+                  </TableCell>
                   <TableCell numeric>
                     <Button
                       size="icon-sm"
@@ -111,6 +126,26 @@ export function ProductionTable({
                 </TableRow>
               ))}
             </TableBody>
+            <TableFooter>
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={5} className="text-2xs font-semibold uppercase tracking-wider">
+                  Grand total ({rows.length})
+                </TableCell>
+                <TableCell numeric className="font-mono tabular font-bold">
+                  {formatNumber(totals.grossWeightKg)}
+                </TableCell>
+                <TableCell numeric className="font-mono tabular font-bold">
+                  {formatNumber(totals.tareWeightKg)}
+                </TableCell>
+                <TableCell numeric className="font-mono tabular font-bold text-success-700">
+                  {formatNumber(totals.netWeightKg)} kg
+                </TableCell>
+                <TableCell numeric className="font-mono tabular font-bold">
+                  {formatTons(totals.netWeightTon)}
+                </TableCell>
+                <TableCell />
+              </TableRow>
+            </TableFooter>
           </Table>
 
           {totalPages > 1 && (
@@ -139,8 +174,8 @@ export function ProductionTable({
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => !open && setPendingDelete(null)}
-        title="Delete this production entry?"
-        description="This removes it from the register and reduces the product's available stock. This cannot be undone."
+        title="Delete this import entry?"
+        description="This removes it from the register. This cannot be undone."
         confirmLabel="Delete entry"
         onConfirm={() => {
           if (pendingDelete) onDelete(pendingDelete.id)

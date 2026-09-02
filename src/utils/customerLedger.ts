@@ -144,7 +144,7 @@ interface BaseParams {
 }
 
 export function buildPayment(
-  params: BaseParams & { amount: number; referenceSaleId?: ID },
+  params: BaseParams & { amount: number; referenceSaleId?: ID; method?: string },
 ): CustomerTransaction {
   return {
     id: params.id,
@@ -157,11 +157,12 @@ export function buildPayment(
     credit: params.amount,
     referenceSaleId: params.referenceSaleId,
     linkedAccountId: params.linkedAccountId,
+    method: params.method,
     createdAt: params.createdAt,
   }
 }
 
-export function buildAdvance(params: BaseParams & { amount: number }): CustomerTransaction {
+export function buildAdvance(params: BaseParams & { amount: number; method?: string }): CustomerTransaction {
   return {
     id: params.id,
     customerId: params.customerId,
@@ -172,6 +173,7 @@ export function buildAdvance(params: BaseParams & { amount: number }): CustomerT
     debit: 0,
     credit: params.amount,
     linkedAccountId: params.linkedAccountId,
+    method: params.method,
     createdAt: params.createdAt,
   }
 }
@@ -224,6 +226,85 @@ export function buildOpeningBalance(params: BaseParams & { amount: number }): Cu
     credit: amount < 0 ? -amount : 0,
     createdAt: params.createdAt,
   }
+}
+
+/**
+ * Cash In — §12/§13 together.
+ *
+ * Money paid against a specific invoice (or, if none is chosen, applied
+ * oldest-due-first across every invoice this customer actually owes on) is a
+ * `payment`, one row per invoice it touches, so `SaleSummary.amountDue` — and
+ * therefore `CustomerTotals.totalDue` — genuinely drops, not just the
+ * customer's overall ledger balance. Anything left over once every due
+ * invoice is settled is never a negative due: it becomes one `advance` row
+ * instead, tracked in its own pool (§13), ready to be applied to a future
+ * sale via `buildAdvanceAdjustment`.
+ */
+export function allocateCashIn(params: {
+  customerId: ID
+  date: ISODate
+  amount: number
+  /** This customer's due sales. If `targetSaleId` is omitted, every one of them is eligible, oldest first. */
+  dueSales: SaleSummary[]
+  /** Settle one specific invoice only; omit to apply on account, oldest-due-first. */
+  targetSaleId?: ID
+  paymentReference: string
+  advanceReference: string
+  method?: string
+  linkedAccountId?: ID
+  createdAt: string
+  /** Generates each row's id — pass `uid` in the app, a deterministic counter in tests. */
+  makeId: () => ID
+}): CustomerTransaction[] {
+  const rows: CustomerTransaction[] = []
+  let remaining = Number(params.amount) || 0
+
+  const targets = params.targetSaleId
+    ? params.dueSales.filter((s) => s.id === params.targetSaleId)
+    : [...params.dueSales].sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? -1 : 1))
+
+  for (const sale of targets) {
+    if (remaining <= 0) break
+    const applied = Math.min(remaining, sale.amountDue)
+    if (applied <= 0) continue
+
+    rows.push(
+      buildPayment({
+        id: params.makeId(),
+        customerId: params.customerId,
+        date: params.date,
+        reference: params.paymentReference,
+        description: `Payment received — ${params.paymentReference} (${sale.invoiceNo})`,
+        amount: applied,
+        referenceSaleId: sale.id,
+        method: params.method,
+        linkedAccountId: params.linkedAccountId,
+        createdAt: params.createdAt,
+      }),
+    )
+    remaining -= applied
+  }
+
+  if (remaining > 0) {
+    rows.push(
+      buildAdvance({
+        id: params.makeId(),
+        customerId: params.customerId,
+        date: params.date,
+        reference: params.advanceReference,
+        description:
+          rows.length > 0
+            ? `Advance received — ${params.advanceReference} (overpayment beyond due)`
+            : `Advance received — ${params.advanceReference}`,
+        amount: remaining,
+        method: params.method,
+        linkedAccountId: params.linkedAccountId,
+        createdAt: params.createdAt,
+      }),
+    )
+  }
+
+  return rows
 }
 
 // ---------------------------------------------------------------- reporting

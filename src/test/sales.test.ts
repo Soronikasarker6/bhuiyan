@@ -10,6 +10,7 @@ import {
   saleAmountDue,
   saleAmountPaid,
   saleItemAmount,
+  saleItemWeightTon,
 } from '@/utils/sales'
 import { buildAdvance, buildCustomerLedgerRows } from '@/utils/customerLedger'
 
@@ -23,29 +24,30 @@ const PRODUCTS: Product[] = [
   { id: 'p2', name: 'Gray Limestone', code: 'GRL', unit: 'Ton', active: true, createdAt: '2026-01-01T00:00:00Z' },
 ]
 const MESH: MeshSize[] = [
-  { id: 'm1', name: '10 Mesh', active: true, createdAt: '2026-01-01T00:00:00Z' },
-  { id: 'm2', name: '20 Mesh', active: true, createdAt: '2026-01-01T00:00:00Z' },
+  { id: 'm1', name: '250', bagKg: 50, active: true, createdAt: '2026-01-01T00:00:00Z' },
+  { id: 'm2', name: '400', bagKg: 50, active: true, createdAt: '2026-01-01T00:00:00Z' },
 ]
 const CUSTOMERS: Customer[] = [
   { id: 'c1', name: 'ABC Trading', openingBalance: 0, active: true, createdAt: '2026-01-01T00:00:00Z' },
 ]
 
 describe('sale items', () => {
-  it('reproduces the spec\'s own multi-item invoice: 50,000 + 22,500 = 72,500', () => {
+  it('is bags × bag weight × rate — 200 bags @ 50kg gives 50,000, 100 bags gives 22,500, total 72,500', () => {
     const items: SaleItem[] = [
-      { id: 'i1', saleId: 's1', productId: 'p1', meshSizeId: 'm1', weightTon: 10, ratePerTon: 5_000 },
-      { id: 'i2', saleId: 's1', productId: 'p2', meshSizeId: 'm2', weightTon: 5, ratePerTon: 4_500 },
+      { id: 'i1', saleId: 's1', productId: 'p1', meshSizeId: 'm1', bags: 200, ratePerTon: 5_000 },
+      { id: 'i2', saleId: 's1', productId: 'p2', meshSizeId: 'm2', bags: 100, ratePerTon: 4_500 },
     ]
 
-    expect(saleItemAmount(items[0]!)).toBe(50_000)
-    expect(saleItemAmount(items[1]!)).toBe(22_500)
+    expect(saleItemWeightTon(200, 50)).toBe(10)
+    expect(saleItemAmount(saleItemWeightTon(200, 50), 5_000)).toBe(50_000)
+    expect(saleItemAmount(saleItemWeightTon(100, 50), 4_500)).toBe(22_500)
 
     const rows = buildSaleItemRows(items, PRODUCTS, MESH)
     expect(itemsTotal(rows)).toBe(72_500)
   })
 })
 
-describe('credit sale (spec §12: 100,000 sold, 40,000 paid, 60,000 due)', () => {
+describe('credit sale (spec: 100,000 sold, 40,000 paid, 60,000 due)', () => {
   const sale: Sale = {
     id: 's1',
     invoiceNo: 'INV-2026-001',
@@ -83,7 +85,41 @@ describe('credit sale (spec §12: 100,000 sold, 40,000 paid, 60,000 due)', () =>
   })
 })
 
-describe('advance applied to a sale (spec §11: advance 50,000, sale 35,000, remaining 15,000)', () => {
+describe('the system’s own worked example: 50,000 sale, 20,000 Cash In, 30,000 due', () => {
+  const sale: Sale = {
+    id: 's4',
+    invoiceNo: 'INV-2026-004',
+    date: '2026-09-02',
+    customerId: 'c1',
+    paidAtSale: 0,
+    createdAt: '2026-09-02T00:00:00Z',
+  }
+
+  it('matches exactly', () => {
+    const transactions: CustomerTransaction[] = [
+      ...buildSaleTransactions({ sale, totalAmount: 50_000, paymentReference: 'PD-4' }),
+      {
+        id: 'pay-1',
+        customerId: 'c1',
+        date: '2026-09-03',
+        type: 'payment',
+        reference: 'PAY-001',
+        description: 'Cash In',
+        debit: 0,
+        credit: 20_000,
+        referenceSaleId: 's4',
+        createdAt: '2026-09-03T00:00:00Z',
+      },
+    ]
+
+    const paid = saleAmountPaid(sale, transactions)
+    expect(paid).toBe(20_000)
+    expect(saleAmountDue(50_000, paid)).toBe(30_000)
+    expect(paymentStatusOf(50_000, paid)).toBe('partial')
+  })
+})
+
+describe('advance applied to a sale (advance 50,000, sale 35,000, remaining 15,000)', () => {
   const sale: Sale = {
     id: 's4',
     invoiceNo: 'INV-2026-004',
@@ -168,7 +204,7 @@ describe('invoice numbering', () => {
 describe('sale summaries', () => {
   it('resolves customer name, totals and status for every sale', () => {
     const sale: Sale = { id: 's1', invoiceNo: 'INV-2026-001', date: '2026-09-05', customerId: 'c1', paidAtSale: 50_000, createdAt: '2026-09-05T00:00:00Z' }
-    const items: SaleItem[] = [{ id: 'i1', saleId: 's1', productId: 'p1', meshSizeId: 'm1', weightTon: 10, ratePerTon: 5_000 }]
+    const items: SaleItem[] = [{ id: 'i1', saleId: 's1', productId: 'p1', meshSizeId: 'm1', bags: 200, ratePerTon: 5_000 }]
     const transactions = buildSaleTransactions({ sale, totalAmount: 50_000, paymentReference: 'PD-1' })
 
     const summaries = buildSaleSummaries([sale], items, PRODUCTS, MESH, CUSTOMERS, transactions)

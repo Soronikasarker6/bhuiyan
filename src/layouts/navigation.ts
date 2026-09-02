@@ -1,6 +1,7 @@
 import {
   BarChart3,
   BookText,
+  Boxes,
   Factory,
   LayoutDashboard,
   Lock,
@@ -40,11 +41,17 @@ export const navigation: NavItem[] = [
     hint: 'Production, sales and balances at a glance',
   },
   {
-    label: 'Production',
-    path: '/production',
+    label: 'Raw Material Import',
+    path: '/import',
     icon: Factory,
     hint: 'Gross, tare and net weight by product',
     group: 'Operations',
+  },
+  {
+    label: 'Production & Stock',
+    path: '/production',
+    icon: Boxes,
+    hint: 'Mesh-wise bagging and stock in hand',
   },
   {
     label: 'Sales',
@@ -72,7 +79,7 @@ export const navigation: NavItem[] = [
     hint: 'Money received ahead of a sale',
   },
   {
-    label: 'Payments',
+    label: 'Cash In',
     path: '/payments',
     icon: Wallet,
     hint: 'Collections against due invoices',

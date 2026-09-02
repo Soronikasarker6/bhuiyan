@@ -10,6 +10,7 @@ import { PageSkeleton } from '@/components/PageSkeleton'
  * not download the charting library that the dashboard and reports need.
  */
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
+const ImportPage = lazy(() => import('@/pages/ImportPage'))
 const ProductionPage = lazy(() => import('@/pages/ProductionPage'))
 const SalesPage = lazy(() => import('@/pages/SalesPage'))
 const CustomersPage = lazy(() => import('@/pages/CustomersPage'))
@@ -33,6 +34,7 @@ export function AppRouter() {
     <Routes>
       <Route element={<AppLayout />}>
         <Route index element={<Lazy><DashboardPage /></Lazy>} />
+        <Route path="/import" element={<Lazy><ImportPage /></Lazy>} />
         <Route path="/production" element={<Lazy><ProductionPage /></Lazy>} />
         <Route path="/sales" element={<Lazy><SalesPage /></Lazy>} />
         <Route path="/customers" element={<Lazy><CustomersPage /></Lazy>} />

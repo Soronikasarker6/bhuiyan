@@ -16,7 +16,7 @@ import { cn } from '@/utils/cn'
 import { activePath, navigation } from './navigation'
 import { useAppData } from '@/hooks/useAppData'
 import { formatDateLong, todayISO } from '@/utils/format'
-import { productStock } from '@/utils/stock'
+import { allMeshStock } from '@/utils/productionStock'
 
 /**
  * The header.
@@ -42,13 +42,15 @@ export function Header({ onOpenNav }: { onOpenNav: () => void }) {
   const alerts = useMemo(() => {
     const list: Array<{ id: string; title: string; detail: string; tone: 'warn' | 'info' }> = []
 
-    const stock = productStock(data.products, data.productionEntries, data.saleItems)
-    const empty = stock.filter((s) => s.availableTon <= 0)
+    const stock = allMeshStock(data.products, data.meshSizes, data.productionEntries, data.saleItems, data.sales)
+    const hasActivity = (row: (typeof stock)[number]) =>
+      data.productionEntries.some((e) => e.productId === row.productId && e.meshId === row.meshId)
+    const empty = stock.filter((s) => s.stockBags <= 0 && hasActivity(s))
     if (empty.length > 0) {
       list.push({
         id: 'out-of-stock',
-        title: `${empty.length} product${empty.length > 1 ? 's' : ''} out of stock`,
-        detail: empty.map((s) => s.productName).join(', '),
+        title: `${empty.length} grade${empty.length > 1 ? 's' : ''} out of stock`,
+        detail: empty.map((s) => `${s.productName} — ${s.meshName}`).join(', '),
         tone: 'warn',
       })
     }

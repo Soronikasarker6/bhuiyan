@@ -22,6 +22,9 @@ export default function ProductsPage() {
 
   const productUsage = useMemo(() => {
     const counts = new Map<string, number>()
+    for (const entry of data.rawMaterialImports) {
+      counts.set(entry.productId, (counts.get(entry.productId) ?? 0) + 1)
+    }
     for (const entry of data.productionEntries) {
       counts.set(entry.productId, (counts.get(entry.productId) ?? 0) + 1)
     }
@@ -29,16 +32,18 @@ export default function ProductsPage() {
       counts.set(item.productId, (counts.get(item.productId) ?? 0) + 1)
     }
     return counts
-  }, [data.productionEntries, data.saleItems])
+  }, [data.rawMaterialImports, data.productionEntries, data.saleItems])
 
   const meshUsage = useMemo(() => {
     const counts = new Map<string, number>()
+    for (const entry of data.productionEntries) {
+      counts.set(entry.meshId, (counts.get(entry.meshId) ?? 0) + 1)
+    }
     for (const item of data.saleItems) {
-      if (!item.meshSizeId) continue
       counts.set(item.meshSizeId, (counts.get(item.meshSizeId) ?? 0) + 1)
     }
     return counts
-  }, [data.saleItems])
+  }, [data.productionEntries, data.saleItems])
 
   if (loading) return <PageSkeleton />
 
@@ -65,12 +70,12 @@ export default function ProductsPage() {
           footer={<span className="text-2xs text-muted-foreground">{data.meshSizes.length} total</span>}
         />
         <StatCard
-          label="Production + sales records"
+          label="Import + production + sales records"
           icon={Package}
           accent="success"
           value={
             <Num
-              value={data.productionEntries.length + data.saleItems.length}
+              value={data.rawMaterialImports.length + data.productionEntries.length + data.saleItems.length}
               size="2xl"
               className="font-bold"
             />

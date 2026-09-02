@@ -13,12 +13,19 @@ import { seedData } from '@/data/seed'
  * Each slice is stored under its own key rather than as one blob, so a write
  * to one table cannot corrupt another, and a future endpoint can be
  * introduced one slice at a time.
+ *
+ * `rawMaterialImports` keeps the storage key `'production-entries'` even
+ * though the field was renamed — it used to be the app's only production
+ * concept, and changing the key would orphan anyone's already-saved import
+ * history the moment this ships. The new bag-wise `productionEntries` gets
+ * its own fresh key, `'mesh-production-entries'`, and starts empty.
  */
 
 const KEYS = {
   products: 'products',
   meshSizes: 'mesh-sizes',
-  productionEntries: 'production-entries',
+  rawMaterialImports: 'production-entries',
+  productionEntries: 'mesh-production-entries',
   customers: 'customers',
   sales: 'sales',
   saleItems: 'sale-items',
@@ -56,6 +63,7 @@ export const repository = {
     return {
       products: storageService.get(KEYS.products) ?? fallback.products,
       meshSizes: storageService.get(KEYS.meshSizes) ?? fallback.meshSizes,
+      rawMaterialImports: storageService.get(KEYS.rawMaterialImports) ?? [],
       productionEntries: storageService.get(KEYS.productionEntries) ?? [],
       customers: storageService.get(KEYS.customers) ?? [],
       sales: storageService.get(KEYS.sales) ?? [],
@@ -93,6 +101,7 @@ export const repository = {
   clearTransactionalData(current: AppData): AppData {
     const cleared: AppData = {
       ...current,
+      rawMaterialImports: [],
       productionEntries: [],
       sales: [],
       saleItems: [],

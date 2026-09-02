@@ -1,8 +1,8 @@
-import type { ID, ISODate, Product, ProductionEntry, ProductionRow } from '@/types'
+import type { ID, ISODate, Product, RawMaterialImport, ImportRow } from '@/types'
 import { productNameOf } from './products'
 
 /**
- * Production arithmetic.
+ * Raw material import arithmetic.
  *
  * The rule this module protects:
  *
@@ -28,17 +28,14 @@ export function tonsToKg(tons: number): number {
   return (Number(tons) || 0) * 1000
 }
 
-function chronological(a: ProductionEntry, b: ProductionEntry): number {
+function chronological(a: RawMaterialImport, b: RawMaterialImport): number {
   if (a.date !== b.date) return a.date < b.date ? -1 : 1
   if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1
   return a.id < b.id ? -1 : 1
 }
 
-/** Every entry, newest first, with its product name and net weight resolved. */
-export function buildProductionRows(
-  entries: ProductionEntry[],
-  products: Product[],
-): ProductionRow[] {
+/** Every import entry, newest first, with its product name and net weight resolved. */
+export function buildImportRows(entries: RawMaterialImport[], products: Product[]): ImportRow[] {
   return [...entries]
     .sort(chronological)
     .reverse()
@@ -53,7 +50,7 @@ export function buildProductionRows(
     })
 }
 
-export interface ProductionTotals {
+export interface ImportTotals {
   entryCount: number
   grossWeightKg: number
   tareWeightKg: number
@@ -61,8 +58,8 @@ export interface ProductionTotals {
   netWeightTon: number
 }
 
-export function productionTotals(entries: ProductionEntry[]): ProductionTotals {
-  return entries.reduce<ProductionTotals>(
+export function importTotals(entries: RawMaterialImport[]): ImportTotals {
+  return entries.reduce<ImportTotals>(
     (totals, entry) => {
       const net = netWeightKg(entry.grossWeightKg, entry.tareWeightKg)
       return {
@@ -77,13 +74,13 @@ export function productionTotals(entries: ProductionEntry[]): ProductionTotals {
   )
 }
 
-export function todaysProduction(entries: ProductionEntry[], today: ISODate): ProductionEntry[] {
+export function todaysImports(entries: RawMaterialImport[], today: ISODate): RawMaterialImport[] {
   return entries.filter((e) => e.date === today)
 }
 
-/** Net tons produced per month for a year, for the reports/dashboard chart. */
-export function monthlyProductionSeries(
-  entries: ProductionEntry[],
+/** Net tons imported per month for a year, for the reports/dashboard chart. */
+export function monthlyImportSeries(
+  entries: RawMaterialImport[],
   year: number,
 ): Array<{ monthIndex: number; netTon: number }> {
   const series = Array.from({ length: 12 }, (_, monthIndex) => ({ monthIndex, netTon: 0 }))
@@ -101,9 +98,9 @@ export function monthlyProductionSeries(
   return series
 }
 
-/** Net tons produced per product, biggest first — "product-wise production". */
-export function productionByProduct(
-  entries: ProductionEntry[],
+/** Net tons imported per product, biggest first — "product-wise import". */
+export function importsByProduct(
+  entries: RawMaterialImport[],
   products: Product[],
 ): Array<{ productId: ID; productName: string; netTon: number; entryCount: number }> {
   const totals = new Map<ID, { netTon: number; entryCount: number }>()

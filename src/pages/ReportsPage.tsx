@@ -10,6 +10,7 @@ import {
   Printer,
   Receipt,
   Scale,
+  Ship,
   Truck,
   TrendingUp,
   Users,
@@ -39,8 +40,8 @@ import {
   monthMovement,
   totalBalances,
 } from '@/utils/ledger'
-import { buildProductionRows, productionByProduct } from '@/utils/production'
-import { productStock } from '@/utils/stock'
+import { buildImportRows, importsByProduct } from '@/utils/imports'
+import { allMeshStock, totalStockBags, totalStockTon } from '@/utils/productionStock'
 import {
   buildSaleSummaries,
   filterSaleSummaries,
@@ -49,6 +50,7 @@ import {
   salesByProduct,
   salesByTruck,
 } from '@/utils/sales'
+import { bagKgOf, meshSizeNameOf, productNameOf } from '@/utils/products'
 import {
   buildCustomerLedgerRows,
   customerNameOf,
@@ -111,12 +113,20 @@ export default function ReportsPage() {
 
   // ---------------------------------------------------------------- sources
 
-  const productionInRange = useMemo(
+  const importsInRange = useMemo(
     () =>
-      buildProductionRows(data.productionEntries, data.products)
+      buildImportRows(data.rawMaterialImports, data.products)
         .filter((row) => isWithin(row.date, from, to))
         .filter((row) => productFilter === ALL || row.productId === productFilter),
-    [data.productionEntries, data.products, from, to, productFilter],
+    [data.rawMaterialImports, data.products, from, to, productFilter],
+  )
+
+  const productionInRange = useMemo(
+    () =>
+      data.productionEntries
+        .filter((row) => isWithin(row.date, from, to))
+        .filter((row) => productFilter === ALL || row.productId === productFilter),
+    [data.productionEntries, from, to, productFilter],
   )
 
   const allSales = useMemo(
@@ -167,8 +177,8 @@ export default function ReportsPage() {
   // ---------------------------------------------------------------- reports
 
   const reports = useMemo<ReportDefinition[]>(() => {
-    const stock = productStock(data.products, data.productionEntries, data.saleItems)
-    const productTotals = productionByProduct(productionInRange, data.products)
+    const stock = allMeshStock(data.products, data.meshSizes, data.productionEntries, data.saleItems, data.sales)
+    const importProductTotals = importsByProduct(importsInRange, data.products)
     const pnlYear = yearOf(data.pnl, year)
     const pnlTotals = analyseYear(pnlYear)
     const balances = accountBalances(data.accounts, data.transactions, to)
@@ -189,26 +199,30 @@ export default function ReportsPage() {
     return [
       // ---------------------------------------------------------- production
       {
-        id: 'production',
+        id: 'import',
         group: 'Production',
-        name: 'Production Report',
-        description: 'Every production entry in the range, with gross, tare and net weight.',
-        icon: Boxes,
-        count: productionInRange.length,
+        name: 'Import Report',
+        description: 'Every raw material receipt in the range, with ship, truck and net weight.',
+        icon: Ship,
+        count: importsInRange.length,
         build: () => ({
-          title: 'Production Report',
+          title: 'Import Report',
           subtitle: rangeLabel,
           columns: [
             { key: 'date', label: 'Date' },
             { key: 'product', label: 'Product' },
+            { key: 'ship', label: 'Ship' },
+            { key: 'truck', label: 'Truck' },
             { key: 'gross', label: 'Gross (kg)', align: 'right' },
             { key: 'tare', label: 'Tare (kg)', align: 'right' },
             { key: 'net', label: 'Net (kg)', align: 'right' },
-            { key: 'netTon', label: 'Net (Ton)', align: 'right' },
+            { key: 'netTon', label: 'TON', align: 'right' },
           ],
-          rows: productionInRange.map((row) => ({
+          rows: importsInRange.map((row) => ({
             date: formatDate(row.date),
             product: row.productName,
+            ship: row.shipName ?? '',
+            truck: row.truckNo ?? '',
             gross: formatNumber(row.grossWeightKg),
             tare: formatNumber(row.tareWeightKg),
             net: formatNumber(row.netWeightKg),
@@ -216,65 +230,114 @@ export default function ReportsPage() {
           })),
           totals: {
             date: 'Total',
-            gross: formatNumber(productionInRange.reduce((s, r) => s + r.grossWeightKg, 0)),
-            tare: formatNumber(productionInRange.reduce((s, r) => s + r.tareWeightKg, 0)),
-            net: formatNumber(productionInRange.reduce((s, r) => s + r.netWeightKg, 0)),
-            netTon: formatTons(productionInRange.reduce((s, r) => s + r.netWeightTon, 0)),
+            gross: formatNumber(importsInRange.reduce((s, r) => s + r.grossWeightKg, 0)),
+            tare: formatNumber(importsInRange.reduce((s, r) => s + r.tareWeightKg, 0)),
+            net: formatNumber(importsInRange.reduce((s, r) => s + r.netWeightKg, 0)),
+            netTon: formatTons(importsInRange.reduce((s, r) => s + r.netWeightTon, 0)),
           },
         }),
       },
       {
-        id: 'production-by-product',
+        id: 'import-by-product',
         group: 'Production',
-        name: 'Product-wise Production',
-        description: 'Net tons produced per product in the range.',
-        icon: Boxes,
-        count: productTotals.filter((p) => p.entryCount > 0).length,
+        name: 'Product-wise Import',
+        description: 'Net tons imported per product in the range.',
+        icon: Ship,
+        count: importProductTotals.filter((p) => p.entryCount > 0).length,
         build: () => ({
-          title: 'Product-wise Production',
+          title: 'Product-wise Import',
           subtitle: rangeLabel,
           columns: [
             { key: 'product', label: 'Product' },
             { key: 'entries', label: 'Entries', align: 'right' },
             { key: 'netTon', label: 'Net (Ton)', align: 'right' },
           ],
-          rows: productTotals.map((p) => ({ product: p.productName, entries: String(p.entryCount), netTon: formatTons(p.netTon) })),
+          rows: importProductTotals.map((p) => ({ product: p.productName, entries: String(p.entryCount), netTon: formatTons(p.netTon) })),
           totals: {
             product: 'Total',
-            entries: String(productTotals.reduce((s, p) => s + p.entryCount, 0)),
-            netTon: formatTons(productTotals.reduce((s, p) => s + p.netTon, 0)),
+            entries: String(importProductTotals.reduce((s, p) => s + p.entryCount, 0)),
+            netTon: formatTons(importProductTotals.reduce((s, p) => s + p.netTon, 0)),
           },
         }),
+      },
+      {
+        id: 'production',
+        group: 'Production',
+        name: 'Production Report',
+        description: 'Every mesh-wise bagging entry in the range.',
+        icon: Boxes,
+        count: productionInRange.length,
+        build: () => {
+          const rows = productionInRange.map((entry) => {
+            const bagKg = bagKgOf(data.meshSizes, entry.meshId)
+            const kg = entry.bags * bagKg
+            return {
+              date: formatDate(entry.date),
+              product: productNameOf(data.products, entry.productId),
+              mesh: meshSizeNameOf(data.meshSizes, entry.meshId),
+              bagKg: String(bagKg),
+              bags: formatNumber(entry.bags),
+              kg: formatNumber(kg),
+              ton: formatTons(kg / 1000),
+            }
+          })
+          return {
+            title: 'Production Report',
+            subtitle: rangeLabel,
+            columns: [
+              { key: 'date', label: 'Date' },
+              { key: 'product', label: 'Limestone' },
+              { key: 'mesh', label: 'Mesh' },
+              { key: 'bagKg', label: 'Bag Weight', align: 'right' },
+              { key: 'bags', label: 'Production (Bags)', align: 'right' },
+              { key: 'kg', label: 'Production (KG)', align: 'right' },
+              { key: 'ton', label: 'Production (Ton)', align: 'right' },
+            ],
+            rows,
+            totals: {
+              date: 'Total',
+              bags: formatNumber(productionInRange.reduce((s, e) => s + e.bags, 0)),
+              kg: formatNumber(productionInRange.reduce((s, e) => s + e.bags * bagKgOf(data.meshSizes, e.meshId), 0)),
+              ton: formatTons(productionInRange.reduce((s, e) => s + (e.bags * bagKgOf(data.meshSizes, e.meshId)) / 1000, 0)),
+            },
+          }
+        },
       },
       {
         id: 'stock',
         group: 'Production',
         name: 'Stock Report',
-        description: 'Available stock for every product, as it stands now.',
+        description: 'Available stock for every limestone × mesh combination, as it stands now.',
         icon: Boxes,
-        count: stock.length,
-        build: () => ({
-          title: 'Stock Report',
-          subtitle: `As at ${formatDateLong(todayISO())}`,
-          columns: [
-            { key: 'product', label: 'Product' },
-            { key: 'produced', label: 'Produced (Ton)', align: 'right' },
-            { key: 'sold', label: 'Sold (Ton)', align: 'right' },
-            { key: 'available', label: 'Available (Ton)', align: 'right' },
-          ],
-          rows: stock.map((s) => ({
-            product: s.productName,
-            produced: formatTons(s.producedTon),
-            sold: formatTons(s.soldTon),
-            available: formatTons(s.availableTon),
-          })),
-          totals: {
-            product: 'Total',
-            produced: formatTons(stock.reduce((s, r) => s + r.producedTon, 0)),
-            sold: formatTons(stock.reduce((s, r) => s + r.soldTon, 0)),
-            available: formatTons(stock.reduce((s, r) => s + r.availableTon, 0)),
-          },
-        }),
+        count: stock.filter((s) => productFilter === ALL || s.productId === productFilter).length,
+        build: () => {
+          const rows = stock.filter((s) => productFilter === ALL || s.productId === productFilter)
+          return {
+            title: 'Stock Report',
+            subtitle: `As at ${formatDateLong(todayISO())}`,
+            columns: [
+              { key: 'product', label: 'Limestone' },
+              { key: 'mesh', label: 'Mesh' },
+              { key: 'bagKg', label: 'Bag Weight', align: 'right' },
+              { key: 'bags', label: 'Stock (Bags)', align: 'right' },
+              { key: 'kg', label: 'Stock (KG)', align: 'right' },
+              { key: 'ton', label: 'Stock (Ton)', align: 'right' },
+            ],
+            rows: rows.map((s) => ({
+              product: s.productName,
+              mesh: s.meshName,
+              bagKg: String(s.bagKg),
+              bags: formatNumber(s.stockBags),
+              kg: formatNumber(s.stockKg),
+              ton: formatTons(s.stockTon),
+            })),
+            totals: {
+              product: 'Total',
+              bags: formatNumber(totalStockBags(rows)),
+              ton: formatTons(totalStockTon(rows)),
+            },
+          }
+        },
       },
 
       // ---------------------------------------------------------- sales
@@ -394,11 +457,17 @@ export default function ReportsPage() {
             subtitle: rangeLabel,
             columns: [
               { key: 'mesh', label: 'Mesh / Size' },
+              { key: 'bags', label: 'Bags', align: 'right' },
               { key: 'weight', label: 'Weight (Ton)', align: 'right' },
               { key: 'amount', label: 'Amount', align: 'right' },
             ],
-            rows: rows.map((r) => ({ mesh: r.meshSizeName, weight: formatTons(r.weightTon), amount: formatCurrency(r.amount) })),
-            totals: { mesh: 'Total', weight: formatTons(rows.reduce((s, r) => s + r.weightTon, 0)), amount: formatCurrency(rows.reduce((s, r) => s + r.amount, 0)) },
+            rows: rows.map((r) => ({ mesh: r.meshSizeName, bags: formatNumber(r.bags), weight: formatTons(r.weightTon), amount: formatCurrency(r.amount) })),
+            totals: {
+              mesh: 'Total',
+              bags: formatNumber(rows.reduce((s, r) => s + r.bags, 0)),
+              weight: formatTons(rows.reduce((s, r) => s + r.weightTon, 0)),
+              amount: formatCurrency(rows.reduce((s, r) => s + r.amount, 0)),
+            },
           }
         },
       },
@@ -468,26 +537,28 @@ export default function ReportsPage() {
         }),
       },
       {
-        id: 'payment-collection',
+        id: 'cash-in',
         group: 'Customer',
-        name: 'Payment Collection',
-        description: 'Every payment recorded in the range.',
+        name: 'Cash In Report',
+        description: 'Every payment collected in the range, with method.',
         icon: Wallet,
         count: paymentsInRange.length,
         build: () => ({
-          title: 'Payment Collection',
+          title: 'Cash In Report',
           subtitle: rangeLabel,
           columns: [
             { key: 'date', label: 'Date' },
-            { key: 'reference', label: 'Reference' },
             { key: 'customer', label: 'Customer' },
             { key: 'amount', label: 'Amount', align: 'right' },
+            { key: 'reference', label: 'Reference' },
+            { key: 'method', label: 'Payment Method' },
           ],
           rows: paymentsInRange.map((t) => ({
             date: formatDate(t.date),
-            reference: t.reference,
             customer: customerNameOf(data.customers, t.customerId),
             amount: formatCurrency(t.credit),
+            reference: t.reference,
+            method: t.method ?? '—',
           })),
           totals: { date: 'Total', amount: formatCurrency(paymentsInRange.reduce((s, t) => s + t.credit, 0)) },
         }),
@@ -653,7 +724,7 @@ export default function ReportsPage() {
         balance: formatCurrency(row.balance),
       }
     }
-  }, [data, productionInRange, allSales, salesInRange, ledgerInRange, customerTxnsInRange, rangeLabel, year, to])
+  }, [data, importsInRange, productionInRange, allSales, salesInRange, ledgerInRange, customerTxnsInRange, rangeLabel, year, to])
 
   // ---------------------------------------------------------------- export
 
@@ -691,7 +762,11 @@ export default function ReportsPage() {
 
   if (loading) return <PageSkeleton />
 
-  const nothingRecorded = data.productionEntries.length === 0 && data.sales.length === 0 && data.transactions.length === 0
+  const nothingRecorded =
+    data.rawMaterialImports.length === 0 &&
+    data.productionEntries.length === 0 &&
+    data.sales.length === 0 &&
+    data.transactions.length === 0
 
   if (nothingRecorded) {
     return (

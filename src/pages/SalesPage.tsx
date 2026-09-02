@@ -13,9 +13,10 @@ import { SalesTable } from '@/features/sales/SalesTable'
 import { usePrint } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
 import type { Sale, SaleItem, SaleSummary } from '@/types'
-import { activeProducts, activeMeshSizes } from '@/utils/products'
-import { buildSaleSummaries, buildSaleTransactions, nextInvoiceNo } from '@/utils/sales'
-import { formatCurrency, formatDate, todayISO } from '@/utils/format'
+import { activeProducts, activeMeshSizes, bagKgOf } from '@/utils/products'
+import { buildSaleSummaries, buildSaleTransactions, nextInvoiceNo, saleItemAmount, saleItemWeightTon } from '@/utils/sales'
+import { availableBags as availableBagsFor } from '@/utils/productionStock'
+import { formatCurrency, formatDate, formatNumber, formatTons, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
 
 /**
@@ -51,8 +52,33 @@ export default function SalesPage() {
   const totalAmount = useMemo(() => sales.reduce((sum, s) => sum + s.totalAmount, 0), [sales])
   const totalDue = useMemo(() => sales.reduce((sum, s) => sum + s.amountDue, 0), [sales])
 
+  /** The same function the Production & Stock page's cards use — a sale can never be accepted against a different number than the stock it's checking. */
+  const availableBags = useCallback(
+    (productId: string, meshSizeId: string) =>
+      availableBagsFor(productId, meshSizeId, data.productionEntries, data.saleItems, data.sales),
+    [data.productionEntries, data.saleItems, data.sales],
+  )
+
   const addSale = useCallback(
     (values: SaleSubmit) => {
+      // Re-checked here, not just in the form — a stale form (another tab
+      // already sold the last bags) must not be able to slip an oversell
+      // through. §7's rule is enforced at the one place that actually writes
+      // the data, not only at the one that happens to render it.
+      const requested = new Map<string, number>()
+      for (const item of values.items) {
+        const key = `${item.productId}::${item.meshSizeId}`
+        const after = (requested.get(key) ?? 0) + (Number(item.bags) || 0)
+        requested.set(key, after)
+
+        if (after > availableBags(item.productId, item.meshSizeId)) {
+          toast.error('Could not record the sale', {
+            description: 'Stock changed since this form was opened — refresh and try again.',
+          })
+          return
+        }
+      }
+
       const stamp = now()
       const saleId = uid()
 
@@ -71,12 +97,15 @@ export default function SalesPage() {
         id: uid(),
         saleId,
         productId: item.productId,
-        meshSizeId: item.meshSizeId || undefined,
-        weightTon: item.weightTon,
+        meshSizeId: item.meshSizeId,
+        bags: item.bags,
         ratePerTon: item.ratePerTon,
       }))
 
-      const totalAmount = items.reduce((sum, item) => sum + item.weightTon * item.ratePerTon, 0)
+      const totalAmount = items.reduce((sum, item) => {
+        const weightTon = saleItemWeightTon(item.bags, bagKgOf(data.meshSizes, item.meshSizeId))
+        return sum + saleItemAmount(weightTon, item.ratePerTon)
+      }, 0)
 
       const ledgerRows = buildSaleTransactions({
         sale,
@@ -94,7 +123,7 @@ export default function SalesPage() {
         description: `Total ${formatCurrency(totalAmount)}${sale.paidAtSale > 0 ? ` · Paid ${formatCurrency(sale.paidAtSale)}` : ''}`,
       })
     },
-    [data.sales, data.saleItems, data.customerTransactions, invoiceNo, updateMany],
+    [data.sales, data.saleItems, data.customerTransactions, data.meshSizes, invoiceNo, availableBags, updateMany],
   )
 
   const deleteSale = useCallback(
@@ -122,14 +151,16 @@ export default function SalesPage() {
         columns: [
           { key: 'product', label: 'Product' },
           { key: 'mesh', label: 'Mesh' },
+          { key: 'bags', label: 'Bags', align: 'right' },
           { key: 'weight', label: 'Weight (Ton)', align: 'right' },
           { key: 'rate', label: 'Rate / Ton', align: 'right' },
           { key: 'amount', label: 'Amount', align: 'right' },
         ],
         rows: sale.items.map((item) => ({
           product: item.productName,
-          mesh: item.meshSizeName ?? '—',
-          weight: String(item.weightTon),
+          mesh: item.meshSizeName,
+          bags: formatNumber(item.bags),
+          weight: formatTons(item.weightTon),
           rate: formatCurrency(item.ratePerTon),
           amount: formatCurrency(item.amount),
         })),
@@ -174,7 +205,14 @@ export default function SalesPage() {
       </StatGrid>
 
       <div className="mb-4">
-        <SaleForm customers={data.customers} products={products} meshSizes={meshSizes} nextInvoiceNo={invoiceNo} onSubmit={addSale} />
+        <SaleForm
+          customers={data.customers}
+          products={products}
+          meshSizes={meshSizes}
+          nextInvoiceNo={invoiceNo}
+          availableBags={availableBags}
+          onSubmit={addSale}
+        />
       </div>
 
       <SalesTable sales={sales} onDelete={deleteSale} onPrint={printInvoice} />

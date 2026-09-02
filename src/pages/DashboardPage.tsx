@@ -2,12 +2,12 @@ import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
+  Banknote,
   Boxes,
   Factory,
   Package,
-  PiggyBank,
   Receipt,
-  TrendingUp,
+  Ship,
   Users,
   Wallet,
 } from 'lucide-react'
@@ -21,11 +21,11 @@ import { ChartSkeleton, TableSkeleton } from '@/components/PageSkeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { SalesTrendChart } from '@/features/dashboard/SalesTrendChart'
 import { useAppData } from '@/hooks/useAppData'
-import { buildProductionRows, productionByProduct, todaysProduction } from '@/utils/production'
-import { productStock, totalStock } from '@/utils/stock'
+import { buildImportRows, importTotals, todaysImports } from '@/utils/imports'
+import { allMeshStock, todaysProductionBags, totalProductionBags, totalStockTon } from '@/utils/productionStock'
 import { buildSaleSummaries, monthlySalesSeries } from '@/utils/sales'
 import { customerTotals, outstandingCustomers, transactionsForCustomer } from '@/utils/customerLedger'
-import { MONTHS_SHORT, formatDate, todayISO } from '@/utils/format'
+import { MONTHS_SHORT, formatDate, formatNumber, todayISO } from '@/utils/format'
 
 const STATUS_VARIANT = { paid: 'success', partial: 'brass', due: 'destructive' } as const
 const STATUS_LABEL = { paid: 'Paid', partial: 'Partial', due: 'Due' } as const
@@ -34,21 +34,27 @@ const STATUS_LABEL = { paid: 'Paid', partial: 'Partial', due: 'Due' } as const
  * The dashboard.
  *
  * Answers the questions someone opens this system to ask, in the order they
- * ask them: what did the yard make and sell today, what is the overall
- * position, who owes money, and what happened most recently. Deliberately one
- * chart, not several — a dashboard that shows everything shows nothing.
+ * ask them: what arrived and what got bagged today, what did we sell, what
+ * is owed, and what happened most recently. Deliberately one chart, not
+ * several — a dashboard that shows everything shows nothing.
  */
 export default function DashboardPage() {
   const { data, loading } = useAppData()
   const today = todayISO()
   const year = new Date().getFullYear()
 
-  const productionRows = useMemo(() => buildProductionRows(data.productionEntries, data.products), [data.productionEntries, data.products])
-  const todayProductionRows = useMemo(() => todaysProduction(data.productionEntries, today), [data.productionEntries, today])
-  const productWise = useMemo(() => productionByProduct(data.productionEntries, data.products), [data.productionEntries, data.products])
+  const importRows = useMemo(() => buildImportRows(data.rawMaterialImports, data.products), [data.rawMaterialImports, data.products])
+  const importTotal = useMemo(() => importTotals(data.rawMaterialImports), [data.rawMaterialImports])
+  const todayImportTotal = useMemo(() => importTotals(todaysImports(data.rawMaterialImports, today)), [data.rawMaterialImports, today])
 
-  const stock = useMemo(() => productStock(data.products, data.productionEntries, data.saleItems), [data.products, data.productionEntries, data.saleItems])
-  const stockTotals = useMemo(() => totalStock(stock), [stock])
+  const todayProductionBags = todaysProductionBags(data.productionEntries, today)
+  const totalProdBags = totalProductionBags(data.productionEntries)
+
+  const stock = useMemo(
+    () => allMeshStock(data.products, data.meshSizes, data.productionEntries, data.saleItems, data.sales),
+    [data.products, data.meshSizes, data.productionEntries, data.saleItems, data.sales],
+  )
+  const stockTon = useMemo(() => totalStockTon(stock), [stock])
 
   const sales = useMemo(
     () => buildSaleSummaries(data.sales, data.saleItems, data.products, data.meshSizes, data.customers, data.customerTransactions),
@@ -56,6 +62,11 @@ export default function DashboardPage() {
   )
   const todaySales = useMemo(() => sales.filter((s) => s.date === today), [sales, today])
   const totalSalesAmount = useMemo(() => sales.reduce((sum, s) => sum + s.totalAmount, 0), [sales])
+
+  const todayCashIn = useMemo(
+    () => data.customerTransactions.filter((t) => t.type === 'payment' && t.date === today).reduce((sum, t) => sum + t.credit, 0),
+    [data.customerTransactions, today],
+  )
 
   const salesTrend = useMemo(() => {
     const series = monthlySalesSeries(sales, year)
@@ -73,18 +84,27 @@ export default function DashboardPage() {
   )
 
   const totalDue = useMemo(() => customerSummaries.reduce((sum, c) => sum + c.totals.totalDue, 0), [customerSummaries])
-  const totalAdvance = useMemo(() => customerSummaries.reduce((sum, c) => sum + c.totals.availableAdvance, 0), [customerSummaries])
 
   const topOutstanding = useMemo(
     () => outstandingCustomers(data.customers, (id) => sales.filter((s) => s.customerId === id)).slice(0, 6),
     [data.customers, sales],
   )
 
+  const productWiseStock = useMemo(() => {
+    const totals = new Map<string, { productName: string; stockTon: number }>()
+    for (const row of stock) {
+      const existing = totals.get(row.productId) ?? { productName: row.productName, stockTon: 0 }
+      existing.stockTon += row.stockTon
+      totals.set(row.productId, existing)
+    }
+    return [...totals.values()].sort((a, b) => b.stockTon - a.stockTon)
+  }, [stock])
+
   const recentSales = useMemo(() => sales.slice(0, 6), [sales])
-  const recentProduction = useMemo(() => productionRows.slice(0, 6), [productionRows])
+  const recentImports = useMemo(() => importRows.slice(0, 6), [importRows])
 
   const nothingYet =
-    !loading && data.products.length === 0 && data.productionEntries.length === 0 && data.sales.length === 0
+    !loading && data.products.length === 0 && data.rawMaterialImports.length === 0 && data.sales.length === 0
 
   if (loading) {
     return (
@@ -113,7 +133,7 @@ export default function DashboardPage() {
             icon={Package}
             size="lg"
             title="Nothing recorded yet"
-            description="Add your products, then record production and a sale — this page will show today's activity, outstanding balances and trends at a glance."
+            description="Add your products, then record an import and a sale — this page will show today's activity, outstanding balances and trends at a glance."
             action={
               <div className="flex flex-wrap justify-center gap-2">
                 <Button asChild>
@@ -123,9 +143,9 @@ export default function DashboardPage() {
                   </Link>
                 </Button>
                 <Button variant="outline" asChild>
-                  <Link to="/production">
-                    <Factory />
-                    Record production
+                  <Link to="/import">
+                    <Ship />
+                    Record an import
                   </Link>
                 </Button>
               </div>
@@ -151,13 +171,15 @@ export default function DashboardPage() {
         }
       />
 
-      <StatGrid columns={3} className="mb-4">
-        <StatCard label="Today's production" icon={Factory} accent="primary" value={<Num value={todayProductionRows.reduce((s, e) => s + Math.max(0, e.grossWeightKg - e.tareWeightKg), 0) / 1000} suffix="Ton" size="2xl" className="font-bold" />} />
+      <StatGrid columns={4} className="mb-4">
+        <StatCard label="Today's raw material import" icon={Ship} accent="primary" value={<Num value={todayImportTotal.netWeightTon} suffix="Ton" size="2xl" className="font-bold" />} />
+        <StatCard label="Total imported" icon={Ship} accent="brass" value={<Num value={importTotal.netWeightTon} suffix="Ton" size="2xl" className="font-bold" />} />
+        <StatCard label="Today's production" icon={Factory} accent="primary" value={<Num value={todayProductionBags} suffix="Bag" size="2xl" className="font-bold" />} />
+        <StatCard label="Total production" icon={Boxes} accent="brass" value={<Num value={totalProdBags} suffix="Bag" size="2xl" className="font-bold" />} footer={<span className="text-2xs text-muted-foreground">Current stock: {formatNumber(stockTon)} Ton</span>} />
         <StatCard label="Today's sales" icon={Receipt} accent="primary" value={<Money value={todaySales.reduce((s, r) => s + r.totalAmount, 0)} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{todaySales.length} invoices</span>} />
-        <StatCard label="Total production" icon={Factory} accent="brass" value={<Num value={stockTotals.producedTon} suffix="Ton" size="2xl" className="font-bold" />} footer={<span className="text-2xs text-muted-foreground">Available now: {stockTotals.availableTon.toFixed(1)} Ton</span>} />
-        <StatCard label="Total sales" icon={TrendingUp} accent="brass" value={<Money value={totalSalesAmount} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{sales.length} invoices</span>} />
-        <StatCard label="Total outstanding due" icon={Wallet} accent={totalDue > 0 ? 'primary' : 'success'} value={<Money value={totalDue} size="2xl" weight="bold" tone={totalDue > 0 ? 'negative' : 'positive'} />} />
-        <StatCard label="Total customer advance" icon={PiggyBank} accent="success" value={<Money value={totalAdvance} size="2xl" weight="bold" tone="positive" />} />
+        <StatCard label="Total sales" icon={Receipt} accent="brass" value={<Money value={totalSalesAmount} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{sales.length} invoices</span>} />
+        <StatCard label="Total customer due" icon={Wallet} accent={totalDue > 0 ? 'primary' : 'success'} value={<Money value={totalDue} size="2xl" weight="bold" tone={totalDue > 0 ? 'negative' : 'positive'} />} />
+        <StatCard label="Today's cash in" icon={Banknote} accent="success" value={<Money value={todayCashIn} size="2xl" weight="bold" tone="positive" />} />
       </StatGrid>
 
       <div className="mb-4 grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
@@ -165,23 +187,23 @@ export default function DashboardPage() {
           <SalesTrendChart data={salesTrend} />
         </Section>
 
-        <Section title="Production overview" description="Net tons produced, by product" noPadding>
-          {productWise.filter((p) => p.entryCount > 0).length === 0 ? (
-            <EmptyState icon={Boxes} size="sm" title="No production yet" description="Record a production entry to see product totals here." />
+        <Section title="Current stock" description="Total tons in hand, by product" noPadding>
+          {productWiseStock.length === 0 ? (
+            <EmptyState icon={Boxes} size="sm" title="No stock yet" description="Record production to see product totals here." />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Product</TableHead>
-                  <TableHead numeric>Net (Ton)</TableHead>
+                  <TableHead numeric>Stock (Ton)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {productWise.map((p) => (
-                  <TableRow key={p.productId}>
+                {productWiseStock.map((p) => (
+                  <TableRow key={p.productName}>
                     <TableCell className="font-medium">{p.productName}</TableCell>
                     <TableCell numeric>
-                      <Num value={p.netTon} size="sm" />
+                      <Num value={p.stockTon} size="sm" tone={p.stockTon <= 0 ? 'negative' : 'neutral'} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -271,14 +293,14 @@ export default function DashboardPage() {
         </Section>
       </div>
 
-      <Section title="Recent production" description="The latest weighbridge entries" noPadding>
-        {recentProduction.length === 0 ? (
+      <Section title="Recent raw material imports" description="The latest weighbridge receipts" noPadding>
+        {recentImports.length === 0 ? (
           <EmptyState
             icon={Factory}
             size="sm"
-            title="No production recorded yet"
+            title="No imports recorded yet"
             description="Record today's gross and tare weight to see it here."
-            action={<Button size="sm" asChild><Link to="/production">Record production</Link></Button>}
+            action={<Button size="sm" asChild><Link to="/import">Record an import</Link></Button>}
           />
         ) : (
           <Table>
@@ -292,7 +314,7 @@ export default function DashboardPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {recentProduction.map((row) => (
+              {recentImports.map((row) => (
                 <TableRow key={row.id}>
                   <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.date)}</TableCell>
                   <TableCell className="font-medium">{row.productName}</TableCell>

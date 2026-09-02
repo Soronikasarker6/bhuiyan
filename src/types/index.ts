@@ -4,11 +4,15 @@
  * Everything the application knows about is declared here and nowhere else.
  * Conventions worth stating up front:
  *
- *   - Production weight is always in KG (gross/tare/net, as the weighbridge
- *     reports it). Sales quantity is always in TON. `netWeightKg` is never
- *     stored — it is always `grossWeightKg - tareWeightKg`, computed through
- *     one function, so a typed net figure can never disagree with the two
- *     weights behind it.
+ *   - Raw material import weight is always in KG (gross/tare/net, as the
+ *     weighbridge reports it); `netWeightKg` is never stored — it is always
+ *     `grossWeightKg - tareWeightKg`, computed through one function, so a
+ *     typed net figure can never disagree with the two weights behind it.
+ *   - Production and stock are always counted in bags first; kg and tons are
+ *     always `bags × bagKg` / `.../1000`, computed, never stored. Sales
+ *     quantity is entered in bags for the same reason — it's what a sale
+ *     actually deducts from stock — and its ton weight is derived the same
+ *     way.
  *   - Money is a number of Taka, rounded for display through one function.
  *   - A customer's balance, due, and available advance are never stored —
  *     they are derived from the `CustomerTransaction` log, the same way an
@@ -46,44 +50,89 @@ export interface Product {
 }
 
 /**
- * A configurable sale attribute — mesh size, grind, or grade.
+ * A configurable production/sale attribute — mesh size, grind, or grade.
  *
- * Independent of any one product: any product can be sold against any mesh
- * size. Adding "40 Mesh" later is a Settings action, never a code change.
+ * A global catalog: "250 Mesh" carries one bag weight shared across every
+ * limestone type, rather than each product configuring its own. Adding
+ * "1200" later, or changing what a bag of "250" weighs, is a Settings
+ * action, never a code change.
  */
 export interface MeshSize {
   id: ID
   name: string
+  /** kg per bag — the one fact both Production and Sales convert through. */
+  bagKg: number
   active: boolean
   createdAt: string
 }
 
-// ---------------------------------------------------------------- production
+// ---------------------------------------------------------------- raw material import
 
-export interface ProductionEntry {
+/**
+ * Limestone received from a ship, weighed at the yard — gross in, tare out,
+ * net worked out. This is upstream of Production: it says how much raw
+ * material arrived, not how much finished, bagged stock exists.
+ */
+export interface RawMaterialImport {
   id: ID
   date: ISODate
   productId: ID
+  shipName?: string
+  serialNo?: string
+  truckNo?: string
   grossWeightKg: number
   tareWeightKg: number
   notes?: string
   createdAt: string
 }
 
-/** One entry with its net weight resolved. Derived, never stored. */
-export interface ProductionRow extends ProductionEntry {
+/** One import entry with its net weight resolved. Derived, never stored. */
+export interface ImportRow extends RawMaterialImport {
   productName: string
   netWeightKg: number
   netWeightTon: number
 }
 
-export interface ProductStock {
+// ---------------------------------------------------------------- production & stock
+
+/**
+ * One day's bagging of a product into a given mesh size.
+ *
+ * There is deliberately no "sell" field here — "Today's Sell" in the stock
+ * ledger is always read from actual `SaleItem`s dated that day, never typed
+ * directly, which is what keeps stock trustworthy instead of a second,
+ * driftable source of truth.
+ */
+export interface ProductionEntry {
+  id: ID
+  date: ISODate
   productId: ID
-  productName: string
-  unit: string
-  producedTon: number
-  soldTon: number
-  availableTon: number
+  meshId: ID
+  bags: number
+  notes?: string
+  createdAt: string
+}
+
+/** One row of the §4 stock ledger for one (product, mesh) on one date. */
+export interface StockLedgerRow {
+  date: ISODate
+  productId: ID
+  meshId: ID
+  previousStockBags: number
+  productionBags: number
+  totalProductionBags: number
+  sellBags: number
+  stockBags: number
+}
+
+/** The §9 per-mesh breakdown for one product. */
+export interface MeshStock {
+  meshId: ID
+  meshName: string
+  bagKg: number
+  stockBags: number
+  stockKg: number
+  stockTon: number
 }
 
 // ---------------------------------------------------------------- customers
@@ -120,15 +169,23 @@ export interface SaleItem {
   id: ID
   saleId: ID
   productId: ID
-  meshSizeId?: ID
-  weightTon: number
+  /** Required — bag-based stock deduction can't work without knowing the bag weight. */
+  meshSizeId: ID
+  bags: number
   ratePerTon: number
 }
 
-/** One line item with its amount and names resolved. Derived, never stored. */
+/**
+ * One line item with its weight and amount resolved. Derived, never stored:
+ *
+ *     Weight (Ton) = Bags × Bag Weight (kg) / 1000
+ *     Amount       = Weight (Ton) × Rate / Ton
+ */
 export interface SaleItemRow extends SaleItem {
   productName: string
-  meshSizeName?: string
+  meshSizeName: string
+  bagKg: number
+  weightTon: number
   amount: number
 }
 
@@ -183,6 +240,8 @@ export interface CustomerTransaction {
   credit: number
   referenceSaleId?: ID
   linkedAccountId?: ID
+  /** How a payment arrived — Cash, Bank Transfer, Cheque, Mobile Banking… — for the Cash In report. Purely descriptive. */
+  method?: string
   createdAt: string
 }
 
@@ -318,6 +377,9 @@ export interface PnlResult {
 export interface AppData {
   products: Product[]
   meshSizes: MeshSize[]
+  /** Raw material received from ships — gross/tare/net at the yard. */
+  rawMaterialImports: RawMaterialImport[]
+  /** Bag-wise production, mesh by mesh. */
   productionEntries: ProductionEntry[]
   customers: Customer[]
   sales: Sale[]
