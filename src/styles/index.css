@@ -1,0 +1,13 @@
+/* Design tokens first — everything after this reads through them. */
+@import './tokens.css';
+@import './base.css';
+
+/* UI5 Web Components restyled onto the tokens above. */
+@import './ui5-theme.css';
+
+/* Print gets its own plain-document layout, deliberately outside the theme. */
+@import './print.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

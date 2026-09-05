@@ -1,12 +1,17 @@
+// UI5's asset/feature registration must run before anything else imports a
+// UI5 component (see `ui5/bootstrap.ts`) — this has to stay the first line.
+import './ui5/bootstrap'
+
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, HashRouter } from 'react-router-dom'
 import { Toaster } from 'sonner'
+import { ThemeProvider } from '@ui5/webcomponents-react/ThemeProvider'
 import { TooltipProvider } from '@/components/ui/misc'
 import { AppDataProvider } from '@/hooks/useAppData'
 import { PrintProvider } from '@/features/reports/PrintSheet'
-import { AppRouter } from './AppRouter'
-import './styles.css'
+import { AppRouter } from './router/AppRouter'
+import './styles/index.css'
 
 /**
  * Clean URLs when served by a web server; hash URLs when the page is opened
@@ -38,25 +43,27 @@ const basename = import.meta.env.BASE_URL.startsWith('/') ? import.meta.env.BASE
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Router basename={basename}>
-      <AppDataProvider>
-        <TooltipProvider delayDuration={200}>
-          <PrintProvider>
-            <AppRouter />
-            <Toaster
-              position="bottom-right"
-              richColors
-              closeButton
-              toastOptions={{
-                classNames: {
-                  toast: 'font-sans text-[0.8125rem]',
-                  description: 'text-xs',
-                },
-              }}
-            />
-          </PrintProvider>
-        </TooltipProvider>
-      </AppDataProvider>
-    </Router>
+    <ThemeProvider>
+      <Router basename={basename}>
+        <AppDataProvider>
+          <TooltipProvider delayDuration={200}>
+            <PrintProvider>
+              <AppRouter />
+              <Toaster
+                position="bottom-right"
+                richColors
+                closeButton
+                toastOptions={{
+                  classNames: {
+                    toast: 'font-sans text-[0.8125rem]',
+                    description: 'text-xs',
+                  },
+                }}
+              />
+            </PrintProvider>
+          </TooltipProvider>
+        </AppDataProvider>
+      </Router>
+    </ThemeProvider>
   </StrictMode>,
 )

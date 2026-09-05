@@ -12,36 +12,27 @@ import { PaymentForm, type PaymentSubmit } from '@/features/payments/PaymentForm
 import { CustomerLedgerTable } from '@/features/customerLedger/CustomerLedgerTable'
 import { useAppData } from '@/hooks/useAppData'
 import type { Transaction } from '@/types'
-import { buildSaleSummaries } from '@/utils/sales'
-import { allocateCashIn, buildCustomerLedgerRows, customerNameOf, nextReference } from '@/utils/customerLedger'
+import {
+  buildCustomerLedgerRows,
+  buildPayment,
+  customerBalance,
+  customerNameOf,
+  nextReference,
+  outstandingCustomers,
+  transactionsForCustomer,
+} from '@/utils/customerLedger'
 import { formatCurrency } from '@/utils/format'
 import { now, uid } from '@/utils/id'
 
 /**
- * Cash In — money received against a due invoice, or on account.
+ * Cash In — a plain credit against a customer's overall balance (§4).
  *
- * A due invoice's amount owed drops the moment a Cash In is recorded — there
- * is no separate step that "recalculates" it — and an amount beyond what a
- * customer actually owes is never left as an invalid negative due; it's
- * tracked as Advance instead (§12/§13).
+ * It is never targeted at one invoice: `buildPayment` posts one credit row,
+ * and the ledger's own running balance decides whether that reduces Due or
+ * grows Advance — there is nothing here that has to know which case it is.
  */
 export default function PaymentsPage() {
   const { data, loading, updateMany } = useAppData()
-
-  const allSales = useMemo(
-    () =>
-      buildSaleSummaries(
-        data.sales,
-        data.saleItems,
-        data.products,
-        data.meshSizes,
-        data.customers,
-        data.customerTransactions,
-      ),
-    [data.sales, data.saleItems, data.products, data.meshSizes, data.customers, data.customerTransactions],
-  )
-
-  const dueSales = useMemo(() => allSales.filter((s) => s.amountDue > 0), [allSales])
 
   const paymentRows = useMemo(
     () =>
@@ -53,30 +44,31 @@ export default function PaymentsPage() {
   )
 
   const totalCollected = useMemo(() => paymentRows.reduce((sum, r) => sum + r.credit, 0), [paymentRows])
-  const totalDue = useMemo(() => dueSales.reduce((sum, s) => sum + s.amountDue, 0), [dueSales])
+
+  const totalDue = useMemo(
+    () => outstandingCustomers(data.customers, (id) => transactionsForCustomer(data.customerTransactions, id)).reduce((sum, r) => sum + r.totalDue, 0),
+    [data.customers, data.customerTransactions],
+  )
+
+  const balanceOf = (customerId: string) => customerBalance(transactionsForCustomer(data.customerTransactions, customerId))
 
   const recordCashIn = (values: PaymentSubmit) => {
     const stamp = now()
-    const paymentReference = nextReference('payment', data.customerTransactions)
+    const reference = nextReference('payment', data.customerTransactions)
 
-    const rows = allocateCashIn({
+    const row = buildPayment({
+      id: uid(),
       customerId: values.customerId,
       date: values.date,
+      reference,
       amount: values.amount,
-      dueSales: dueSales.filter((s) => s.customerId === values.customerId),
-      targetSaleId: values.saleId,
-      paymentReference,
-      // Computed once up front so a same-call advance row never collides
-      // with the payment reference above, however many invoices it settles.
-      advanceReference: nextReference('advance', data.customerTransactions),
       method: values.method,
       linkedAccountId: values.accountId,
       createdAt: stamp,
-      makeId: uid,
     })
 
     const patch: { customerTransactions: typeof data.customerTransactions; transactions?: Transaction[] } = {
-      customerTransactions: [...rows, ...data.customerTransactions],
+      customerTransactions: [row, ...data.customerTransactions],
     }
 
     if (values.accountId) {
@@ -84,7 +76,7 @@ export default function PaymentsPage() {
         {
           id: uid(),
           date: values.date,
-          details: `Cash In — ${customerNameOf(data.customers, values.customerId)} (${paymentReference})`,
+          details: `Cash In — ${customerNameOf(data.customers, values.customerId)} (${reference})`,
           accountId: values.accountId,
           direction: 'in',
           category: 'Customer Payment',
@@ -97,10 +89,12 @@ export default function PaymentsPage() {
 
     updateMany(patch)
 
-    const advanceRow = rows.find((r) => r.type === 'advance')
-    toast.success(`${paymentReference} recorded`, {
-      description: advanceRow
-        ? `${formatCurrency(values.amount - advanceRow.credit)} applied to due · ${formatCurrency(advanceRow.credit)} added to Advance`
+    const balanceBefore = balanceOf(values.customerId)
+    const overpayment = Math.max(0, values.amount - Math.max(0, balanceBefore))
+
+    toast.success(`${reference} recorded`, {
+      description: overpayment > 0
+        ? `${formatCurrency(values.amount - overpayment)} applied to due · ${formatCurrency(overpayment)} added to Advance`
         : formatCurrency(values.amount),
     })
   }
@@ -120,7 +114,7 @@ export default function PaymentsPage() {
 
   return (
     <div>
-      <PageHeader title="Cash In" description="Money received against a due invoice, or on account." />
+      <PageHeader title="Cash In" description="Money received from a customer, against their overall balance." />
 
       <StatGrid columns={2} className="mb-4">
         <StatCard label="Total cash in collected" icon={Banknote} accent="success" value={<Money value={totalCollected} size="2xl" weight="bold" tone="positive" />} />
@@ -128,7 +122,7 @@ export default function PaymentsPage() {
       </StatGrid>
 
       <div className="mb-4">
-        <PaymentForm customers={data.customers} dueSales={dueSales} accounts={data.accounts} onSubmit={recordCashIn} />
+        <PaymentForm customers={data.customers} balanceOf={balanceOf} accounts={data.accounts} onSubmit={recordCashIn} />
       </div>
 
       <Section title="Cash In history" description={`${paymentRows.length} payments recorded`} noPadding>

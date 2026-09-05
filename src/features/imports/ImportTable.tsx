@@ -17,10 +17,9 @@ import { SortableHead } from '@/components/SortableHead'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Button } from '@/components/ui/button'
 import { useSortableSearch } from '@/hooks/useSortableSearch'
-import { formatDate, formatNumber, formatTons } from '@/utils/format'
+import { formatCurrency, formatDate, formatNumber, formatTons } from '@/utils/format'
 import { importTotals } from '@/utils/imports'
-
-const PAGE_SIZE = 25
+import { DEFAULT_TABLE_PAGE_SIZE as PAGE_SIZE } from '@/constants/table'
 
 export function ImportTable({
   rows,
@@ -93,6 +92,8 @@ export function ImportTable({
                 <SortableHead label="Tare (kg)" sortKey="tare" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
                 <SortableHead label="Net weight" sortKey="net" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
                 <TableHead numeric>Ton</TableHead>
+                <TableHead numeric>Price/Ton</TableHead>
+                <TableHead numeric>Value</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -111,6 +112,12 @@ export function ImportTable({
                   </TableCell>
                   <TableCell numeric className="font-mono tabular text-muted-foreground">
                     {formatTons(row.netWeightTon)}
+                  </TableCell>
+                  <TableCell numeric className="font-mono tabular text-muted-foreground">
+                    {row.pricePerTon ? formatCurrency(row.pricePerTon) : '—'}
+                  </TableCell>
+                  <TableCell numeric className="font-mono tabular text-muted-foreground">
+                    {row.value ? formatCurrency(row.value) : '—'}
                   </TableCell>
                   <TableCell numeric>
                     <Button
@@ -142,6 +149,10 @@ export function ImportTable({
                 </TableCell>
                 <TableCell numeric className="font-mono tabular font-bold">
                   {formatTons(totals.netWeightTon)}
+                </TableCell>
+                <TableCell />
+                <TableCell numeric className="font-mono tabular font-bold">
+                  {formatCurrency(rows.reduce((s, r) => s + (r.value ?? 0), 0))}
                 </TableCell>
                 <TableCell />
               </TableRow>

@@ -2,6 +2,9 @@ import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Boxes, Factory, Package, Receipt, Scale, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { TabContainer } from '@ui5/webcomponents-react/TabContainer'
+import { Tab } from '@ui5/webcomponents-react/Tab'
+import type { TabContainerPropTypes } from '@ui5/webcomponents-react/TabContainer'
 import { PageHeader, Section } from '@/components/PageHeader'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Num } from '@/components/Money'
@@ -9,7 +12,6 @@ import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/misc'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ProductionEntryForm, type ProductionSubmit } from '@/features/production/ProductionEntryForm'
 import { MeshStockSummary } from '@/features/production/MeshStockSummary'
@@ -157,36 +159,41 @@ export default function ProductionPage() {
     <div>
       <PageHeader title="Production & Stock" description="Today's bagging, mesh by mesh, and what's left in the yard." />
 
-      <Tabs value={selectedProductId} onValueChange={setActiveProductId} className="mb-4">
-        <TabsList className="mb-4 flex-wrap justify-start">
-          {products.map((product) => (
-            <TabsTrigger key={product.id} value={product.id}>
-              {product.name}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
+      {/* A product selector, not N independent panels — every stat below is
+          already keyed off `selectedProductId`, so each `Tab` only needs to
+          hold a label; UI5's TabContainer keeps every tab's content mounted
+          at once (unlike Radix's Tabs), so per-product content would
+          otherwise render identically in every tab. */}
+      <TabContainer
+        contentBackgroundDesign="Transparent"
+        headerBackgroundDesign="Transparent"
+        className="mb-4"
+        onTabSelect={((e) => {
+          const product = products[e.detail.tabIndex]
+          if (product) setActiveProductId(product.id)
+        }) as TabContainerPropTypes['onTabSelect']}
+      >
         {products.map((product) => (
-          <TabsContent key={product.id} value={product.id}>
-            <StatGrid className="mb-4">
-              <StatCard label="Today's production" icon={Factory} accent="primary" value={<Num value={todayBags} suffix="Bag" size="2xl" className="font-bold" />} />
-              <StatCard label="Total production" icon={Boxes} accent="brass" value={<Num value={totalBags} suffix="Bag" size="2xl" className="font-bold" />} />
-              <StatCard label="Today's sales" icon={Receipt} accent="success" value={<Num value={todaySold} suffix="Bag" size="2xl" className="font-bold" />} />
-              <StatCard
-                label="Current stock"
-                icon={Scale}
-                accent={stockBags <= 0 ? 'primary' : 'success'}
-                value={<Num value={stockBags} suffix="Bag" size="2xl" className="font-bold" tone={stockBags <= 0 ? 'negative' : 'neutral'} />}
-                footer={<span className="text-2xs text-muted-foreground">{formatNumber(stockTon)} Ton total</span>}
-              />
-            </StatGrid>
-
-            <div className="mb-4">
-              <MeshStockSummary rows={meshStock} />
-            </div>
-          </TabsContent>
+          <Tab key={product.id} text={product.name} selected={product.id === selectedProductId} />
         ))}
-      </Tabs>
+      </TabContainer>
+
+      <StatGrid className="mb-4">
+        <StatCard label="Today's production" icon={Factory} accent="primary" value={<Num value={todayBags} suffix="Bag" size="2xl" className="font-bold" />} />
+        <StatCard label="Total production" icon={Boxes} accent="brass" value={<Num value={totalBags} suffix="Bag" size="2xl" className="font-bold" />} />
+        <StatCard label="Today's sales" icon={Receipt} accent="success" value={<Num value={todaySold} suffix="Bag" size="2xl" className="font-bold" />} />
+        <StatCard
+          label="Current stock"
+          icon={Scale}
+          accent={stockBags <= 0 ? 'primary' : 'success'}
+          value={<Num value={stockBags} suffix="Bag" size="2xl" className="font-bold" tone={stockBags <= 0 ? 'negative' : 'neutral'} />}
+          footer={<span className="text-2xs text-muted-foreground">{formatNumber(stockTon)} Ton total</span>}
+        />
+      </StatGrid>
+
+      <div className="mb-4">
+        <MeshStockSummary rows={meshStock} />
+      </div>
 
       <div className="mb-4">
         <ProductionEntryForm products={products} meshSizes={meshSizes} onSubmit={addEntry} />

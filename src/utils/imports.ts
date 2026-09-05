@@ -41,11 +41,14 @@ export function buildImportRows(entries: RawMaterialImport[], products: Product[
     .reverse()
     .map((entry) => {
       const net = netWeightKg(entry.grossWeightKg, entry.tareWeightKg)
+      const netTon = kgToTons(net)
+      const price = Number(entry.pricePerTon) || 0
       return {
         ...entry,
         productName: productNameOf(products, entry.productId),
         netWeightKg: net,
-        netWeightTon: kgToTons(net),
+        netWeightTon: netTon,
+        value: price > 0 ? netTon * price : undefined,
       }
     })
 }

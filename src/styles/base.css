@@ -1,0 +1,87 @@
+/**
+ * Base reset and small global utility classes — everything that used to sit
+ * in the bottom half of the old single `styles.css`, moved here unchanged.
+ */
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* Every figure in the application lines up by decimal point. In a
+     proportional font the digits have different widths, the decimal points
+     wander, and a column of money stops being scannable — which is the whole
+     reason it is a column. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* A quieter scrollbar. This system shows a lot of long tables and the
+     default chrome-heavy bar competes with the data. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(40 20% 78%);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(40 18% 68%);
+    background-clip: content-box;
+  }
+}
+
+@layer components {
+  /* The subtle ruled-paper texture the ledger pages sit on — a nod to the
+     register this replaces, at an opacity low enough that it never competes
+     with a number. */
+  .paper-rule {
+    background-image: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 31px,
+      hsl(88 16% 30% / 0.035) 32px
+    );
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden rounded-md bg-muted;
+  }
+
+  .skeleton::after {
+    @apply absolute inset-0;
+    content: '';
+    transform: translateX(-100%);
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      hsl(0 0% 100% / 0.55),
+      transparent
+    );
+    animation: shimmer 1.6s infinite;
+  }
+
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+}

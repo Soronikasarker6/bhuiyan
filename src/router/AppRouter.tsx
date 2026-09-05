@@ -16,10 +16,9 @@ const SalesPage = lazy(() => import('@/pages/SalesPage'))
 const CustomersPage = lazy(() => import('@/pages/CustomersPage'))
 const CustomerDetailPage = lazy(() => import('@/pages/CustomerDetailPage'))
 const CustomerLedgerPage = lazy(() => import('@/pages/CustomerLedgerPage'))
-const AdvancesPage = lazy(() => import('@/pages/AdvancesPage'))
 const PaymentsPage = lazy(() => import('@/pages/PaymentsPage'))
 const ProductsPage = lazy(() => import('@/pages/ProductsPage'))
-const PnlPage = lazy(() => import('@/pages/PnlPage'))
+const ProfitPage = lazy(() => import('@/pages/ProfitPage'))
 const LedgerPage = lazy(() => import('@/pages/LedgerPage'))
 const ClosingPage = lazy(() => import('@/pages/ClosingPage'))
 const ReportsPage = lazy(() => import('@/pages/ReportsPage'))
@@ -40,10 +39,9 @@ export function AppRouter() {
         <Route path="/customers" element={<Lazy><CustomersPage /></Lazy>} />
         <Route path="/customers/:id" element={<Lazy><CustomerDetailPage /></Lazy>} />
         <Route path="/customer-ledger" element={<Lazy><CustomerLedgerPage /></Lazy>} />
-        <Route path="/advances" element={<Lazy><AdvancesPage /></Lazy>} />
         <Route path="/payments" element={<Lazy><PaymentsPage /></Lazy>} />
         <Route path="/products" element={<Lazy><ProductsPage /></Lazy>} />
-        <Route path="/pnl" element={<Lazy><PnlPage /></Lazy>} />
+        <Route path="/pnl" element={<Lazy><ProfitPage /></Lazy>} />
         <Route path="/ledger" element={<Lazy><LedgerPage /></Lazy>} />
         <Route path="/closing" element={<Lazy><ClosingPage /></Lazy>} />
         <Route path="/reports" element={<Lazy><ReportsPage /></Lazy>} />

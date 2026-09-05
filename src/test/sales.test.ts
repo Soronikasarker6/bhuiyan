@@ -12,7 +12,7 @@ import {
   saleItemAmount,
   saleItemWeightTon,
 } from '@/utils/sales'
-import { buildAdvance, buildCustomerLedgerRows } from '@/utils/customerLedger'
+import { buildPayment, buildCustomerLedgerRows } from '@/utils/customerLedger'
 
 /**
  * Sales — tested against the spec's own worked examples, so a regression
@@ -155,10 +155,11 @@ describe('advance applied to a sale (advance 50,000, sale 35,000, remaining 15,0
 
 describe('ledger ordering when a sale is paid in full at the moment of sale', () => {
   it('never shows an intermediate balance as if the payment landed before the sale it settles', () => {
-    // A customer with an existing advance, then one sale paid in full on the
-    // same day it was raised — the exact shape that once produced a
-    // nonsensical mid-ledger balance (the payment's linked row sorted before
-    // the sale debit it belongs to, because they shared one `createdAt`).
+    // A customer with an earlier on-account Cash In already on the ledger,
+    // then one sale paid in full on the same day it was raised — the exact
+    // shape that once produced a nonsensical mid-ledger balance (the
+    // payment's linked row sorted before the sale debit it belongs to,
+    // because they shared one `createdAt`).
     const sale = {
       id: 's1',
       invoiceNo: 'INV-2026-001',
@@ -171,17 +172,18 @@ describe('ledger ordering when a sale is paid in full at the moment of sale', ()
     }
 
     const transactions = [
-      buildAdvance({ id: 'adv-1', customerId: 'c1', date: '2026-08-15', reference: 'ADV-001', amount: 50_000, createdAt: '2026-08-15T08:00:00.000Z' }),
+      buildPayment({ id: 'pay-0', customerId: 'c1', date: '2026-08-15', reference: 'PAY-000', amount: 50_000, createdAt: '2026-08-15T08:00:00.000Z' }),
       ...buildSaleTransactions({ sale, totalAmount: 72_500, paymentReference: 'INV-2026-001-PD' }),
     ]
 
     const rows = buildCustomerLedgerRows(transactions)
     const ordered = [...rows].reverse() // oldest first, the order they actually happened
 
-    expect(ordered.map((r) => r.type)).toEqual(['advance', 'sale', 'payment'])
+    expect(ordered.map((r) => r.type)).toEqual(['payment', 'sale', 'payment'])
 
-    // -50,000 after the advance; +72,500 once the sale is raised; back to
-    // -50,000 once its own payment lands — never a spurious -1,22,500.
+    // -50,000 after the on-account payment; +72,500 once the sale is
+    // raised; back to -50,000 once its own payment lands — never a
+    // spurious -1,22,500.
     expect(ordered[0]!.balance).toBe(-50_000)
     expect(ordered[1]!.balance).toBe(22_500)
     expect(ordered[2]!.balance).toBe(-50_000)

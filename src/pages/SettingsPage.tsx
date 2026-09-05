@@ -2,7 +2,6 @@ import { useState } from 'react'
 import {
   AlertTriangle,
   Banknote,
-  Database,
   Download,
   Landmark,
   Lock,
@@ -12,10 +11,12 @@ import {
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { TabContainer } from '@ui5/webcomponents-react/TabContainer'
+import { Tab } from '@ui5/webcomponents-react/Tab'
 import { PageHeader, Section } from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge, Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/misc'
+import { Badge } from '@/components/ui/misc'
 import {
   Select,
   SelectContent,
@@ -54,34 +55,25 @@ export default function SettingsPage() {
         description="Cash & bank accounts, categories, and data — configuration that never alters entries you have already recorded. Products and mesh sizes have their own page."
       />
 
-      <Tabs defaultValue="accounts">
-        <TabsList className="mb-1 flex-wrap justify-start">
-          <TabsTrigger value="accounts">
-            <Landmark className="h-3.5 w-3.5" />
-            Accounts
-          </TabsTrigger>
-          <TabsTrigger value="categories">
-            <Tags className="h-3.5 w-3.5" />
-            Categories
-          </TabsTrigger>
-          <TabsTrigger value="data">
-            <Database className="h-3.5 w-3.5" />
-            Data
-          </TabsTrigger>
-        </TabsList>
+      <TabContainer contentBackgroundDesign="Transparent" headerBackgroundDesign="Transparent">
+        <Tab text="Accounts">
+          <div className="pt-4">
+            <AccountsPanel />
+          </div>
+        </Tab>
 
-        <TabsContent value="accounts">
-          <AccountsPanel />
-        </TabsContent>
+        <Tab text="Categories">
+          <div className="pt-4">
+            <CategoriesPanel />
+          </div>
+        </Tab>
 
-        <TabsContent value="categories">
-          <CategoriesPanel />
-        </TabsContent>
-
-        <TabsContent value="data">
-          <DataPanel />
-        </TabsContent>
-      </Tabs>
+        <Tab text="Data">
+          <div className="pt-4">
+            <DataPanel />
+          </div>
+        </Tab>
+      </TabContainer>
 
       <p className="mt-4 text-center text-2xs text-muted-foreground">
         {data.accounts.length} accounts · {data.categories.length} categories ·{' '}

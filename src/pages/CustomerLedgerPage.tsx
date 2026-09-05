@@ -5,8 +5,8 @@ import { PageSkeleton } from '@/components/PageSkeleton'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Money } from '@/components/Money'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DatePicker } from '@/components/ui/date-picker'
 import { CustomerLedgerTable } from '@/features/customerLedger/CustomerLedgerTable'
 import { usePrint } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
@@ -25,16 +25,14 @@ const TYPE_OPTIONS: Array<{ value: CustomerTxnType | typeof ALL; label: string }
   { value: ALL, label: 'All types' },
   { value: 'sale', label: 'Sale' },
   { value: 'payment', label: 'Payment' },
-  { value: 'advance', label: 'Advance' },
-  { value: 'advance_adjustment', label: 'Advance Adjustment' },
   { value: 'refund', label: 'Refund' },
   { value: 'opening_balance', label: 'Opening Balance' },
   { value: 'other', label: 'Other' },
 ]
 
 /**
- * The company-wide customer ledger — every sale, payment, advance and
- * adjustment, across every customer, filterable down to one.
+ * The company-wide customer ledger — every sale and payment, across every
+ * customer, filterable down to one (§5).
  */
 export default function CustomerLedgerPage() {
   const { data, loading } = useAppData()
@@ -100,7 +98,7 @@ export default function CustomerLedgerPage() {
     <div>
       <PageHeader
         title="Customer Ledger"
-        description="Every sale, payment, advance and adjustment, across every customer."
+        description="Every sale and payment, across every customer — a running balance, like a bank statement."
         actions={
           <Button variant="outline" size="sm" onClick={printLedger} disabled={rows.length === 0}>
             <Printer />
@@ -110,8 +108,8 @@ export default function CustomerLedgerPage() {
       />
 
       <StatGrid columns={3} className="mb-4">
-        <StatCard label="Total debit (sales & charges)" value={<Money value={totals.debit} size="2xl" weight="bold" tone="negative" />} />
-        <StatCard label="Total credit (paid & advances)" value={<Money value={totals.credit} size="2xl" weight="bold" tone="positive" />} />
+        <StatCard label="Total out (sales)" value={<Money value={totals.debit} size="2xl" weight="bold" tone="negative" />} />
+        <StatCard label="Total in (payments)" value={<Money value={totals.credit} size="2xl" weight="bold" tone="positive" />} />
         <StatCard label="Net position, all customers" value={<Money value={netBalance} size="2xl" weight="bold" />} />
       </StatGrid>
 
@@ -144,8 +142,8 @@ export default function CustomerLedgerPage() {
             </SelectContent>
           </Select>
 
-          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="From date" />
-          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="To date" />
+          <DatePicker value={from} onChange={setFrom} aria-label="From date" />
+          <DatePicker value={to} onChange={setTo} aria-label="To date" />
         </div>
       </Section>
 
@@ -156,7 +154,7 @@ export default function CustomerLedgerPage() {
       {rows.length === 0 && data.customerTransactions.length === 0 && (
         <p className="mt-3 text-center text-xs text-muted-foreground">
           <BookText className="mr-1 inline h-3 w-3" aria-hidden />
-          Entries appear here automatically as sales, payments and advances are recorded.
+          Entries appear here automatically as sales and payments are recorded.
         </p>
       )}
     </div>

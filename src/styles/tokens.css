@@ -1,0 +1,60 @@
+/**
+ * Design tokens — the one place every colour in the system is defined.
+ *
+ * Every other stylesheet, every Tailwind utility class, and `ui5-theme.css`
+ * all read through these HSL triplets. Change a value here and it moves
+ * everywhere at once — a component file should never hard-code a colour.
+ */
+@layer base {
+  :root {
+    /* Limestone: warm off-white ground rather than white or grey — this is a
+       system people read for hours, and pure white at office-lighting levels
+       is fatiguing. Text is a dark, almost-neutral charcoal, not black. */
+    --background: 40 28% 97%;
+    --foreground: 30 10% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 30 10% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 30 10% 15%;
+
+    /* Muted olive/moss — the one accent colour, used for primary actions and
+       the active state, never as decoration. */
+    --primary: 88 16% 30%;
+    --primary-foreground: 40 30% 97%;
+
+    --secondary: 40 20% 93%;
+    --secondary-foreground: 30 10% 20%;
+
+    --muted: 40 15% 94%;
+    --muted-foreground: 30 8% 42%;
+
+    --accent: 40 20% 91%;
+    --accent-foreground: 30 10% 20%;
+
+    /* A clearer, slightly brighter green than the olive brand colour, so
+       "paid" and "in stock" read apart from "primary action". */
+    --success: 132 20% 28%;
+    --success-foreground: 0 0% 100%;
+
+    --brass: 38 45% 45%;
+
+    /* Muted terracotta rather than a shouted red — due and overdue still
+       need to read as attention-worthy, not alarming. */
+    --destructive: 8 55% 42%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 38 16% 87%;
+    --input: 38 16% 84%;
+    --ring: 88 16% 30%;
+
+    --sidebar: 30 10% 15%;
+    --sidebar-foreground: 40 20% 92%;
+    --sidebar-muted: 38 10% 65%;
+    --sidebar-accent: 88 16% 26%;
+    --sidebar-border: 30 8% 24%;
+
+    --radius: 0.625rem;
+  }
+}

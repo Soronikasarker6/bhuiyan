@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
+import { MessageStrip } from '@ui5/webcomponents-react/MessageStrip'
 import { MobileSidebar, Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { useAppData } from '@/hooks/useAppData'
-import { Badge } from '@/components/ui/misc'
-import { FlaskConical } from 'lucide-react'
 
 /**
  * The frame every screen sits in.
@@ -33,18 +32,11 @@ export function AppLayout() {
         <Header onOpenNav={() => setNavOpen(true)} />
 
         {showingSample && (
-          <div className="no-print border-b border-brass-200 bg-brass-50/70">
-            <div className="mx-auto flex max-w-[1400px] items-center gap-2 px-4 py-1.5 sm:px-6">
-              <Badge variant="brass" className="shrink-0">
-                <FlaskConical className="h-3 w-3" aria-hidden />
-                Sample data
-              </Badge>
-              <p className="text-2xs leading-tight text-brass-800">
-                These are demonstration figures. Clear them from{' '}
-                <span className="font-medium">Settings → Data</span> before entering real records.
-              </p>
-            </div>
-          </div>
+          <MessageStrip design="Critical" hideCloseButton className="no-print">
+            <strong className="font-medium">Sample data.</strong> These are demonstration figures. Clear
+            them from <strong className="font-medium">Settings → Data</strong> before entering real
+            records.
+          </MessageStrip>
         )}
 
         <main

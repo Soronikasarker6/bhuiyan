@@ -33,7 +33,7 @@ const KEYS = {
   accounts: 'accounts',
   categories: 'categories',
   transactions: 'transactions',
-  pnl: 'pnl',
+  wastageEntries: 'wastage-entries',
   ledgerClosings: 'ledger-closings',
   seeded: 'seeded',
 } as const satisfies Record<keyof AppData, string>
@@ -72,7 +72,7 @@ export const repository = {
       accounts: storageService.get(KEYS.accounts) ?? fallback.accounts,
       categories: storageService.get(KEYS.categories) ?? fallback.categories,
       transactions: storageService.get(KEYS.transactions) ?? [],
-      pnl: storageService.get(KEYS.pnl) ?? fallback.pnl,
+      wastageEntries: storageService.get(KEYS.wastageEntries) ?? [],
       ledgerClosings: storageService.get(KEYS.ledgerClosings) ?? [],
       seeded: true,
     }
@@ -108,23 +108,7 @@ export const repository = {
       customerTransactions: [],
       transactions: [],
       ledgerClosings: [],
-      pnl: current.pnl.map((year) => ({
-        ...year,
-        months: year.months.map((month) => ({
-          monthIndex: month.monthIndex,
-          sales: 0,
-          materialCost: 0,
-          labourCost: 0,
-          electricity: 0,
-          freight: 0,
-          transport: 0,
-          handling: 0,
-          otherCosts: 0,
-          officeAdmin: 0,
-          rent: 0,
-          interest: 0,
-        })),
-      })),
+      wastageEntries: [],
     }
 
     repository.saveAll(cleared)

@@ -1,14 +1,9 @@
 import type { ReactNode } from 'react'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { Dialog } from '@ui5/webcomponents-react/Dialog'
+import { Bar } from '@ui5/webcomponents-react/Bar'
+import { Button } from '@/components/ui/button'
+
+const STATE = { destructive: 'Negative', success: 'Positive', default: 'None' } as const
 
 /**
  * Confirmation for anything that cannot be undone.
@@ -16,6 +11,11 @@ import {
  * The body says what will actually happen, in the user's terms — "this will
  * create a permanent monthly snapshot", not "are you sure?". A dialog that
  * only asks whether you are sure teaches people to click through it.
+ *
+ * A thin wrapper around UI5's own `Dialog` (see the architecture plan) —
+ * `state="Negative"` is what gives a destructive confirm its red accent and
+ * "alertdialog" accessibility role natively, matching V12's own
+ * `delete-dialog` component exactly.
  */
 export function ConfirmDialog({
   open,
@@ -40,24 +40,35 @@ export function ConfirmDialog({
   children?: ReactNode
 }) {
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription asChild>
-            <div>{description}</div>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-
-        {children}
-
-        <AlertDialogFooter>
-          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
-          <AlertDialogAction variant={variant} onClick={onConfirm}>
-            {confirmLabel}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <Dialog
+      open={open}
+      headerText={title}
+      state={STATE[variant]}
+      onClose={() => onOpenChange(false)}
+      footer={
+        <Bar
+          design="Footer"
+          endContent={
+            <>
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                {cancelLabel}
+              </Button>
+              <Button
+                variant={variant === 'default' ? 'default' : variant}
+                onClick={() => {
+                  onConfirm()
+                  onOpenChange(false)
+                }}
+              >
+                {confirmLabel}
+              </Button>
+            </>
+          }
+        />
+      }
+    >
+      <div className="text-[0.8125rem] leading-relaxed text-muted-foreground">{description}</div>
+      {children}
+    </Dialog>
   )
 }

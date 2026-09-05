@@ -1,0 +1,50 @@
+/* ---------------------------------------------------------------------------
+   Print.
+
+   Reports print from a dedicated layout rather than by hiding parts of the
+   application, so what comes out of the printer is a document — black on
+   white, ruled, with a header and a footer — and not a screenshot of a screen.
+
+   Deliberately untouched by the UI5 theme: a printed report stays a plain
+   document regardless of what the on-screen UI looks like.
+   --------------------------------------------------------------------------- */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  @page {
+    margin: 14mm;
+    size: A4;
+  }
+
+  .print-sheet {
+    display: block !important;
+  }
+
+  .print-sheet table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10.5pt;
+  }
+
+  .print-sheet th,
+  .print-sheet td {
+    border: 1px solid #999;
+    padding: 5px 8px;
+  }
+
+  .print-sheet thead {
+    display: table-header-group;
+  }
+
+  .print-sheet tr {
+    break-inside: avoid;
+  }
+}

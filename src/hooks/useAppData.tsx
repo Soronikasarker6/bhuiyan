@@ -50,7 +50,7 @@ const EMPTY: AppData = {
   accounts: [],
   categories: [],
   transactions: [],
-  pnl: [],
+  wastageEntries: [],
   ledgerClosings: [],
   seeded: false,
 }

@@ -9,6 +9,7 @@ import { Field } from '@/components/Field'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DatePicker } from '@/components/ui/date-picker'
 import { bagKgOf } from '@/utils/products'
 import { bagsToKg } from '@/utils/productionStock'
 import { kgToTons } from '@/utils/imports'
@@ -89,7 +90,7 @@ export function ProductionEntryForm({
       <form onSubmit={submit} noValidate>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Date" error={errors.date?.message} htmlFor="prodstk-date">
-            <Input id="prodstk-date" type="date" max={todayISO()} {...register('date')} />
+            <DatePicker id="prodstk-date" max={todayISO()} value={watch('date')} onChange={(v) => setValue('date', v)} />
           </Field>
 
           <Field label="Limestone / Product" error={errors.productId?.message} htmlFor="prodstk-product">
@@ -132,7 +133,6 @@ export function ProductionEntryForm({
               step="1"
               inputMode="numeric"
               placeholder="400"
-              className="h-11 text-base"
               {...register('bags')}
             />
           </Field>

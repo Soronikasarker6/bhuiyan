@@ -1,8 +1,7 @@
 import * as React from 'react'
-import * as LabelPrimitive from '@radix-ui/react-label'
+import { Label as UI5Label } from '@ui5/webcomponents-react/Label'
 import * as SeparatorPrimitive from '@radix-ui/react-separator'
 import * as SwitchPrimitive from '@radix-ui/react-switch'
-import * as TabsPrimitive from '@radix-ui/react-tabs'
 import * as AccordionPrimitive from '@radix-ui/react-accordion'
 import * as TooltipPrimitive from '@radix-ui/react-tooltip'
 import { ChevronDown } from 'lucide-react'
@@ -12,20 +11,23 @@ import { cn } from '@/utils/cn'
 // ---------------------------------------------------------------- label
 
 const Label = React.forwardRef<
-  React.ElementRef<typeof LabelPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root>
->(({ className, ...props }, ref) => (
-  <LabelPrimitive.Root
-    ref={ref}
+  HTMLElement,
+  React.ComponentPropsWithoutRef<'label'> & { htmlFor?: string }
+>(({ className, htmlFor, ...props }, ref) => (
+  <UI5Label
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ref={ref as any}
+    for={htmlFor}
     className={cn(
       'text-[0.8125rem] font-medium leading-none text-foreground/90 ' +
         'peer-disabled:cursor-not-allowed peer-disabled:opacity-70',
       className,
     )}
-    {...props}
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    {...(props as any)}
   />
 ))
-Label.displayName = LabelPrimitive.Root.displayName
+Label.displayName = 'Label'
 
 // ---------------------------------------------------------------- separator
 
@@ -100,55 +102,6 @@ const Switch = React.forwardRef<
   </SwitchPrimitive.Root>
 ))
 Switch.displayName = SwitchPrimitive.Root.displayName
-
-// ---------------------------------------------------------------- tabs
-
-const Tabs = TabsPrimitive.Root
-
-const TabsList = React.forwardRef<
-  React.ElementRef<typeof TabsPrimitive.List>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
->(({ className, ...props }, ref) => (
-  <TabsPrimitive.List
-    ref={ref}
-    className={cn(
-      'inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-secondary p-1 text-muted-foreground',
-      className,
-    )}
-    {...props}
-  />
-))
-TabsList.displayName = TabsPrimitive.List.displayName
-
-const TabsTrigger = React.forwardRef<
-  React.ElementRef<typeof TabsPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
->(({ className, ...props }, ref) => (
-  <TabsPrimitive.Trigger
-    ref={ref}
-    className={cn(
-      'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1 ' +
-        'text-[0.8125rem] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 ' +
-        'focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 ' +
-        'data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm',
-      className,
-    )}
-    {...props}
-  />
-))
-TabsTrigger.displayName = TabsPrimitive.Trigger.displayName
-
-const TabsContent = React.forwardRef<
-  React.ElementRef<typeof TabsPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
->(({ className, ...props }, ref) => (
-  <TabsPrimitive.Content
-    ref={ref}
-    className={cn('mt-4 focus-visible:outline-none', className)}
-    {...props}
-  />
-))
-TabsContent.displayName = TabsPrimitive.Content.displayName
 
 // ---------------------------------------------------------------- accordion
 
@@ -249,10 +202,6 @@ export {
   Badge,
   badgeVariants,
   Switch,
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
   Accordion,
   AccordionItem,
   AccordionTrigger,

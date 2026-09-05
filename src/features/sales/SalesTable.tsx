@@ -12,15 +12,9 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Button } from '@/components/ui/button'
 import { useSortableSearch } from '@/hooks/useSortableSearch'
 import { formatCurrency, formatDate } from '@/utils/format'
+import { SALE_STATUS_LABEL, SALE_STATUS_VARIANT } from '@/constants/saleStatus'
 
 const PAGE_SIZE = 20
-
-const STATUS_LABEL: Record<SaleSummary['status'], string> = { paid: 'Paid', partial: 'Partial', due: 'Due' }
-const STATUS_VARIANT: Record<SaleSummary['status'], 'success' | 'brass' | 'destructive'> = {
-  paid: 'success',
-  partial: 'brass',
-  due: 'destructive',
-}
 
 export function SalesTable({
   sales,
@@ -111,7 +105,7 @@ export function SalesTable({
                         <Money value={sale.amountDue} size="sm" tone={sale.amountDue > 0 ? 'negative' : 'positive'} />
                       </TableCell>
                       <TableCell>
-                        <Badge variant={STATUS_VARIANT[sale.status]}>{STATUS_LABEL[sale.status]}</Badge>
+                        <Badge variant={SALE_STATUS_VARIANT[sale.status]}>{SALE_STATUS_LABEL[sale.status]}</Badge>
                       </TableCell>
                       <TableCell numeric onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">

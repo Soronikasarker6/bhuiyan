@@ -8,6 +8,7 @@ import {
   Package,
   Receipt,
   Ship,
+  TrendingUp,
   Users,
   Wallet,
 } from 'lucide-react'
@@ -25,10 +26,9 @@ import { buildImportRows, importTotals, todaysImports } from '@/utils/imports'
 import { allMeshStock, todaysProductionBags, totalProductionBags, totalStockTon } from '@/utils/productionStock'
 import { buildSaleSummaries, monthlySalesSeries } from '@/utils/sales'
 import { customerTotals, outstandingCustomers, transactionsForCustomer } from '@/utils/customerLedger'
+import { monthlyProfit } from '@/utils/profit'
 import { MONTHS_SHORT, formatDate, formatNumber, todayISO } from '@/utils/format'
-
-const STATUS_VARIANT = { paid: 'success', partial: 'brass', due: 'destructive' } as const
-const STATUS_LABEL = { paid: 'Paid', partial: 'Partial', due: 'Due' } as const
+import { SALE_STATUS_LABEL, SALE_STATUS_VARIANT } from '@/constants/saleStatus'
 
 /**
  * The dashboard.
@@ -75,19 +75,32 @@ export default function DashboardPage() {
 
   const customerSummaries = useMemo(
     () =>
-      data.customers.map((customer) => {
-        const txns = transactionsForCustomer(data.customerTransactions, customer.id)
-        const customerSales = sales.filter((s) => s.customerId === customer.id)
-        return { customer, totals: customerTotals(txns, customerSales) }
-      }),
-    [data.customers, data.customerTransactions, sales],
+      data.customers.map((customer) => ({
+        customer,
+        totals: customerTotals(transactionsForCustomer(data.customerTransactions, customer.id)),
+      })),
+    [data.customers, data.customerTransactions],
   )
 
   const totalDue = useMemo(() => customerSummaries.reduce((sum, c) => sum + c.totals.totalDue, 0), [customerSummaries])
 
   const topOutstanding = useMemo(
-    () => outstandingCustomers(data.customers, (id) => sales.filter((s) => s.customerId === id)).slice(0, 6),
-    [data.customers, sales],
+    () =>
+      outstandingCustomers(data.customers, (id) => transactionsForCustomer(data.customerTransactions, id)).slice(0, 6),
+    [data.customers, data.customerTransactions],
+  )
+
+  const thisMonthProfit = useMemo(
+    () =>
+      monthlyProfit(new Date().getFullYear(), new Date().getMonth(), {
+        sales: data.sales,
+        saleItems: data.saleItems,
+        products: data.products,
+        meshSizes: data.meshSizes,
+        rawMaterialImports: data.rawMaterialImports,
+        transactions: data.transactions,
+      }),
+    [data.sales, data.saleItems, data.products, data.meshSizes, data.rawMaterialImports, data.transactions],
   )
 
   const productWiseStock = useMemo(() => {
@@ -180,6 +193,13 @@ export default function DashboardPage() {
         <StatCard label="Total sales" icon={Receipt} accent="brass" value={<Money value={totalSalesAmount} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{sales.length} invoices</span>} />
         <StatCard label="Total customer due" icon={Wallet} accent={totalDue > 0 ? 'primary' : 'success'} value={<Money value={totalDue} size="2xl" weight="bold" tone={totalDue > 0 ? 'negative' : 'positive'} />} />
         <StatCard label="Today's cash in" icon={Banknote} accent="success" value={<Money value={todayCashIn} size="2xl" weight="bold" tone="positive" />} />
+        <StatCard
+          label="Net profit (this month)"
+          icon={TrendingUp}
+          accent={thisMonthProfit.netProfit < 0 ? 'primary' : 'success'}
+          value={<Money value={thisMonthProfit.netProfit} size="2xl" weight="bold" tone={thisMonthProfit.netProfit < 0 ? 'negative' : 'positive'} />}
+          footer={<span className="text-2xs text-muted-foreground">Sales {formatNumber(thisMonthProfit.totalSales)} · COGS {formatNumber(thisMonthProfit.costOfGoodsSold)}</span>}
+        />
       </StatGrid>
 
       <div className="mb-4 grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
@@ -283,7 +303,7 @@ export default function DashboardPage() {
                       <Money value={sale.totalAmount} size="sm" />
                     </TableCell>
                     <TableCell>
-                      <Badge variant={STATUS_VARIANT[sale.status]}>{STATUS_LABEL[sale.status]}</Badge>
+                      <Badge variant={SALE_STATUS_VARIANT[sale.status]}>{SALE_STATUS_LABEL[sale.status]}</Badge>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -1,8 +1,27 @@
 import * as React from 'react'
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { Loader2 } from 'lucide-react'
+import { Button as UI5Button } from '@ui5/webcomponents-react/Button'
+import type { ButtonPropTypes } from '@ui5/webcomponents-react/Button'
 import { cn } from '@/utils/cn'
+import styles from './button.module.css'
+
+/**
+ * The house button, now a UI5 `ui5-button` underneath.
+ *
+ * `variant`/`size` are unchanged from before — every existing call site
+ * (`<Button variant="success" size="sm">`) keeps working. `variant` maps to
+ * UI5's own `design` (`Emphasized`/`Positive`/`Negative`/…); `size` maps to
+ * a small CSS-part override (`button.module.css`) since a plain height/
+ * padding utility class can't reach inside a web component's shadow root.
+ *
+ * `asChild` is the one deliberate exception: it stays on Radix's `Slot` (a
+ * tiny composition primitive, not a UI kit) rather than UI5, because it
+ * exists specifically to render a real `<Link>` as the button for
+ * navigation — a UI5 custom element can't "become" a different element the
+ * way `Slot` lets a plain styled one. Those call sites get the same
+ * `buttonVariants` Tailwind classes as before, unchanged.
+ */
 
 const buttonVariants = cva(
   'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ' +
@@ -22,49 +41,89 @@ const buttonVariants = cva(
         link: 'text-primary-700 underline-offset-4 hover:underline',
       },
       size: {
-        default: 'h-9 px-4 py-2',
-        sm: 'h-8 rounded-md px-3 text-xs',
-        lg: 'h-11 rounded-md px-6 text-[0.9375rem]',
-        icon: 'h-9 w-9',
-        'icon-sm': 'h-8 w-8',
+        // Compact — 1.625rem matches --sapElement_Compact_Height, the same
+        // control height every UI5 field around these buttons renders at.
+        default: 'h-[1.625rem] px-3 text-[0.8125rem]',
+        sm: 'h-[1.375rem] rounded-md px-2 text-[0.75rem]',
+        lg: 'h-[1.75rem] rounded-md px-4 text-[0.8125rem]',
+        icon: 'h-[1.625rem] w-[1.625rem]',
+        'icon-sm': 'h-[1.375rem] w-[1.375rem]',
       },
     },
     defaultVariants: { variant: 'default', size: 'default' },
   },
 )
 
+/** `variant` → UI5 `ButtonDesign`. Plain string literals — no enum import needed. */
+const DESIGN: Record<NonNullable<ButtonProps['variant']>, ButtonPropTypes['design']> = {
+  default: 'Emphasized',
+  success: 'Positive',
+  destructive: 'Negative',
+  outline: 'Default',
+  secondary: 'Default',
+  ghost: 'Transparent',
+  link: 'Transparent',
+}
+
+/** `size` → the CSS-part override class in `button.module.css`. */
+const SIZE_CLASS: Record<NonNullable<ButtonProps['size']>, string> = {
+  default: styles.default!,
+  sm: styles.sm!,
+  lg: styles.lg!,
+  icon: styles.icon!,
+  'icon-sm': styles.iconSm!,
+}
+
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+  extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onClick' | 'type'>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean
   loading?: boolean
+  type?: 'button' | 'submit' | 'reset'
+  onClick?: (event: React.SyntheticEvent) => void
 }
 
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, loading = false, children, disabled, ...props }, ref) => {
-    const Comp = asChild ? Slot : 'button'
-
-    if (asChild) {
-      return (
-        <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props}>
-          {children}
-        </Comp>
-      )
-    }
-
-    return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        disabled={disabled || loading}
-        {...props}
-      >
-        {loading && <Loader2 className="animate-spin" aria-hidden />}
-        {children}
-      </Comp>
-    )
+const Button = React.forwardRef<HTMLElement, ButtonProps>(function Button(
+  {
+    className,
+    variant = 'default',
+    size = 'default',
+    asChild = false,
+    loading = false,
+    children,
+    disabled,
+    type = 'button',
+    'aria-label': ariaLabel,
+    ...props
   },
-)
+  ref,
+) {
+  if (asChild) {
+    return (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <Slot className={cn(buttonVariants({ variant, size, className }))} ref={ref as any} {...props}>
+        {children}
+      </Slot>
+    )
+  }
+
+  return (
+    <UI5Button
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ref={ref as any}
+      className={cn(SIZE_CLASS[size ?? 'default'], className)}
+      design={DESIGN[variant ?? 'default']}
+      disabled={disabled}
+      loading={loading}
+      type={type === 'submit' ? 'Submit' : type === 'reset' ? 'Reset' : 'Button'}
+      accessibleName={ariaLabel}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {...(props as any)}
+    >
+      {children}
+    </UI5Button>
+  )
+})
 Button.displayName = 'Button'
 
 export { Button, buttonVariants }

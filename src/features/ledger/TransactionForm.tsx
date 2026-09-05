@@ -6,6 +6,7 @@ import { ArrowRightLeft, Info, Plus } from 'lucide-react'
 import type { Account, Category, Direction } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
+import { DatePicker } from '@/components/ui/date-picker'
 import {
   Select,
   SelectContent,
@@ -185,7 +186,7 @@ export function TransactionForm({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Date" error={errors.date?.message} htmlFor="txn-date">
-            <Input id="txn-date" type="date" max={todayISO()} {...register('date')} />
+            <DatePicker id="txn-date" max={todayISO()} value={watch('date')} onChange={(v) => setValue('date', v)} />
           </Field>
 
           <Field label="Amount (৳)" error={errors.amount?.message} htmlFor="txn-amount">
@@ -196,7 +197,6 @@ export function TransactionForm({
               step="1"
               inputMode="numeric"
               placeholder="0"
-              className="h-11 text-base"
               {...register('amount')}
             />
           </Field>

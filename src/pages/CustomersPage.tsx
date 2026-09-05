@@ -10,7 +10,6 @@ import { CustomerForm, type CustomerSubmit } from '@/features/customers/Customer
 import { CustomerTable } from '@/features/customers/CustomerTable'
 import { useAppData } from '@/hooks/useAppData'
 import type { Customer } from '@/types'
-import { buildSaleSummaries } from '@/utils/sales'
 import { buildOpeningBalance, customerTotals, nextReference, transactionsForCustomer } from '@/utils/customerLedger'
 import { now, uid } from '@/utils/id'
 
@@ -22,28 +21,13 @@ export default function CustomersPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Customer | null>(null)
 
-  const allSales = useMemo(
-    () =>
-      buildSaleSummaries(
-        data.sales,
-        data.saleItems,
-        data.products,
-        data.meshSizes,
-        data.customers,
-        data.customerTransactions,
-      ),
-    [data.sales, data.saleItems, data.products, data.meshSizes, data.customers, data.customerTransactions],
-  )
-
   const totalsByCustomer = useMemo(() => {
     const map = new Map<string, ReturnType<typeof customerTotals>>()
     for (const customer of data.customers) {
-      const txns = transactionsForCustomer(data.customerTransactions, customer.id)
-      const sales = allSales.filter((s) => s.customerId === customer.id)
-      map.set(customer.id, customerTotals(txns, sales))
+      map.set(customer.id, customerTotals(transactionsForCustomer(data.customerTransactions, customer.id)))
     }
     return map
-  }, [data.customers, data.customerTransactions, allSales])
+  }, [data.customers, data.customerTransactions])
 
   const grandTotals = useMemo(() => {
     let totalDue = 0
@@ -143,7 +127,7 @@ export default function CustomersPage() {
 
       <CustomerTable
         customers={data.customers}
-        totalsOf={(id) => totalsByCustomer.get(id) ?? customerTotals([], [])}
+        totalsOf={(id) => totalsByCustomer.get(id) ?? customerTotals([])}
         onEdit={(customer) => {
           setEditing(customer)
           setFormOpen(true)

@@ -8,6 +8,7 @@ import { Field } from '@/components/Field'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Money } from '@/components/Money'
 import { bagKgOf, meshSizeNameOf } from '@/utils/products'
 import { saleItemAmount, saleItemWeightTon } from '@/utils/sales'
@@ -177,7 +178,7 @@ export function SaleForm({
       <form onSubmit={submit} noValidate>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Date" error={errors.date?.message} htmlFor="sale-date">
-            <Input id="sale-date" type="date" max={todayISO()} {...register('date')} />
+            <DatePicker id="sale-date" max={todayISO()} value={watch('date')} onChange={(v) => setValue('date', v)} />
           </Field>
 
           <Field label="Customer" error={errors.customerId?.message} htmlFor="sale-customer">
@@ -267,7 +268,7 @@ export function SaleForm({
                   </Field>
 
                   <Field label="Amount" hint={weightTon > 0 ? `${formatNumber(weightTon)} Ton` : undefined}>
-                    <div className="flex h-9 items-center rounded-md border border-transparent bg-card px-3">
+                    <div className="flex h-[1.625rem] items-center rounded-md border border-transparent bg-card px-2.5">
                       <Money value={amount} size="sm" weight="semibold" />
                     </div>
                   </Field>

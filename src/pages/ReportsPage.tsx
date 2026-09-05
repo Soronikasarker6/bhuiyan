@@ -21,6 +21,7 @@ import { PageHeader, Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Badge } from '@/components/ui/misc'
 import {
   Select,
@@ -42,6 +43,7 @@ import {
 } from '@/utils/ledger'
 import { buildImportRows, importsByProduct } from '@/utils/imports'
 import { allMeshStock, totalStockBags, totalStockTon } from '@/utils/productionStock'
+import { allRawMaterialStock, buildWastageRows } from '@/utils/rawMaterial'
 import {
   buildSaleSummaries,
   filterSaleSummaries,
@@ -58,7 +60,7 @@ import {
   filterCustomerTransactions,
   transactionsForCustomer,
 } from '@/utils/customerLedger'
-import { PNL_FIELDS, analyseMonth, analyseYear, yearOf } from '@/utils/pnl'
+import { yearlyProfit, yearlyProfitTotals } from '@/utils/profit'
 import {
   MONTHS,
   firstDayOfMonth,
@@ -179,15 +181,31 @@ export default function ReportsPage() {
   const reports = useMemo<ReportDefinition[]>(() => {
     const stock = allMeshStock(data.products, data.meshSizes, data.productionEntries, data.saleItems, data.sales)
     const importProductTotals = importsByProduct(importsInRange, data.products)
-    const pnlYear = yearOf(data.pnl, year)
-    const pnlTotals = analyseYear(pnlYear)
+    const rawStock = allRawMaterialStock(
+      data.products,
+      data.rawMaterialImports,
+      data.wastageEntries,
+      data.productionEntries,
+      (meshId) => bagKgOf(data.meshSizes, meshId),
+    )
+    const wastageInRange = buildWastageRows(data.wastageEntries, data.products)
+      .filter((row) => isWithin(row.date, from, to))
+      .filter((row) => productFilter === ALL || row.productId === productFilter)
+    const profitYear = yearlyProfit(year, {
+      sales: data.sales,
+      saleItems: data.saleItems,
+      products: data.products,
+      meshSizes: data.meshSizes,
+      rawMaterialImports: data.rawMaterialImports,
+      transactions: data.transactions,
+    })
+    const profitTotals = yearlyProfitTotals(profitYear)
     const balances = accountBalances(data.accounts, data.transactions, to)
     const balanceTotals = totalBalances(balances)
 
     const customerSummaries = data.customers.map((customer) => {
       const txns = transactionsForCustomer(data.customerTransactions, customer.id)
-      const sales = allSales.filter((s) => s.customerId === customer.id)
-      return { customer, totals: customerTotals(txns, sales) }
+      return { customer, totals: customerTotals(txns) }
     })
 
     const outstanding = customerSummaries.filter((c) => c.totals.totalDue > 0).sort((a, b) => b.totals.totalDue - a.totals.totalDue)
@@ -217,6 +235,8 @@ export default function ReportsPage() {
             { key: 'tare', label: 'Tare (kg)', align: 'right' },
             { key: 'net', label: 'Net (kg)', align: 'right' },
             { key: 'netTon', label: 'TON', align: 'right' },
+            { key: 'price', label: 'Price/Ton', align: 'right' },
+            { key: 'value', label: 'Value', align: 'right' },
           ],
           rows: importsInRange.map((row) => ({
             date: formatDate(row.date),
@@ -227,6 +247,8 @@ export default function ReportsPage() {
             tare: formatNumber(row.tareWeightKg),
             net: formatNumber(row.netWeightKg),
             netTon: formatTons(row.netWeightTon),
+            price: row.pricePerTon ? formatCurrency(row.pricePerTon) : '—',
+            value: row.value ? formatCurrency(row.value) : '—',
           })),
           totals: {
             date: 'Total',
@@ -234,6 +256,7 @@ export default function ReportsPage() {
             tare: formatNumber(importsInRange.reduce((s, r) => s + r.tareWeightKg, 0)),
             net: formatNumber(importsInRange.reduce((s, r) => s + r.netWeightKg, 0)),
             netTon: formatTons(importsInRange.reduce((s, r) => s + r.netWeightTon, 0)),
+            value: formatCurrency(importsInRange.reduce((s, r) => s + (r.value ?? 0), 0)),
           },
         }),
       },
@@ -338,6 +361,75 @@ export default function ReportsPage() {
             },
           }
         },
+      },
+      {
+        id: 'raw-material-stock',
+        group: 'Production',
+        name: 'Raw Material Stock',
+        description: 'Imported, wasted, produced and available raw material per limestone, with average cost.',
+        icon: Ship,
+        count: rawStock.filter((s) => productFilter === ALL || s.productId === productFilter).length,
+        build: () => {
+          const rows = rawStock.filter((s) => productFilter === ALL || s.productId === productFilter)
+          return {
+            title: 'Raw Material Stock',
+            subtitle: `As at ${formatDateLong(todayISO())}`,
+            columns: [
+              { key: 'product', label: 'Limestone' },
+              { key: 'imported', label: 'Imported (Ton)', align: 'right' },
+              { key: 'wastage', label: 'Wastage (Ton)', align: 'right' },
+              { key: 'produced', label: 'Bagged (Ton)', align: 'right' },
+              { key: 'available', label: 'Available (Ton)', align: 'right' },
+              { key: 'avgCost', label: 'Avg. Cost/Ton', align: 'right' },
+            ],
+            rows: rows.map((s) => ({
+              product: s.productName,
+              imported: formatTons(s.importedTon),
+              wastage: formatTons(s.wastageTon),
+              produced: formatTons(s.producedTon),
+              available: formatTons(s.availableTon),
+              avgCost: s.averageCostPerTon ? formatCurrency(s.averageCostPerTon) : '—',
+            })),
+            totals: {
+              product: 'Total',
+              imported: formatTons(rows.reduce((s, r) => s + r.importedTon, 0)),
+              wastage: formatTons(rows.reduce((s, r) => s + r.wastageTon, 0)),
+              produced: formatTons(rows.reduce((s, r) => s + r.producedTon, 0)),
+              available: formatTons(rows.reduce((s, r) => s + r.availableTon, 0)),
+            },
+          }
+        },
+      },
+      {
+        id: 'wastage',
+        group: 'Production',
+        name: 'Wastage Report',
+        description: 'Every raw material wastage entry in the range.',
+        icon: Ship,
+        count: wastageInRange.length,
+        build: () => ({
+          title: 'Wastage Report',
+          subtitle: rangeLabel,
+          columns: [
+            { key: 'date', label: 'Date' },
+            { key: 'product', label: 'Product' },
+            { key: 'qtyKg', label: 'Quantity (kg)', align: 'right' },
+            { key: 'qtyTon', label: 'Quantity (Ton)', align: 'right' },
+            { key: 'reason', label: 'Reason' },
+          ],
+          rows: wastageInRange.map((row) => ({
+            date: formatDate(row.date),
+            product: row.productName,
+            qtyKg: formatNumber(row.quantityKg),
+            qtyTon: formatTons(row.quantityTon),
+            reason: row.reason ?? '—',
+          })),
+          totals: {
+            date: 'Total',
+            qtyKg: formatNumber(wastageInRange.reduce((s, r) => s + r.quantityKg, 0)),
+            qtyTon: formatTons(wastageInRange.reduce((s, r) => s + r.quantityTon, 0)),
+          },
+        }),
       },
 
       // ---------------------------------------------------------- sales
@@ -598,38 +690,41 @@ export default function ReportsPage() {
       {
         id: 'pnl',
         group: 'Company Finance',
-        name: 'Monthly P&L',
-        description: `Profit and loss for every month of ${year}.`,
+        name: 'Profit & Loss',
+        description: `Computed sales, cost of goods sold and net profit for every month of ${year}.`,
         icon: TrendingUp,
         count: 12,
         build: () => ({
           title: `Profit & Loss — ${year}`,
-          subtitle: 'Monthly summary',
+          subtitle: 'Monthly summary — computed from sales, raw material cost and the Cash & Bank Ledger',
           meta: [
-            { label: 'Year sales', value: formatCurrency(pnlTotals.sales) },
-            { label: 'Gross profit', value: formatCurrency(pnlTotals.grossProfit) },
-            { label: 'Net profit', value: formatCurrency(pnlTotals.netProfit) },
+            { label: 'Year sales', value: formatCurrency(profitTotals.totalSales) },
+            { label: 'Gross profit', value: formatCurrency(profitTotals.grossProfit) },
+            { label: 'Net profit', value: formatCurrency(profitTotals.netProfit) },
           ],
           columns: [
             { key: 'month', label: 'Month' },
-            ...PNL_FIELDS.map((field) => ({ key: field.key, label: field.label, align: 'right' as const })),
-            { key: 'gross', label: 'Gross Profit', align: 'right' as const },
-            { key: 'net', label: 'Net Profit', align: 'right' as const },
+            { key: 'sales', label: 'Sales', align: 'right' },
+            { key: 'cogs', label: 'COGS', align: 'right' },
+            { key: 'gross', label: 'Gross Profit', align: 'right' },
+            { key: 'expenses', label: 'Company Costs', align: 'right' },
+            { key: 'net', label: 'Net Profit', align: 'right' },
           ],
-          rows: pnlYear.months.map((month) => {
-            const result = analyseMonth(month)
-            return {
-              month: MONTHS[month.monthIndex] ?? '',
-              ...Object.fromEntries(PNL_FIELDS.map((field) => [field.key, formatNumber(month[field.key])])),
-              gross: formatNumber(result.grossProfit),
-              net: formatNumber(result.netProfit),
-            }
-          }),
+          rows: profitYear.map((month) => ({
+            month: MONTHS[month.monthIndex] ?? '',
+            sales: formatNumber(month.totalSales),
+            cogs: formatNumber(month.costOfGoodsSold),
+            gross: formatNumber(month.grossProfit),
+            expenses: formatNumber(month.totalExpenses),
+            net: formatNumber(month.netProfit),
+          })),
           totals: {
             month: 'Year total',
-            ...Object.fromEntries(PNL_FIELDS.map((field) => [field.key, formatNumber(pnlTotals[field.key])])),
-            gross: formatNumber(pnlTotals.grossProfit),
-            net: formatNumber(pnlTotals.netProfit),
+            sales: formatNumber(profitTotals.totalSales),
+            cogs: formatNumber(profitTotals.costOfGoodsSold),
+            gross: formatNumber(profitTotals.grossProfit),
+            expenses: formatNumber(profitTotals.totalExpenses),
+            net: formatNumber(profitTotals.netProfit),
           },
         }),
       },
@@ -794,11 +889,11 @@ export default function ReportsPage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <div>
             <label htmlFor="report-from" className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">From</label>
-            <Input id="report-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <DatePicker id="report-from" value={from} onChange={setFrom} />
           </div>
           <div>
             <label htmlFor="report-to" className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">To</label>
-            <Input id="report-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <DatePicker id="report-to" value={to} onChange={setTo} />
           </div>
           <div>
             <label className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Product</label>

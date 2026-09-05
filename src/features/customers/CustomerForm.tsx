@@ -2,8 +2,9 @@ import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { Dialog } from '@ui5/webcomponents-react/Dialog'
+import { Bar } from '@ui5/webcomponents-react/Bar'
 import type { Customer } from '@/types'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Field } from '@/components/Field'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
@@ -77,57 +78,62 @@ export function CustomerForm({
   })
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{editing ? `Edit ${editing.name}` : 'Add a customer'}</DialogTitle>
-        </DialogHeader>
+    <Dialog
+      open={open}
+      headerText={editing ? `Edit ${editing.name}` : 'Add a customer'}
+      onClose={() => onOpenChange(false)}
+      className="w-[calc(100vw-2rem)] max-w-lg"
+    >
+      <form id="customer-form" onSubmit={submit} noValidate className="space-y-3 py-1">
+        <Field label="Name" error={errors.name?.message} htmlFor="cust-name">
+          <Input id="cust-name" placeholder="ABC Trading" {...register('name')} autoFocus />
+        </Field>
 
-        <form onSubmit={submit} noValidate className="space-y-3">
-          <Field label="Name" error={errors.name?.message} htmlFor="cust-name">
-            <Input id="cust-name" placeholder="ABC Trading" {...register('name')} autoFocus />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Company (optional)" htmlFor="cust-company">
+            <Input id="cust-company" placeholder="ABC Trading Ltd" {...register('company')} />
           </Field>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Company (optional)" htmlFor="cust-company">
-              <Input id="cust-company" placeholder="ABC Trading Ltd" {...register('company')} />
-            </Field>
-            <Field label="Phone (optional)" htmlFor="cust-phone">
-              <Input id="cust-phone" placeholder="017XX-XXXXXX" {...register('phone')} />
-            </Field>
-          </div>
-
-          <Field label="Address (optional)" htmlFor="cust-address">
-            <Input id="cust-address" placeholder="Tongi, Gazipur" {...register('address')} />
+          <Field label="Phone (optional)" htmlFor="cust-phone">
+            <Input id="cust-phone" placeholder="017XX-XXXXXX" {...register('phone')} />
           </Field>
+        </div>
 
-          <Field
-            label="Opening balance (৳)"
-            error={errors.openingBalance?.message}
-            htmlFor="cust-opening"
-            hint={
-              editing
-                ? 'Set once, when the customer was added — record any change as a payment, advance or adjustment instead.'
-                : 'Positive if they already owed this before you started tracking; negative if they were ahead.'
-            }
-          >
-            <Input id="cust-opening" type="number" step="1" disabled={Boolean(editing)} {...register('openingBalance')} />
-          </Field>
+        <Field label="Address (optional)" htmlFor="cust-address">
+          <Input id="cust-address" placeholder="Tongi, Gazipur" {...register('address')} />
+        </Field>
 
-          <Field label="Notes (optional)" htmlFor="cust-notes">
-            <Textarea id="cust-notes" rows={2} {...register('notes')} />
-          </Field>
+        <Field
+          label="Opening balance (৳)"
+          error={errors.openingBalance?.message}
+          htmlFor="cust-opening"
+          hint={
+            editing
+              ? 'Set once, when the customer was added — record any change as a payment, advance or adjustment instead.'
+              : 'Positive if they already owed this before you started tracking; negative if they were ahead.'
+          }
+        >
+          <Input id="cust-opening" type="number" step="1" disabled={Boolean(editing)} {...register('openingBalance')} />
+        </Field>
 
-          <DialogFooter>
+        <Field label="Notes (optional)" htmlFor="cust-notes">
+          <Textarea id="cust-notes" rows={2} {...register('notes')} />
+        </Field>
+      </form>
+
+      <Bar
+        slot="footer"
+        design="Footer"
+        endContent={
+          <>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="success" loading={isSubmitting}>
+            <Button type="submit" form="customer-form" variant="success" loading={isSubmitting}>
               {editing ? 'Save changes' : 'Add customer'}
             </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
+          </>
+        }
+      />
     </Dialog>
   )
 }

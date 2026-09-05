@@ -1,120 +1,109 @@
 import * as React from 'react'
-import * as SelectPrimitive from '@radix-ui/react-select'
-import { Check, ChevronDown, ChevronUp } from 'lucide-react'
+import { Select as UI5Select } from '@ui5/webcomponents-react/Select'
+import { Option } from '@ui5/webcomponents-react/Option'
 import { cn } from '@/utils/cn'
 
-const Select = SelectPrimitive.Root
-const SelectGroup = SelectPrimitive.Group
-const SelectValue = SelectPrimitive.Value
+/**
+ * The house Select, now backed by UI5's `ui5-select`.
+ *
+ * UI5's Select is a single element — it IS its own trigger, with no
+ * separate popover-content piece the way Radix's compound
+ * `Select`/`SelectTrigger`/`SelectContent`/`SelectItem` API has. Rather than
+ * touch the ~20 call sites using that compound API, `Select` here reads its
+ * children in the same shape (`<SelectTrigger>` for the trigger's `id`/
+ * `className`, `<SelectContent>` holding `<SelectItem>`s) and renders one
+ * real `ui5-select` with `ui5-option`s from it — every existing call site
+ * keeps working unchanged. `SelectTrigger`/`SelectValue`/`SelectContent`/
+ * `SelectItem` below are inert markers read by `Select`, never rendered on
+ * their own.
+ *
+ * Simplification: `SelectValue`'s `placeholder` is not carried over — UI5's
+ * Select has no placeholder concept, and every call site in this app always
+ * selects a real option (often a `"__all__"`-style sentinel value), so
+ * there has never actually been a genuinely empty Select to show one in.
+ */
 
-const SelectTrigger = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
-  <SelectPrimitive.Trigger
-    ref={ref}
-    className={cn(
-      'flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-card ' +
-        'px-3 py-2 text-sm shadow-sm data-[placeholder]:text-muted-foreground/70 ' +
-        'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 ' +
-        'disabled:cursor-not-allowed disabled:opacity-60 [&>span]:line-clamp-1 [&>span]:text-left',
-      className,
-    )}
-    {...props}
-  >
-    {children}
-    <SelectPrimitive.Icon asChild>
-      <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
-    </SelectPrimitive.Icon>
-  </SelectPrimitive.Trigger>
-))
-SelectTrigger.displayName = SelectPrimitive.Trigger.displayName
-
-const SelectContent = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = 'popper', ...props }, ref) => (
-  <SelectPrimitive.Portal>
-    <SelectPrimitive.Content
-      ref={ref}
-      position={position}
-      className={cn(
-        'relative z-50 max-h-72 min-w-[8rem] overflow-hidden rounded-md border border-border ' +
-          'bg-popover text-popover-foreground shadow-pop ' +
-          'data-[state=open]:animate-in data-[state=closed]:animate-out ' +
-          'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 ' +
-          'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-        position === 'popper' &&
-          'data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1 w-full min-w-[var(--radix-select-trigger-width)]',
-        className,
-      )}
-      {...props}
-    >
-      <SelectPrimitive.ScrollUpButton className="flex cursor-default items-center justify-center py-1">
-        <ChevronUp className="h-4 w-4" />
-      </SelectPrimitive.ScrollUpButton>
-
-      <SelectPrimitive.Viewport className="p-1">{children}</SelectPrimitive.Viewport>
-
-      <SelectPrimitive.ScrollDownButton className="flex cursor-default items-center justify-center py-1">
-        <ChevronDown className="h-4 w-4" />
-      </SelectPrimitive.ScrollDownButton>
-    </SelectPrimitive.Content>
-  </SelectPrimitive.Portal>
-))
-SelectContent.displayName = SelectPrimitive.Content.displayName
-
-const SelectLabel = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Label>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Label>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.Label
-    ref={ref}
-    className={cn('px-2 py-1.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground', className)}
-    {...props}
-  />
-))
-SelectLabel.displayName = SelectPrimitive.Label.displayName
-
-const SelectItem = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
->(({ className, children, ...props }, ref) => (
-  <SelectPrimitive.Item
-    ref={ref}
-    className={cn(
-      'relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-2 ' +
-        'text-sm outline-none focus:bg-accent focus:text-accent-foreground ' +
-        'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
-      className,
-    )}
-    {...props}
-  >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-      <SelectPrimitive.ItemIndicator>
-        <Check className="h-4 w-4 text-primary-700" />
-      </SelectPrimitive.ItemIndicator>
-    </span>
-    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-  </SelectPrimitive.Item>
-))
-SelectItem.displayName = SelectPrimitive.Item.displayName
-
-const SelectSeparator = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Separator>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.Separator ref={ref} className={cn('-mx-1 my-1 h-px bg-border', className)} {...props} />
-))
-SelectSeparator.displayName = SelectPrimitive.Separator.displayName
-
-export {
-  Select,
-  SelectGroup,
-  SelectValue,
-  SelectTrigger,
-  SelectContent,
-  SelectLabel,
-  SelectItem,
-  SelectSeparator,
+interface SelectItemElement extends React.ReactElement {
+  props: { value: string; children?: React.ReactNode }
 }
+
+function isSelectItem(node: React.ReactNode): node is SelectItemElement {
+  return React.isValidElement(node) && node.type === SelectItem
+}
+
+const Select = React.forwardRef<
+  HTMLElement,
+  {
+    value?: string
+    onValueChange?: (value: string) => void
+    disabled?: boolean
+    children?: React.ReactNode
+    className?: string
+  }
+>(function Select({ value, onValueChange, disabled, children, className }, ref) {
+  let triggerId: string | undefined
+  let triggerClassName: string | undefined
+  const items: SelectItemElement[] = []
+
+  React.Children.forEach(children, (child) => {
+    if (!React.isValidElement(child)) return
+
+    if (child.type === SelectTrigger) {
+      const triggerProps = child.props as { id?: string; className?: string }
+      triggerId = triggerProps.id
+      triggerClassName = triggerProps.className
+    }
+
+    if (child.type === SelectContent) {
+      const contentProps = child.props as { children?: React.ReactNode }
+      React.Children.forEach(contentProps.children, (item) => {
+        if (isSelectItem(item)) items.push(item)
+      })
+    }
+  })
+
+  return (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    <UI5Select
+      ref={ref as any}
+      id={triggerId}
+      // ui5-select has no default width (it inherits the shared Input base's
+      // `:host{width:var(--_ui5_input_width)}`, an intrinsic size, not
+      // 100%) — every call site here expects it to fill its grid/flex cell
+      // the way a native <select> would, so that's the default unless a
+      // narrower one is explicitly given (e.g. the KG/Ton unit picker).
+      className={cn('w-full', triggerClassName, className)}
+      disabled={disabled}
+      value={value}
+      onChange={(e) => onValueChange?.(e.detail.selectedOption.value ?? '')}
+    >
+      {items.map((item) => (
+        <Option key={item.props.value} value={item.props.value}>
+          {item.props.children}
+        </Option>
+      ))}
+    </UI5Select>
+  )
+})
+
+/** Inert — read by `Select` above for its `id`/`className`, never rendered. */
+function SelectTrigger({ children }: { children?: React.ReactNode; id?: string; className?: string }) {
+  return <>{children}</>
+}
+
+/** Inert — placeholder text is not carried over (see file doc comment). */
+function SelectValue(_props: { placeholder?: string }) {
+  return null
+}
+
+/** Inert — read by `Select` above for its `SelectItem` children, never rendered. */
+function SelectContent({ children }: { children?: React.ReactNode }) {
+  return <>{children}</>
+}
+
+/** Inert — data read by `Select` above, never rendered. */
+function SelectItem({ children }: { value: string; children?: React.ReactNode; disabled?: boolean }) {
+  return <>{children}</>
+}
+
+export { Select, SelectTrigger, SelectValue, SelectContent, SelectItem }

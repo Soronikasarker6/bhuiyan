@@ -1,0 +1,55 @@
+/**
+ * Size overrides for the UI5 `ui5-button` custom element.
+ *
+ * `ui5-button` renders its real `<button>` inside a shadow root, so a plain
+ * Tailwind height/padding utility class on the host element can't reach it —
+ * `::part(button)` is the button's own documented styling hook for exactly
+ * this (see `@csspart button` on `@ui5/webcomponents`'s `Button.js`).
+ *
+ * Sized to match `--sapElement_Compact_Height` (1.625rem) — the same control
+ * height every UI5 field (Select, DatePicker) renders at once compact mode
+ * is on (`data-ui5-compact-size` on `<html>`, see `index.html`), so a button
+ * sitting next to a field lines up with it rather than towering over it.
+ */
+.default {
+  height: 1.625rem;
+}
+.default::part(button) {
+  padding: 0 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.sm {
+  height: 1.375rem;
+}
+.sm::part(button) {
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+}
+
+.lg {
+  height: 1.75rem;
+}
+.lg::part(button) {
+  padding: 0 1rem;
+  font-size: 0.8125rem;
+}
+
+.icon,
+.iconSm {
+  display: inline-flex;
+}
+.icon {
+  width: 1.625rem;
+  height: 1.625rem;
+}
+.icon::part(button) {
+  padding: 0;
+}
+.iconSm {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+.iconSm::part(button) {
+  padding: 0;
+}

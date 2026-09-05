@@ -1,98 +1,98 @@
 import { describe, expect, it } from 'vitest'
-import type { CustomerTransaction, SaleSummary } from '@/types'
+import type { CustomerTransaction } from '@/types'
 import {
-  allocateCashIn,
-  availableAdvance,
-  buildAdvance,
-  buildAdvanceAdjustment,
   buildCustomerLedgerRows,
   buildOpeningBalance,
   buildPayment,
   buildRefund,
   customerBalance,
+  customerTotals,
   nextReference,
 } from '@/utils/customerLedger'
 
-function dueSale(id: string, date: string, totalAmount: number, amountDue: number): SaleSummary {
-  return {
-    id,
-    invoiceNo: `INV-${id}`,
-    date,
-    customerId: 'c1',
-    paidAtSale: totalAmount - amountDue,
-    createdAt: `${date}T00:00:00Z`,
-    customerName: 'ABC Trading',
-    items: [],
-    totalAmount,
-    totalWeightTon: 0,
-    amountPaid: totalAmount - amountDue,
-    amountDue,
-    status: amountDue === 0 ? 'paid' : amountDue < totalAmount ? 'partial' : 'due',
-  }
-}
-
 /**
- * The customer ledger — tested against the spec's own worked example (§10),
- * number for number.
+ * The customer ledger — one running balance, bank-statement style (§5).
+ * `due = max(0, balance)`, `advance = max(0, -balance)` — there is no
+ * per-invoice allocation and no separate advance pool to keep in sync.
  */
 
-describe('running balance (spec §10)', () => {
-  it('matches the example exactly: -50,000 -> 20,000 -> 5,000', () => {
+describe('running balance', () => {
+  it('a sale debits, a payment credits, and the balance is just debit minus credit', () => {
     const transactions: CustomerTransaction[] = [
-      buildAdvance({ id: 't1', customerId: 'c1', date: '2026-09-01', reference: 'ADV-001', amount: 50_000, createdAt: '2026-09-01T00:00:00Z' }),
       {
-        id: 't2',
+        id: 't1',
         customerId: 'c1',
         date: '2026-09-05',
         type: 'sale',
         reference: 'INV-001',
-        description: 'Limestone Sale',
+        description: 'Sale — INV-001',
         debit: 70_000,
         credit: 0,
         createdAt: '2026-09-05T00:00:00Z',
       },
-      buildPayment({ id: 't3', customerId: 'c1', date: '2026-09-10', reference: 'PAY-001', amount: 15_000, createdAt: '2026-09-10T00:00:00Z' }),
+      buildPayment({ id: 't2', customerId: 'c1', date: '2026-09-10', reference: 'PAY-001', amount: 15_000, createdAt: '2026-09-10T00:00:00Z' }),
     ]
 
     const rows = buildCustomerLedgerRows(transactions)
-    // Rows come back newest-first; reverse to read them in the order they happened.
     const ordered = [...rows].reverse()
 
-    expect(ordered[0]!.balance).toBe(-50_000)
-    expect(ordered[1]!.balance).toBe(20_000)
-    expect(ordered[2]!.balance).toBe(5_000)
+    expect(ordered[0]!.balance).toBe(70_000)
+    expect(ordered[1]!.balance).toBe(55_000)
+    expect(customerBalance(transactions)).toBe(55_000)
+  })
 
-    expect(customerBalance(transactions)).toBe(5_000)
+  it('§4 worked example: Sale 100,000, Paid at Sale 40,000, Due 60,000', () => {
+    const transactions: CustomerTransaction[] = [
+      { id: 't1', customerId: 'c1', date: '2026-09-01', type: 'sale', reference: 'INV-050', description: 'Sale — INV-050', debit: 100_000, credit: 0, createdAt: '2026-09-01T00:00:00.000Z' },
+      buildPayment({ id: 't2', customerId: 'c1', date: '2026-09-01', reference: 'INV-050-PD', amount: 40_000, referenceSaleId: 's1', createdAt: '2026-09-01T00:00:00.001Z' }),
+    ]
+
+    const totals = customerTotals(transactions)
+    expect(totals.totalSales).toBe(100_000)
+    expect(totals.totalPaid).toBe(40_000)
+    expect(totals.totalDue).toBe(60_000)
+    expect(totals.availableAdvance).toBe(0)
   })
 })
 
-describe('available advance (spec §11: 50,000 given, 35,000 used, 15,000 remaining)', () => {
-  it('drops by exactly what is applied, and no more', () => {
+describe('customerTotals — due and advance are two sides of the same balance', () => {
+  it('§13: 50,000 due, 20,000 paid, leaves exactly 30,000 due', () => {
     const transactions: CustomerTransaction[] = [
-      buildAdvance({ id: 't1', customerId: 'c1', date: '2026-09-01', reference: 'ADV-001', amount: 50_000, createdAt: '' }),
-      buildAdvanceAdjustment({ id: 't2', customerId: 'c1', date: '2026-09-02', reference: 'ADJ-001', amount: 35_000, referenceSaleId: 's4', createdAt: '' }),
+      { id: 't1', customerId: 'c1', date: '2026-09-01', type: 'sale', reference: 'INV-001', description: 'Sale — INV-001', debit: 50_000, credit: 0, createdAt: '2026-09-01T00:00:00Z' },
+      buildPayment({ id: 't2', customerId: 'c1', date: '2026-09-03', reference: 'PAY-001', amount: 20_000, createdAt: '2026-09-03T00:00:00Z' }),
     ]
 
-    expect(availableAdvance(transactions)).toBe(15_000)
+    const totals = customerTotals(transactions)
+    expect(totals.totalDue).toBe(30_000)
+    expect(totals.availableAdvance).toBe(0)
   })
 
-  it('is unaffected by an unrelated sale or payment', () => {
+  it('§3: an amount beyond what is owed shows as Advance, never a negative due', () => {
     const transactions: CustomerTransaction[] = [
-      buildAdvance({ id: 't1', customerId: 'c1', date: '2026-09-01', reference: 'ADV-001', amount: 50_000, createdAt: '' }),
-      { id: 't2', customerId: 'c1', date: '2026-09-05', type: 'sale', reference: 'INV-001', description: 'Sale', debit: 70_000, credit: 0, createdAt: '' },
-      buildPayment({ id: 't3', customerId: 'c1', date: '2026-09-10', reference: 'PAY-001', amount: 15_000, createdAt: '' }),
+      { id: 't1', customerId: 'c1', date: '2026-09-01', type: 'sale', reference: 'INV-001', description: 'Sale — INV-001', debit: 10_000, credit: 0, createdAt: '2026-09-01T00:00:00Z' },
+      buildPayment({ id: 't2', customerId: 'c1', date: '2026-09-10', reference: 'PAY-001', amount: 15_000, createdAt: '2026-09-10T00:00:00Z' }),
     ]
 
-    expect(availableAdvance(transactions)).toBe(50_000)
+    const totals = customerTotals(transactions)
+    expect(totals.totalDue).toBe(0)
+    expect(totals.availableAdvance).toBe(5_000)
   })
 
   it('is reduced by a refund', () => {
     const transactions: CustomerTransaction[] = [
-      buildAdvance({ id: 't1', customerId: 'c1', date: '2026-09-01', reference: 'ADV-001', amount: 50_000, createdAt: '' }),
+      buildPayment({ id: 't1', customerId: 'c1', date: '2026-09-01', reference: 'PAY-001', amount: 50_000, createdAt: '' }),
       buildRefund({ id: 't2', customerId: 'c1', date: '2026-09-03', reference: 'REF-001', amount: 20_000, createdAt: '' }),
     ]
 
-    expect(availableAdvance(transactions)).toBe(30_000)
+    expect(customerTotals(transactions).availableAdvance).toBe(30_000)
+  })
+
+  it('a customer with no transactions has zero due and zero advance', () => {
+    const totals = customerTotals([])
+    expect(totals.totalDue).toBe(0)
+    expect(totals.availableAdvance).toBe(0)
+    expect(totals.balance).toBe(0)
+    expect(totals.lastTransactionDate).toBeNull()
   })
 })
 
@@ -110,118 +110,20 @@ describe('opening balance', () => {
   })
 })
 
-describe('Cash In allocation (§12/§13)', () => {
-  it('§12: 50,000 due, 20,000 paid, leaves exactly 30,000 due', () => {
-    const rows = allocateCashIn({
-      customerId: 'c1',
-      date: '2026-09-03',
-      amount: 20_000,
-      dueSales: [dueSale('s1', '2026-09-01', 50_000, 50_000)],
-      paymentReference: 'PAY-001',
-      advanceReference: 'ADV-001',
-      createdAt: '2026-09-03T00:00:00Z',
-      makeId: (() => {
-        let n = 0
-        return () => `id-${++n}`
-      })(),
-    })
-
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ type: 'payment', credit: 20_000, referenceSaleId: 's1' })
-  })
-
-  it('on account, settles the oldest due invoice first', () => {
-    const rows = allocateCashIn({
-      customerId: 'c1',
-      date: '2026-09-10',
-      amount: 30_000,
-      dueSales: [dueSale('newer', '2026-09-05', 40_000, 40_000), dueSale('older', '2026-09-01', 10_000, 10_000)],
-      paymentReference: 'PAY-002',
-      advanceReference: 'ADV-002',
-      createdAt: '2026-09-10T00:00:00Z',
-      makeId: (() => {
-        let n = 0
-        return () => `id-${++n}`
-      })(),
-    })
-
-    // 10,000 clears the older invoice in full; the remaining 20,000 goes
-    // toward the newer one, which still owes 20,000 of its 40,000.
-    expect(rows).toHaveLength(2)
-    expect(rows[0]).toMatchObject({ referenceSaleId: 'older', credit: 10_000 })
-    expect(rows[1]).toMatchObject({ referenceSaleId: 'newer', credit: 20_000 })
-  })
-
-  it('§13: an amount beyond what is owed becomes Advance, never a negative due', () => {
-    const rows = allocateCashIn({
-      customerId: 'c1',
-      date: '2026-09-10',
-      amount: 15_000,
-      dueSales: [dueSale('s1', '2026-09-01', 10_000, 10_000)],
-      paymentReference: 'PAY-003',
-      advanceReference: 'ADV-003',
-      createdAt: '2026-09-10T00:00:00Z',
-      makeId: (() => {
-        let n = 0
-        return () => `id-${++n}`
-      })(),
-    })
-
-    expect(rows).toHaveLength(2)
-    expect(rows[0]).toMatchObject({ type: 'payment', credit: 10_000, referenceSaleId: 's1' })
-    expect(rows[1]).toMatchObject({ type: 'advance', credit: 5_000 })
-    expect(availableAdvance(rows)).toBe(5_000)
-  })
-
-  it('targeting one specific invoice never touches another due invoice', () => {
-    const rows = allocateCashIn({
-      customerId: 'c1',
-      date: '2026-09-10',
-      amount: 5_000,
-      dueSales: [dueSale('s1', '2026-09-01', 10_000, 10_000), dueSale('s2', '2026-09-02', 8_000, 8_000)],
-      targetSaleId: 's2',
-      paymentReference: 'PAY-004',
-      advanceReference: 'ADV-004',
-      createdAt: '2026-09-10T00:00:00Z',
-      makeId: (() => {
-        let n = 0
-        return () => `id-${++n}`
-      })(),
-    })
-
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ referenceSaleId: 's2', credit: 5_000 })
-  })
-
-  it('a customer with no due at all has the whole amount become Advance', () => {
-    const rows = allocateCashIn({
-      customerId: 'c1',
-      date: '2026-09-10',
-      amount: 12_000,
-      dueSales: [],
-      paymentReference: 'PAY-005',
-      advanceReference: 'ADV-005',
-      createdAt: '2026-09-10T00:00:00Z',
-      makeId: (() => {
-        let n = 0
-        return () => `id-${++n}`
-      })(),
-    })
-
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ type: 'advance', credit: 12_000 })
+describe('Cash In (§4) — a plain credit, never targeted at one invoice', () => {
+  it('is a straightforward credit, with no invoice allocation logic involved', () => {
+    const row = buildPayment({ id: 't1', customerId: 'c1', date: '2026-09-03', reference: 'PAY-001', amount: 20_000, createdAt: '2026-09-03T00:00:00Z' })
+    expect(row).toMatchObject({ type: 'payment', debit: 0, credit: 20_000, referenceSaleId: undefined })
   })
 })
 
 describe('reference numbering', () => {
   it('is sequential per type and never reused', () => {
     const transactions: CustomerTransaction[] = [
-      buildAdvance({ id: 't1', customerId: 'c1', date: '2026-01-01', reference: 'ADV-001', amount: 1, createdAt: '' }),
-      buildPayment({ id: 't2', customerId: 'c1', date: '2026-01-01', reference: 'PAY-001', amount: 1, createdAt: '' }),
-      buildPayment({ id: 't3', customerId: 'c1', date: '2026-01-01', reference: 'PAY-002', amount: 1, createdAt: '' }),
+      buildPayment({ id: 't1', customerId: 'c1', date: '2026-01-01', reference: 'PAY-001', amount: 1, createdAt: '' }),
+      buildPayment({ id: 't2', customerId: 'c1', date: '2026-01-01', reference: 'PAY-002', amount: 1, createdAt: '' }),
     ]
 
-    expect(nextReference('advance', transactions)).toBe('ADV-002')
     expect(nextReference('payment', transactions)).toBe('PAY-003')
     expect(nextReference('refund', transactions)).toBe('REF-001')
   })

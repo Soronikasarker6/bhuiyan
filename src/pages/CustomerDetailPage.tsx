@@ -16,9 +16,7 @@ import { useAppData } from '@/hooks/useAppData'
 import { buildSaleSummaries } from '@/utils/sales'
 import { buildCustomerLedgerRows, customerTotals, transactionsForCustomer } from '@/utils/customerLedger'
 import { formatDate, formatDateTime } from '@/utils/format'
-
-const STATUS_VARIANT = { paid: 'success', partial: 'brass', due: 'destructive' } as const
-const STATUS_LABEL = { paid: 'Paid', partial: 'Partial', due: 'Due' } as const
+import { SALE_STATUS_LABEL, SALE_STATUS_VARIANT } from '@/constants/saleStatus'
 
 /**
  * One customer's full financial picture — the §9/§13 profile: totals up top,
@@ -51,7 +49,7 @@ export default function CustomerDetailPage() {
     [data.customerTransactions, id],
   )
 
-  const totals = useMemo(() => customerTotals(transactions, sales), [transactions, sales])
+  const totals = useMemo(() => customerTotals(transactions), [transactions])
   const ledgerRows = useMemo(() => buildCustomerLedgerRows(transactions), [transactions])
 
   if (loading) return <PageSkeleton />
@@ -98,7 +96,7 @@ export default function CustomerDetailPage() {
         <StatCard label="Total sales" icon={Receipt} accent="primary" value={<Money value={totals.totalSales} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{sales.length} invoices</span>} />
         <StatCard label="Total paid" icon={Wallet} accent="success" value={<Money value={totals.totalPaid} size="2xl" weight="bold" tone="positive" />} />
         <StatCard label="Total due" icon={Wallet} accent={totals.totalDue > 0 ? 'primary' : 'success'} value={<Money value={totals.totalDue} size="2xl" weight="bold" tone={totals.totalDue > 0 ? 'negative' : 'positive'} />} />
-        <StatCard label="Available advance" icon={Wallet} accent="brass" value={<Money value={totals.availableAdvance} size="2xl" weight="bold" tone={totals.availableAdvance > 0 ? 'positive' : 'neutral'} />} />
+        <StatCard label="Advance" icon={Wallet} accent="brass" value={<Money value={totals.availableAdvance} size="2xl" weight="bold" tone={totals.availableAdvance > 0 ? 'positive' : 'neutral'} />} footer={<span className="text-2xs text-muted-foreground">Shown when the balance runs ahead</span>} />
       </StatGrid>
 
       <div className="mb-4 grid gap-4 sm:grid-cols-2">
@@ -150,7 +148,7 @@ export default function CustomerDetailPage() {
                     <Money value={sale.amountDue} size="sm" tone={sale.amountDue > 0 ? 'negative' : 'positive'} />
                   </TableCell>
                   <TableCell>
-                    <Badge variant={STATUS_VARIANT[sale.status]}>{STATUS_LABEL[sale.status]}</Badge>
+                    <Badge variant={SALE_STATUS_VARIANT[sale.status]}>{SALE_STATUS_LABEL[sale.status]}</Badge>
                   </TableCell>
                 </TableRow>
               ))}
@@ -159,7 +157,7 @@ export default function CustomerDetailPage() {
         )}
       </Section>
 
-      <Section title="Transaction timeline" description="Every sale, payment, advance and adjustment, in order" noPadding>
+      <Section title="Customer ledger" description="Every sale and payment, running balance included" noPadding>
         <CustomerLedgerTable rows={ledgerRows} />
       </Section>
 

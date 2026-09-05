@@ -1,10 +1,11 @@
 import { useMemo } from 'react'
 import { Package, Scale } from 'lucide-react'
+import { TabContainer } from '@ui5/webcomponents-react/TabContainer'
+import { Tab } from '@ui5/webcomponents-react/Tab'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Num } from '@/components/Money'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/misc'
 import { ProductManager } from '@/features/products/ProductManager'
 import { MeshSizeManager } from '@/features/products/MeshSizeManager'
 import { useAppData } from '@/hooks/useAppData'
@@ -83,34 +84,27 @@ export default function ProductsPage() {
         />
       </StatGrid>
 
-      <Tabs defaultValue="products">
-        <TabsList className="mb-1">
-          <TabsTrigger value="products">
-            <Package className="h-3.5 w-3.5" />
-            Products
-          </TabsTrigger>
-          <TabsTrigger value="mesh">
-            <Scale className="h-3.5 w-3.5" />
-            Mesh / Attributes
-          </TabsTrigger>
-        </TabsList>
+      <TabContainer contentBackgroundDesign="Transparent" headerBackgroundDesign="Transparent">
+        <Tab text="Products">
+          <div className="pt-4">
+            <ProductManager
+              products={data.products}
+              usageOf={(id) => productUsage.get(id) ?? 0}
+              onChange={(next) => update('products', next)}
+            />
+          </div>
+        </Tab>
 
-        <TabsContent value="products">
-          <ProductManager
-            products={data.products}
-            usageOf={(id) => productUsage.get(id) ?? 0}
-            onChange={(next) => update('products', next)}
-          />
-        </TabsContent>
-
-        <TabsContent value="mesh">
-          <MeshSizeManager
-            meshSizes={data.meshSizes}
-            usageOf={(id) => meshUsage.get(id) ?? 0}
-            onChange={(next) => update('meshSizes', next)}
-          />
-        </TabsContent>
-      </Tabs>
+        <Tab text="Mesh / Attributes">
+          <div className="pt-4">
+            <MeshSizeManager
+              meshSizes={data.meshSizes}
+              usageOf={(id) => meshUsage.get(id) ?? 0}
+              onChange={(next) => update('meshSizes', next)}
+            />
+          </div>
+        </Tab>
+      </TabContainer>
     </div>
   )
 }

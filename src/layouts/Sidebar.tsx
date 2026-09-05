@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { cn } from '@/utils/cn'
-import { navigation } from './navigation'
+import { navigation } from '@/router/navigation'
 import { Button } from '@/components/ui/button'
 
 /**

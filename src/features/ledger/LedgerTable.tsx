@@ -5,6 +5,7 @@ import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Badge } from '@/components/ui/misc'
 import {
   Select,
@@ -26,8 +27,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { buildLedgerRows, idsToRemoveWith, summariseRows, type LedgerFilters } from '@/utils/ledger'
 import { formatCurrency, formatDate } from '@/utils/format'
 import { cn } from '@/utils/cn'
-
-const PAGE_SIZE = 25
+import { DEFAULT_TABLE_PAGE_SIZE as PAGE_SIZE } from '@/constants/table'
 
 /**
  * The register.
@@ -165,18 +165,16 @@ export function LedgerTable({
           </Select>
 
           <div className="flex items-center gap-1.5 sm:col-span-2 xl:col-span-1">
-            <Input
-              type="date"
+            <DatePicker
               value={filters.from ?? ''}
-              onChange={(event) => setFilter('from', event.target.value)}
+              onChange={(value) => setFilter('from', value)}
               aria-label="From date"
               className="text-xs"
             />
             <span className="text-xs text-muted-foreground">to</span>
-            <Input
-              type="date"
+            <DatePicker
               value={filters.to ?? ''}
-              onChange={(event) => setFilter('to', event.target.value)}
+              onChange={(value) => setFilter('to', value)}
               aria-label="To date"
               className="text-xs"
             />

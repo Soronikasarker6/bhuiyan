@@ -4,17 +4,17 @@ import type {
   Customer,
   CustomerTransaction,
   MeshSize,
-  PnlYear,
   Product,
   ProductionEntry,
   RawMaterialImport,
   Sale,
   SaleItem,
+  Transaction,
+  WastageEntry,
 } from '@/types'
-import { emptyMonth } from '@/utils/pnl'
 import { toISODate } from '@/utils/format'
 import { buildSaleTransactions } from '@/utils/sales'
-import { buildAdvance, buildPayment } from '@/utils/customerLedger'
+import { buildPayment } from '@/utils/customerLedger'
 
 /**
  * Starting data for a first run.
@@ -127,21 +127,6 @@ const OUT_CATEGORIES = [
   'Others',
 ]
 
-/** The one month of P&L already on record when the ledger started. Always January. */
-const OPENING_MONTH = {
-  sales: 6_090_000,
-  materialCost: 5_000_000,
-  labourCost: 97_440,
-  electricity: 365_400,
-  freight: 182_700,
-  transport: 20_000,
-  handling: 20_000,
-  otherCosts: 5_000,
-  officeAdmin: 120_000,
-  rent: 100_000,
-  interest: 359_000,
-}
-
 export function seedData(): AppData {
   const stamp = stampAgo(20)
 
@@ -165,14 +150,22 @@ export function seedData(): AppData {
   // ---------------------------------------------------------------- raw material import
   // imp-1 reproduces this system's own worked example exactly:
   // 28,480 kg gross − 7,820 kg tare = 20,660 kg net = 20.66 Ton.
+  // Prices vary slightly per shipment, so the average-cost math is genuinely
+  // being exercised rather than just one constant repeated.
   const rawMaterialImports: RawMaterialImport[] = [
-    { id: 'imp-1', date: daysAgo(12), productId: 'product-1', shipName: 'MV Sea Falcon', serialNo: 'SL-001', truckNo: 'DHA-1001', grossWeightKg: 28_480, tareWeightKg: 7_820, createdAt: stampAgo(12) },
-    { id: 'imp-2', date: daysAgo(14), productId: 'product-1', shipName: 'MV Sea Falcon', serialNo: 'SL-002', truckNo: 'DHA-1002', grossWeightKg: 32_000, tareWeightKg: 9_000, createdAt: stampAgo(14) },
-    { id: 'imp-3', date: daysAgo(9), productId: 'product-1', shipName: 'MV Coral Star', serialNo: 'SL-003', truckNo: 'DHA-1003', grossWeightKg: 30_000, tareWeightKg: 9_200, createdAt: stampAgo(9) },
-    { id: 'imp-4', date: daysAgo(16), productId: 'product-2', shipName: 'MV Gulf Pearl', serialNo: 'SL-004', truckNo: 'DHA-2001', grossWeightKg: 27_000, tareWeightKg: 8_200, createdAt: stampAgo(16) },
-    { id: 'imp-5', date: daysAgo(8), productId: 'product-2', shipName: 'MV Gulf Pearl', serialNo: 'SL-005', truckNo: 'DHA-2002', grossWeightKg: 26_500, tareWeightKg: 8_300, createdAt: stampAgo(8) },
-    { id: 'imp-6', date: daysAgo(19), productId: 'product-3', shipName: 'MV Delta Wave', serialNo: 'SL-006', truckNo: 'DHA-3001', grossWeightKg: 31_000, tareWeightKg: 9_300, createdAt: stampAgo(19) },
-    { id: 'imp-7', date: daysAgo(11), productId: 'product-3', shipName: 'MV Delta Wave', serialNo: 'SL-007', truckNo: 'DHA-3002', grossWeightKg: 24_000, tareWeightKg: 7_800, createdAt: stampAgo(11) },
+    { id: 'imp-1', date: daysAgo(12), productId: 'product-1', shipName: 'MV Sea Falcon', serialNo: 'SL-001', truckNo: 'DHA-1001', grossWeightKg: 28_480, tareWeightKg: 7_820, pricePerTon: 4_200, createdAt: stampAgo(12) },
+    { id: 'imp-2', date: daysAgo(14), productId: 'product-1', shipName: 'MV Sea Falcon', serialNo: 'SL-002', truckNo: 'DHA-1002', grossWeightKg: 32_000, tareWeightKg: 9_000, pricePerTon: 4_100, createdAt: stampAgo(14) },
+    { id: 'imp-3', date: daysAgo(9), productId: 'product-1', shipName: 'MV Coral Star', serialNo: 'SL-003', truckNo: 'DHA-1003', grossWeightKg: 30_000, tareWeightKg: 9_200, pricePerTon: 4_350, createdAt: stampAgo(9) },
+    { id: 'imp-4', date: daysAgo(16), productId: 'product-2', shipName: 'MV Gulf Pearl', serialNo: 'SL-004', truckNo: 'DHA-2001', grossWeightKg: 27_000, tareWeightKg: 8_200, pricePerTon: 3_900, createdAt: stampAgo(16) },
+    { id: 'imp-5', date: daysAgo(8), productId: 'product-2', shipName: 'MV Gulf Pearl', serialNo: 'SL-005', truckNo: 'DHA-2002', grossWeightKg: 26_500, tareWeightKg: 8_300, pricePerTon: 4_050, createdAt: stampAgo(8) },
+    { id: 'imp-6', date: daysAgo(19), productId: 'product-3', shipName: 'MV Delta Wave', serialNo: 'SL-006', truckNo: 'DHA-3001', grossWeightKg: 31_000, tareWeightKg: 9_300, pricePerTon: 3_500, createdAt: stampAgo(19) },
+    { id: 'imp-7', date: daysAgo(11), productId: 'product-3', shipName: 'MV Delta Wave', serialNo: 'SL-007', truckNo: 'DHA-3002', grossWeightKg: 24_000, tareWeightKg: 7_800, pricePerTon: 3_650, createdAt: stampAgo(11) },
+  ]
+
+  // ---------------------------------------------------------------- wastage
+  const wastageEntries: WastageEntry[] = [
+    { id: 'wst-1', date: daysAgo(8), productId: 'product-1', quantityKg: 500, reason: 'Handling loss at yard', createdAt: stampAgo(8) },
+    { id: 'wst-2', date: daysAgo(6), productId: 'product-3', quantityKg: 300, reason: 'Spillage during bagging', createdAt: stampAgo(6) },
   ]
 
   // ---------------------------------------------------------------- production & stock
@@ -219,15 +212,6 @@ export function seedData(): AppData {
       credit: 0,
       createdAt: stampAgo(20),
     },
-    // An advance sitting unapplied, so the Advances page has something to show.
-    buildAdvance({
-      id: 'ctxn-adv-001',
-      customerId: 'cust-1',
-      date: daysAgo(15),
-      reference: 'ADV-001',
-      amount: 15_000,
-      createdAt: stampAgo(15),
-    }),
     ...buildSaleTransactions({ sale: sales[0]!, totalAmount: 60 * 5_000 * 50 / 1000, paymentReference: `${sales[0]!.invoiceNo}-PD` }),
     ...buildSaleTransactions({ sale: sales[1]!, totalAmount: 100 * 4_800 * 50 / 1000, paymentReference: `${sales[1]!.invoiceNo}-PD` }),
     ...buildSaleTransactions({ sale: sales[2]!, totalAmount: 80 * 4_700 * 50 / 1000, paymentReference: `${sales[2]!.invoiceNo}-PD` }),
@@ -246,14 +230,14 @@ export function seedData(): AppData {
     }),
   ]
 
-  // ---------------------------------------------------------------- P&L
-  const pnl: PnlYear[] = [
-    {
-      year: YEAR,
-      months: Array.from({ length: 12 }, (_, monthIndex) =>
-        monthIndex === 0 ? { monthIndex, ...OPENING_MONTH } : emptyMonth(monthIndex),
-      ),
-    },
+  // ---------------------------------------------------------------- company costs
+  // A handful of this month's Cash & Bank Ledger entries, so Net Profit has
+  // real company costs to subtract rather than showing gross profit only.
+  const transactions: Transaction[] = [
+    { id: 'txn-1', date: daysAgo(5), details: 'Yard labour — fortnightly bill', accountId: 'acc-1', direction: 'out', category: 'Labour Bill', amount: 40_000, createdAt: stampAgo(5) },
+    { id: 'txn-2', date: daysAgo(4), details: 'Electricity bill', accountId: 'acc-1', direction: 'out', category: 'Electricity Bill', amount: 15_000, createdAt: stampAgo(4) },
+    { id: 'txn-3', date: daysAgo(2), details: 'Truck freight & transport', accountId: 'acc-1', direction: 'out', category: 'Freight & Transport', amount: 12_000, createdAt: stampAgo(2) },
+    { id: 'txn-4', date: daysAgo(1), details: 'Office running cost', accountId: 'acc-1', direction: 'out', category: 'Office Cost', amount: 8_000, createdAt: stampAgo(1) },
   ]
 
   return {
@@ -267,8 +251,8 @@ export function seedData(): AppData {
     customerTransactions,
     accounts,
     categories,
-    transactions: [],
-    pnl,
+    transactions,
+    wastageEntries,
     ledgerClosings: [],
     seeded: true,
   }

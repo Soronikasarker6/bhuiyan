@@ -6,26 +6,26 @@ import type {
   CustomerTxnType,
   ID,
   ISODate,
-  SaleSummary,
 } from '@/types'
 import { isWithin } from './format'
 
 /**
- * The customer ledger.
+ * The customer ledger — one running balance per customer, like a bank
+ * statement.
  *
  *     Balance = running(Debit − Credit)
  *
  * exactly the formula `utils/ledger.ts` already uses for cash accounts,
- * reused here for receivables. A sale debits (the customer owes more); a
- * payment or an advance received credits (money came in) — both move the
- * balance the same way. `type` is what lets the UI and reports tell a
- * payment apart from an advance, not the arithmetic.
+ * reused here for receivables. A sale debits (Out, the customer owes more);
+ * a payment credits (In, money came in) — both move the balance the same
+ * way, and `type` is what lets the UI and reports tell them apart, not the
+ * arithmetic.
  *
- * "Total Due" and "Available Advance" are deliberately two separate figures,
- * not one netted balance — a customer can be overdue on one invoice while
- * still holding unused advance from an unrelated deposit. Due is tracked per
- * invoice (via `SaleSummary.amountDue`, computed in `utils/sales.ts`);
- * advance is tracked as its own pool here.
+ * There is deliberately no per-invoice allocation and no separate advance
+ * pool: `totalDue` and `availableAdvance` are just the two sides of the one
+ * balance (`max(0, balance)` and `max(0, -balance)`). A customer who has
+ * paid ahead is simply a negative balance, labelled Advance in the UI —
+ * never a second thing that has to be kept in sync with the first.
  */
 
 function chronological(a: CustomerTransaction, b: CustomerTransaction): number {
@@ -58,49 +58,19 @@ export function customerBalance(transactions: CustomerTransaction[]): number {
   return transactions.reduce((sum, t) => sum + t.debit - t.credit, 0)
 }
 
-/**
- * Advance received, minus what has since been applied to a sale or refunded.
- *
- * An `advance_adjustment` carries an equal debit and credit (net zero on the
- * main balance — the sale it settles already debited that amount, and the
- * advance already credited it) purely so it can be labelled and subtracted
- * from this pool.
- */
-export function availableAdvance(transactions: CustomerTransaction[]): number {
-  return transactions.reduce((sum, t) => {
-    if (t.type === 'advance') return sum + t.credit
-    if (t.type === 'advance_adjustment') return sum - t.credit
-    if (t.type === 'refund') return sum - t.debit
-    return sum
-  }, 0)
-}
-
-/** The §13 financial summary for one customer. */
-export function customerTotals(
-  transactions: CustomerTransaction[],
-  customerSales: SaleSummary[],
-): CustomerTotals {
-  const totalSales = customerSales.reduce((s, sale) => s + sale.totalAmount, 0)
-  const totalDue = customerSales.reduce((s, sale) => s + sale.amountDue, 0)
-
-  const invoicePaid = customerSales.reduce((s, sale) => s + sale.amountPaid, 0)
-  const onAccountPayments = transactions
-    .filter((t) => t.type === 'payment' && !t.referenceSaleId)
-    .reduce((s, t) => s + t.credit, 0)
-
-  const totalAdvance = transactions
-    .filter((t) => t.type === 'advance')
-    .reduce((s, t) => s + t.credit, 0)
-
-  const dates = [...transactions].map((t) => t.date).sort()
+/** A customer's financial summary — everything derived from the one running balance. */
+export function customerTotals(transactions: CustomerTransaction[]): CustomerTotals {
+  const totalSales = transactions.filter((t) => t.type === 'sale').reduce((s, t) => s + t.debit, 0)
+  const totalPaid = transactions.filter((t) => t.type === 'payment').reduce((s, t) => s + t.credit, 0)
+  const balance = customerBalance(transactions)
+  const dates = transactions.map((t) => t.date).sort()
 
   return {
     totalSales,
-    totalPaid: invoicePaid + onAccountPayments,
-    totalDue,
-    totalAdvance,
-    availableAdvance: availableAdvance(transactions),
-    balance: customerBalance(transactions),
+    totalPaid,
+    totalDue: Math.max(0, balance),
+    availableAdvance: Math.max(0, -balance),
+    balance,
     transactionCount: transactions.length,
     lastTransactionDate: dates.length > 0 ? dates[dates.length - 1]! : null,
   }
@@ -115,7 +85,7 @@ const REFERENCE_PREFIX: Record<Exclude<CustomerTxnType, 'sale'>, string> = {
   other: 'OTH',
 }
 
-/** "ADV-001", "PAY-014" — sequential per type, never reused. */
+/** "PAY-014" — sequential per type, never reused. */
 export function nextReference(
   type: Exclude<CustomerTxnType, 'sale'>,
   transactions: CustomerTransaction[],
@@ -143,6 +113,15 @@ interface BaseParams {
   createdAt: string
 }
 
+/**
+ * Cash In — a plain credit against the customer's overall balance. It is
+ * never required to target one invoice: `referenceSaleId` is set only when
+ * this is the payment collected at the moment of sale (`paidAtSale`,
+ * via `buildSaleTransactions`), purely so that invoice's own history can
+ * show what was paid then. A later Cash In simply reduces the running
+ * balance — if that balance was already at or below zero, the customer's
+ * Advance grows instead; nothing here has to know which case it is.
+ */
 export function buildPayment(
   params: BaseParams & { amount: number; referenceSaleId?: ID; method?: string },
 ): CustomerTransaction {
@@ -158,40 +137,6 @@ export function buildPayment(
     referenceSaleId: params.referenceSaleId,
     linkedAccountId: params.linkedAccountId,
     method: params.method,
-    createdAt: params.createdAt,
-  }
-}
-
-export function buildAdvance(params: BaseParams & { amount: number; method?: string }): CustomerTransaction {
-  return {
-    id: params.id,
-    customerId: params.customerId,
-    date: params.date,
-    type: 'advance',
-    reference: params.reference,
-    description: params.description ?? `Advance received — ${params.reference}`,
-    debit: 0,
-    credit: params.amount,
-    linkedAccountId: params.linkedAccountId,
-    method: params.method,
-    createdAt: params.createdAt,
-  }
-}
-
-/** Applies part of a customer's available advance against one specific invoice. */
-export function buildAdvanceAdjustment(
-  params: BaseParams & { amount: number; referenceSaleId: ID },
-): CustomerTransaction {
-  return {
-    id: params.id,
-    customerId: params.customerId,
-    date: params.date,
-    type: 'advance_adjustment',
-    reference: params.reference,
-    description: params.description ?? `Advance applied — ${params.referenceSaleId}`,
-    debit: params.amount,
-    credit: params.amount,
-    referenceSaleId: params.referenceSaleId,
     createdAt: params.createdAt,
   }
 }
@@ -228,85 +173,6 @@ export function buildOpeningBalance(params: BaseParams & { amount: number }): Cu
   }
 }
 
-/**
- * Cash In — §12/§13 together.
- *
- * Money paid against a specific invoice (or, if none is chosen, applied
- * oldest-due-first across every invoice this customer actually owes on) is a
- * `payment`, one row per invoice it touches, so `SaleSummary.amountDue` — and
- * therefore `CustomerTotals.totalDue` — genuinely drops, not just the
- * customer's overall ledger balance. Anything left over once every due
- * invoice is settled is never a negative due: it becomes one `advance` row
- * instead, tracked in its own pool (§13), ready to be applied to a future
- * sale via `buildAdvanceAdjustment`.
- */
-export function allocateCashIn(params: {
-  customerId: ID
-  date: ISODate
-  amount: number
-  /** This customer's due sales. If `targetSaleId` is omitted, every one of them is eligible, oldest first. */
-  dueSales: SaleSummary[]
-  /** Settle one specific invoice only; omit to apply on account, oldest-due-first. */
-  targetSaleId?: ID
-  paymentReference: string
-  advanceReference: string
-  method?: string
-  linkedAccountId?: ID
-  createdAt: string
-  /** Generates each row's id — pass `uid` in the app, a deterministic counter in tests. */
-  makeId: () => ID
-}): CustomerTransaction[] {
-  const rows: CustomerTransaction[] = []
-  let remaining = Number(params.amount) || 0
-
-  const targets = params.targetSaleId
-    ? params.dueSales.filter((s) => s.id === params.targetSaleId)
-    : [...params.dueSales].sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? -1 : 1))
-
-  for (const sale of targets) {
-    if (remaining <= 0) break
-    const applied = Math.min(remaining, sale.amountDue)
-    if (applied <= 0) continue
-
-    rows.push(
-      buildPayment({
-        id: params.makeId(),
-        customerId: params.customerId,
-        date: params.date,
-        reference: params.paymentReference,
-        description: `Payment received — ${params.paymentReference} (${sale.invoiceNo})`,
-        amount: applied,
-        referenceSaleId: sale.id,
-        method: params.method,
-        linkedAccountId: params.linkedAccountId,
-        createdAt: params.createdAt,
-      }),
-    )
-    remaining -= applied
-  }
-
-  if (remaining > 0) {
-    rows.push(
-      buildAdvance({
-        id: params.makeId(),
-        customerId: params.customerId,
-        date: params.date,
-        reference: params.advanceReference,
-        description:
-          rows.length > 0
-            ? `Advance received — ${params.advanceReference} (overpayment beyond due)`
-            : `Advance received — ${params.advanceReference}`,
-        amount: remaining,
-        method: params.method,
-        linkedAccountId: params.linkedAccountId,
-        createdAt: params.createdAt,
-      }),
-    )
-  }
-
-  return rows
-}
-
 // ---------------------------------------------------------------- reporting
 
 export interface CustomerTxnFilters {
@@ -332,16 +198,13 @@ export function customerNameOf(customers: Customer[], customerId: ID): string {
   return customers.find((c) => c.id === customerId)?.name ?? 'Unknown customer'
 }
 
-/** Customers with the highest outstanding due, for the dashboard. */
+/** Customers with the highest outstanding balance, for the dashboard. */
 export function outstandingCustomers(
   customers: Customer[],
-  salesByCustomer: (customerId: ID) => SaleSummary[],
+  transactionsOf: (customerId: ID) => CustomerTransaction[],
 ): Array<{ customer: Customer; totalDue: number }> {
   return customers
-    .map((customer) => ({
-      customer,
-      totalDue: salesByCustomer(customer.id).reduce((sum, sale) => sum + sale.amountDue, 0),
-    }))
+    .map((customer) => ({ customer, totalDue: Math.max(0, customerBalance(transactionsOf(customer.id))) }))
     .filter((row) => row.totalDue > 0)
     .sort((a, b) => b.totalDue - a.totalDue)
 }
