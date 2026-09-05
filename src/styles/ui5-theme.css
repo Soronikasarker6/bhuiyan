@@ -5,8 +5,15 @@
  * — a blue/white enterprise look) as CSS custom properties, `--sapXxx`,
  * defined by `@ui5/webcomponents-theming`. Every one of the names below was
  * confirmed against that package's installed
- * `dist/css/themes/sap_horizon/parameters-bundle.css` — not guessed — before
- * being overridden here, so the fix-up is real rather than silently inert.
+ * `dist/css/themes/sap_horizon/parameters-bundle.css` — not guessed.
+ *
+ * `!important` on every declaration is deliberate, not a lazy override: UI5
+ * re-registers its own default values for these same custom properties on
+ * `:root` at runtime (when its components first define themselves), which
+ * lands *after* this stylesheet in the cascade — a same-specificity `:root`
+ * rule with no `!important` loses to whichever one was declared later, so
+ * without this every button/field/list quietly falls back to SAP's stock
+ * blue. Confirmed by inspecting real rendered screenshots, not assumed.
  *
  * This is a semantic subset (the parameters that actually drive Button,
  * Input, Select, Table, Dialog and Card colours), not an exhaustive replica
@@ -17,52 +24,63 @@
  */
 :root {
   /* ---- page / surface ------------------------------------------------- */
-  --sapBackgroundColor: hsl(var(--background));
-  --sapBaseColor: hsl(var(--card));
-  --sapTextColor: hsl(var(--foreground));
-  --sapContent_LabelColor: hsl(var(--muted-foreground));
-  --sapContent_IconColor: hsl(var(--foreground));
-  --sapContent_ForegroundColor: hsl(var(--secondary));
-  --sapShellColor: hsl(var(--sidebar));
-  --sapPageHeader_Background: hsl(var(--card));
-  --sapGroup_ContentBackground: hsl(var(--card));
-  --sapTile_Background: hsl(var(--card));
-  --sapFontFamily: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --sapBackgroundColor: hsl(var(--background)) !important;
+  --sapBaseColor: hsl(var(--card)) !important;
+  --sapTextColor: hsl(var(--foreground)) !important;
+  --sapContent_LabelColor: hsl(var(--muted-foreground)) !important;
+  --sapContent_IconColor: hsl(var(--foreground)) !important;
+  --sapContent_ForegroundColor: hsl(var(--secondary)) !important;
+  --sapShellColor: hsl(var(--sidebar)) !important;
+  --sapPageHeader_Background: hsl(var(--card)) !important;
+  --sapGroup_ContentBackground: hsl(var(--card)) !important;
+  --sapTile_Background: hsl(var(--card)) !important;
+  --sapFontFamily: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif !important;
 
   /* ---- brand / accent --------------------------------------------------- */
-  --sapBrandColor: hsl(var(--primary));
-  --sapHighlightColor: hsl(var(--primary));
-  --sapSelectedColor: hsl(var(--primary));
-  --sapActiveColor: hsl(var(--secondary));
-  --sapContent_ContrastTextColor: hsl(var(--primary-foreground));
+  --sapBrandColor: hsl(var(--primary)) !important;
+  --sapHighlightColor: hsl(var(--primary)) !important;
+  --sapSelectedColor: hsl(var(--primary)) !important;
+  --sapActiveColor: hsl(var(--secondary)) !important;
+  --sapContent_ContrastTextColor: hsl(var(--primary-foreground)) !important;
 
-  /* ---- buttons ----------------------------------------------------------- */
-  --sapButton_Background: hsl(var(--card));
-  --sapButton_BorderColor: hsl(var(--border));
-  --sapButton_TextColor: hsl(var(--primary));
-  --sapButton_Emphasized_Background: hsl(var(--primary));
-  --sapButton_Emphasized_BorderColor: hsl(var(--primary));
-  --sapButton_Emphasized_TextColor: hsl(var(--primary-foreground));
-  --sapButton_Accept_Background: hsl(var(--success) / 0.14);
-  --sapButton_Reject_Background: hsl(var(--destructive) / 0.14);
-  --sapButton_Attention_Background: hsl(var(--brass) / 0.16);
+  /* ---- buttons ------------------------------------------------------------
+     Emphasized is the one solid-fill button (primary actions); Accept/
+     Reject/Attention follow this app's own existing convention for semantic
+     colour (Badge, StatCard accents) — a light tint with a dark, readable
+     text colour on top, not a solid fill — rather than SAP's stock palette
+     for the same idea. */
+  --sapButton_Background: hsl(var(--card)) !important;
+  --sapButton_BorderColor: hsl(var(--border)) !important;
+  --sapButton_TextColor: hsl(var(--primary)) !important;
+  --sapButton_Emphasized_Background: hsl(var(--primary)) !important;
+  --sapButton_Emphasized_BorderColor: hsl(var(--primary)) !important;
+  --sapButton_Emphasized_TextColor: hsl(var(--primary-foreground)) !important;
+  --sapButton_Accept_Background: hsl(var(--success) / 0.14) !important;
+  --sapButton_Accept_BorderColor: hsl(var(--success) / 0.35) !important;
+  --sapButton_Accept_TextColor: hsl(var(--success)) !important;
+  --sapButton_Reject_Background: hsl(var(--destructive) / 0.14) !important;
+  --sapButton_Reject_BorderColor: hsl(var(--destructive) / 0.35) !important;
+  --sapButton_Reject_TextColor: hsl(var(--destructive)) !important;
+  --sapButton_Attention_Background: hsl(var(--brass) / 0.16) !important;
+  --sapButton_Attention_BorderColor: hsl(var(--brass) / 0.35) !important;
+  --sapButton_Attention_TextColor: hsl(38 42% 31%) !important;
 
   /* ---- form fields --------------------------------------------------- */
-  --sapField_Background: hsl(var(--card));
-  --sapField_BorderColor: hsl(var(--input));
-  --sapField_TextColor: hsl(var(--foreground));
-  --sapField_PlaceholderTextColor: hsl(var(--muted-foreground));
+  --sapField_Background: hsl(var(--card)) !important;
+  --sapField_BorderColor: hsl(var(--input)) !important;
+  --sapField_TextColor: hsl(var(--foreground)) !important;
+  --sapField_PlaceholderTextColor: hsl(var(--muted-foreground)) !important;
 
   /* ---- lists / tables ------------------------------------------------- */
-  --sapList_Background: hsl(var(--card));
-  --sapList_BorderColor: hsl(var(--border));
-  --sapList_TextColor: hsl(var(--foreground));
-  --sapList_HeaderBackground: hsl(var(--secondary));
+  --sapList_Background: hsl(var(--card)) !important;
+  --sapList_BorderColor: hsl(var(--border)) !important;
+  --sapList_TextColor: hsl(var(--foreground)) !important;
+  --sapList_HeaderBackground: hsl(var(--secondary)) !important;
 
   /* ---- semantic status colours — Due/Paid/Advance, oversell warnings, etc. */
-  --sapPositiveColor: hsl(var(--success));
-  --sapNegativeColor: hsl(var(--destructive));
-  --sapErrorColor: hsl(var(--destructive));
-  --sapCriticalColor: hsl(var(--brass));
-  --sapInformativeColor: hsl(var(--primary));
+  --sapPositiveColor: hsl(var(--success)) !important;
+  --sapNegativeColor: hsl(var(--destructive)) !important;
+  --sapErrorColor: hsl(var(--destructive)) !important;
+  --sapCriticalColor: hsl(var(--brass)) !important;
+  --sapInformativeColor: hsl(var(--primary)) !important;
 }

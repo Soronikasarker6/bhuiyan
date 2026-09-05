@@ -101,49 +101,51 @@ export function ProductManager({
             return (
               <li
                 key={product.id}
-                className="flex flex-wrap items-start gap-3 rounded-lg border border-border bg-secondary/40 px-3 py-2.5"
+                className="flex flex-col gap-3 rounded-lg border border-border bg-secondary/40 px-3 py-2.5 sm:flex-row sm:items-start"
               >
-                <span
-                  className={cn(
-                    'grid h-8 w-8 shrink-0 place-items-center rounded-lg',
-                    product.active ? 'bg-primary-50 text-primary-700' : 'bg-secondary text-muted-foreground',
-                  )}
-                >
-                  <Box className="h-4 w-4" aria-hidden />
-                </span>
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <span
+                    className={cn(
+                      'grid h-8 w-8 shrink-0 place-items-center rounded-lg',
+                      product.active ? 'bg-primary-50 text-primary-700' : 'bg-secondary text-muted-foreground',
+                    )}
+                  >
+                    <Box className="h-4 w-4" aria-hidden />
+                  </span>
 
-                <div className="min-w-0 flex-1">
-                  {editing ? (
-                    <EditRow
-                      product={product}
-                      onCancel={() => setEditingId(null)}
-                      onSave={(patch) => {
-                        save(product, patch)
-                        setEditingId(null)
-                        toast.success('Product updated')
-                      }}
-                    />
-                  ) : (
-                    <>
-                      <p className="flex flex-wrap items-center gap-2 text-[0.8125rem] font-semibold">
-                        {product.name}
-                        <span className="rounded bg-card px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
-                          {product.code}
-                        </span>
-                        {!product.active && <Badge variant="outline">Inactive</Badge>}
-                      </p>
-                      {product.description && (
-                        <p className="mt-0.5 text-xs text-muted-foreground">{product.description}</p>
-                      )}
-                      <p className="mt-0.5 text-2xs text-muted-foreground">
-                        Unit: {product.unit} · {used === 0 ? 'No records yet' : `${used} records`}
-                      </p>
-                    </>
-                  )}
+                  <div className="min-w-0 flex-1">
+                    {editing ? (
+                      <EditRow
+                        product={product}
+                        onCancel={() => setEditingId(null)}
+                        onSave={(patch) => {
+                          save(product, patch)
+                          setEditingId(null)
+                          toast.success('Product updated')
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <p className="flex flex-wrap items-center gap-2 text-[0.8125rem] font-semibold">
+                          {product.name}
+                          <span className="rounded bg-card px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+                            {product.code}
+                          </span>
+                          {!product.active && <Badge variant="outline">Inactive</Badge>}
+                        </p>
+                        {product.description && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">{product.description}</p>
+                        )}
+                        <p className="mt-0.5 text-2xs text-muted-foreground">
+                          Unit: {product.unit} · {used === 0 ? 'No records yet' : `${used} records`}
+                        </p>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {!editing && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2 self-start">
                     <label className="flex items-center gap-1.5 text-2xs text-muted-foreground">
                       Active
                       <Switch

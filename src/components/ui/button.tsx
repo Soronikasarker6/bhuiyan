@@ -27,7 +27,7 @@ const buttonVariants = cva(
   'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ' +
     'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ' +
     'focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 ' +
-    '[&_svg]:size-4 [&_svg]:shrink-0',
+    '[&_svg]:size-3.5 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
@@ -111,7 +111,12 @@ const Button = React.forwardRef<HTMLElement, ButtonProps>(function Button(
     <UI5Button
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ref={ref as any}
-      className={cn(SIZE_CLASS[size ?? 'default'], className)}
+      // The lucide icon passed as a child projects through ui5-button's
+      // default slot but stays a light-DOM node, so this selector still
+      // reaches it — without it, an unconstrained lucide `<svg>` renders at
+      // its own default size (24px) inside a button barely taller than
+      // that, which is exactly the "oversized icon" look this fixes.
+      className={cn('[&_svg]:size-3.5 [&_svg]:shrink-0', SIZE_CLASS[size ?? 'default'], className)}
       design={DESIGN[variant ?? 'default']}
       disabled={disabled}
       loading={loading}
