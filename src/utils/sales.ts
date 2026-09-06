@@ -24,15 +24,27 @@ import { kgToTons } from './imports'
  * product. Every figure below is computed from the header and its items;
  * nothing here is a second source of truth for an amount already on a line.
  *
- *     Weight (Ton) = Bags × Bag Weight (kg) / 1000
- *     Amount       = Weight (Ton) × Rate / Ton
+ *     Calculated Ton = Bags × Bag Weight (kg) / 1000
+ *     Weight (Ton)   = actualWeightTon ?? Calculated Ton   (the billable figure)
+ *     Amount         = Weight (Ton) × Rate / Ton
  *
  * Bags is the figure a person actually counts and the figure stock is
- * deducted by; weight and amount are always derived from it, never entered.
+ * deducted by — that part is untouched by any of this. Weight starts as a
+ * calculation from bags, but real bags are rarely exactly their configured
+ * weight, so the truck/weighbridge's actual reading (`actualWeightTon`) can
+ * override it; amount always follows whichever weight is actually billable,
+ * never the theoretical one.
  */
 
+/** The theoretical weight from bag count alone — never what gets billed once an actual reading exists. */
 export function saleItemWeightTon(bags: number, bagKg: number): number {
   return kgToTons((Number(bags) || 0) * (Number(bagKg) || 0))
+}
+
+/** `actualWeightTon` if a positive one was entered, else the calculated figure — what actually gets billed. */
+export function billableWeightTon(calculatedWeightTon: number, actualWeightTon?: number): number {
+  const actual = Number(actualWeightTon)
+  return actual > 0 ? actual : calculatedWeightTon
 }
 
 export function saleItemAmount(weightTon: number, ratePerTon: number): number {
@@ -50,13 +62,15 @@ export function buildSaleItemRows(
 ): SaleItemRow[] {
   return items.map((item) => {
     const bagKg = bagKgOf(meshSizes, item.meshSizeId)
-    const weightTon = saleItemWeightTon(item.bags, bagKg)
+    const calculatedWeightTon = saleItemWeightTon(item.bags, bagKg)
+    const weightTon = billableWeightTon(calculatedWeightTon, item.actualWeightTon)
 
     return {
       ...item,
       productName: productNameOf(products, item.productId),
       meshSizeName: meshSizeNameOf(meshSizes, item.meshSizeId),
       bagKg,
+      calculatedWeightTon,
       weightTon,
       amount: saleItemAmount(weightTon, item.ratePerTon),
     }

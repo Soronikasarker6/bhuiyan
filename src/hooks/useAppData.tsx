@@ -41,6 +41,7 @@ const AppDataContext = createContext<AppDataValue | null>(null)
 const EMPTY: AppData = {
   products: [],
   meshSizes: [],
+  unitsOfMeasure: [],
   rawMaterialImports: [],
   productionEntries: [],
   customers: [],

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Customer, CustomerTransaction, MeshSize, Product, Sale, SaleItem } from '@/types'
 import {
+  billableWeightTon,
   buildSaleItemRows,
   buildSaleSummaries,
   buildSaleTransactions,
@@ -44,6 +45,49 @@ describe('sale items', () => {
 
     const rows = buildSaleItemRows(items, PRODUCTS, MESH)
     expect(itemsTotal(rows)).toBe(72_500)
+  })
+})
+
+describe('decimal ton — calculated weight is never rounded to a whole ton', () => {
+  it('454 bags @ 45kg = 20.43 Ton, not 20', () => {
+    expect(saleItemWeightTon(454, 45)).toBeCloseTo(20.43, 5)
+  })
+
+  it('every worked example in the spec comes out exact', () => {
+    expect(saleItemWeightTon(454, 45)).toBeCloseTo(20.43, 5)
+    expect(saleItemWeightTon(400, 50)).toBeCloseTo(20.0, 5)
+    expect(saleItemWeightTon(390, 50)).toBeCloseTo(19.5, 5)
+    expect(saleItemWeightTon(500, 25)).toBeCloseTo(12.5, 5)
+  })
+})
+
+describe('actual/billable ton override — the weighbridge figure, not the calculated one', () => {
+  it('falls back to the calculated ton when no actual reading is given', () => {
+    const calculated = saleItemWeightTon(454, 45) // 20.43
+    expect(billableWeightTon(calculated, undefined)).toBeCloseTo(20.43, 5)
+    expect(billableWeightTon(calculated, 0)).toBeCloseTo(20.43, 5)
+  })
+
+  it('spec example: calculated 20.43, weighbridge reads 20.18 — amount bills on 20.18', () => {
+    // The shared MESH fixture above is 50kg; this test needs its own 45kg
+    // mesh so the calculated figure actually matches the spec's example.
+    const mesh45: MeshSize[] = [{ id: 'm45', name: '400', bagKg: 45, active: true, createdAt: '' }]
+    const items: SaleItem[] = [
+      { id: 'i1', saleId: 's1', productId: 'p1', meshSizeId: 'm45', bags: 454, ratePerTon: 5_000, actualWeightTon: 20.18 },
+    ]
+
+    const [row] = buildSaleItemRows(items, PRODUCTS, mesh45)
+    expect(row!.calculatedWeightTon).toBeCloseTo(20.43, 5)
+    expect(row!.weightTon).toBeCloseTo(20.18, 5)
+    expect(row!.amount).toBeCloseTo(20.18 * 5_000, 2) // 100,900
+  })
+
+  it('bags/stock deduction is untouched by the override — it is still counted in bags, never ton', () => {
+    const items: SaleItem[] = [
+      { id: 'i1', saleId: 's1', productId: 'p1', meshSizeId: 'm1', bags: 454, ratePerTon: 5_000, actualWeightTon: 20.18 },
+    ]
+    const [row] = buildSaleItemRows(items, PRODUCTS, MESH)
+    expect(row!.bags).toBe(454)
   })
 })
 

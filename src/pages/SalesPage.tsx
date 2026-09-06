@@ -10,12 +10,20 @@ import { Button } from '@/components/ui/button'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { SaleForm, type SaleSubmit } from '@/features/sales/SaleForm'
 import { SalesTable } from '@/features/sales/SalesTable'
-import { usePrint } from '@/features/reports/PrintSheet'
+import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
 import type { Sale, SaleItem, SaleSummary } from '@/types'
 import { activeProducts, activeMeshSizes, bagKgOf } from '@/utils/products'
-import { buildSaleSummaries, buildSaleTransactions, nextInvoiceNo, saleItemAmount, saleItemWeightTon } from '@/utils/sales'
+import {
+  billableWeightTon,
+  buildSaleSummaries,
+  buildSaleTransactions,
+  nextInvoiceNo,
+  saleItemAmount,
+  saleItemWeightTon,
+} from '@/utils/sales'
 import { availableBags as availableBagsFor } from '@/utils/productionStock'
+import { downloadTextFile } from '@/utils/download'
 import { formatCurrency, formatDate, formatNumber, formatTons, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
 
@@ -100,10 +108,18 @@ export default function SalesPage() {
         meshSizeId: item.meshSizeId,
         bags: item.bags,
         ratePerTon: item.ratePerTon,
+        // The weighbridge/scale figure, when it differs from the calculated
+        // bag-weight arithmetic — this is what the invoice is actually
+        // billed on, so it has to survive the save, not just the form.
+        actualWeightTon: item.actualWeightTon,
       }))
 
+      // Billable weight (actual reading if given, else calculated) is what
+      // the invoice, the customer ledger debit and everything downstream
+      // must agree on — never the theoretical bag-weight figure alone.
       const totalAmount = items.reduce((sum, item) => {
-        const weightTon = saleItemWeightTon(item.bags, bagKgOf(data.meshSizes, item.meshSizeId))
+        const calculatedWeightTon = saleItemWeightTon(item.bags, bagKgOf(data.meshSizes, item.meshSizeId))
+        const weightTon = billableWeightTon(calculatedWeightTon, item.actualWeightTon)
         return sum + saleItemAmount(weightTon, item.ratePerTon)
       }, 0)
 
@@ -138,37 +154,46 @@ export default function SalesPage() {
     [data.sales, data.saleItems, data.customerTransactions, updateMany],
   )
 
-  const printInvoice = useCallback(
+  const buildInvoicePayload = useCallback(
+    (sale: SaleSummary): PrintPayload => ({
+      title: `Invoice ${sale.invoiceNo}`,
+      subtitle: `${sale.customerName}${sale.truckNo ? ` · Truck ${sale.truckNo}` : ''}`,
+      meta: [
+        { label: 'Date', value: formatDate(sale.date) },
+        { label: 'Paid', value: formatCurrency(sale.amountPaid) },
+        { label: 'Due', value: formatCurrency(sale.amountDue) },
+      ],
+      columns: [
+        { key: 'product', label: 'Product' },
+        { key: 'mesh', label: 'Mesh' },
+        { key: 'bags', label: 'Bags', align: 'right' },
+        { key: 'weight', label: 'Weight (Ton)', align: 'right' },
+        { key: 'rate', label: 'Rate / Ton', align: 'right' },
+        { key: 'amount', label: 'Amount', align: 'right' },
+      ],
+      rows: sale.items.map((item) => ({
+        product: item.productName,
+        mesh: item.meshSizeName,
+        bags: formatNumber(item.bags),
+        weight: formatTons(item.weightTon),
+        rate: formatCurrency(item.ratePerTon),
+        amount: formatCurrency(item.amount),
+      })),
+      totals: { product: 'Total', amount: formatCurrency(sale.totalAmount) },
+      footnote: sale.notes,
+    }),
+    [],
+  )
+
+  const printInvoice = useCallback((sale: SaleSummary) => print(buildInvoicePayload(sale)), [buildInvoicePayload, print])
+
+  const exportInvoiceCsv = useCallback(
     (sale: SaleSummary) => {
-      print({
-        title: `Invoice ${sale.invoiceNo}`,
-        subtitle: `${sale.customerName}${sale.truckNo ? ` · Truck ${sale.truckNo}` : ''}`,
-        meta: [
-          { label: 'Date', value: formatDate(sale.date) },
-          { label: 'Paid', value: formatCurrency(sale.amountPaid) },
-          { label: 'Due', value: formatCurrency(sale.amountDue) },
-        ],
-        columns: [
-          { key: 'product', label: 'Product' },
-          { key: 'mesh', label: 'Mesh' },
-          { key: 'bags', label: 'Bags', align: 'right' },
-          { key: 'weight', label: 'Weight (Ton)', align: 'right' },
-          { key: 'rate', label: 'Rate / Ton', align: 'right' },
-          { key: 'amount', label: 'Amount', align: 'right' },
-        ],
-        rows: sale.items.map((item) => ({
-          product: item.productName,
-          mesh: item.meshSizeName,
-          bags: formatNumber(item.bags),
-          weight: formatTons(item.weightTon),
-          rate: formatCurrency(item.ratePerTon),
-          amount: formatCurrency(item.amount),
-        })),
-        totals: { product: 'Total', amount: formatCurrency(sale.totalAmount) },
-        footnote: sale.notes,
-      })
+      const csv = printPayloadToCsv(buildInvoicePayload(sale))
+      downloadTextFile(`invoice-${sale.invoiceNo}.csv`, csv, 'text/csv;charset=utf-8;')
+      toast.success('Invoice exported', { description: `${sale.invoiceNo} saved as CSV.` })
     },
-    [print],
+    [buildInvoicePayload],
   )
 
   if (loading) return <PageSkeleton />
@@ -215,7 +240,7 @@ export default function SalesPage() {
         />
       </div>
 
-      <SalesTable sales={sales} onDelete={deleteSale} onPrint={printInvoice} />
+      <SalesTable sales={sales} onDelete={deleteSale} onExportCsv={exportInvoiceCsv} onExportPdf={printInvoice} />
     </div>
   )
 }

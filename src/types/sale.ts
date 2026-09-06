@@ -21,18 +21,39 @@ export interface SaleItem {
   meshSizeId: ID
   bags: number
   ratePerTon: number
+  /**
+   * The truck/weighbridge's actual measured tonnage for this line, when it
+   * differs from `bags × bag weight`. Real bags are rarely exactly the
+   * configured weight — a "50kg" bag might scale at 50.2kg — so the
+   * calculated figure is a starting point, not the figure billed.
+   *
+   * Undefined means "use the calculated weight as-is"; a stored value here
+   * always wins once set, however small the difference.
+   */
+  actualWeightTon?: number
 }
 
 /**
  * One line item with its weight and amount resolved. Derived, never stored:
  *
- *     Weight (Ton) = Bags × Bag Weight (kg) / 1000
- *     Amount       = Weight (Ton) × Rate / Ton
+ *     Calculated Ton = Bags × Bag Weight (kg) / 1000
+ *     Weight (Ton)   = actualWeightTon ?? Calculated Ton   — the *billable* figure
+ *     Amount         = Weight (Ton) × Rate / Ton
+ *
+ * `weightTon` is deliberately the billable figure, not the calculated one —
+ * every consumer downstream (amount, the customer ledger, cost of goods
+ * sold, reports) reads `weightTon` and must see what the customer was
+ * actually charged for, not the theoretical bag-weight arithmetic.
+ * `calculatedWeightTon` is kept alongside it purely so the sale form can
+ * show both figures side by side.
  */
 export interface SaleItemRow extends SaleItem {
   productName: string
   meshSizeName: string
   bagKg: number
+  /** Bags × Bag Weight ÷ 1000 — the theoretical figure, never what's billed. */
+  calculatedWeightTon: number
+  /** The billable weight — `actualWeightTon` if set, else `calculatedWeightTon`. */
   weightTon: number
   amount: number
 }

@@ -3,11 +3,9 @@ import {
   BarChart3,
   BookText,
   Boxes,
-  Download,
   FileText,
   Landmark,
   PiggyBank,
-  Printer,
   Receipt,
   Scale,
   Ship,
@@ -31,7 +29,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { PageSkeleton } from '@/components/PageSkeleton'
-import { usePrint, type PrintPayload } from '@/features/reports/PrintSheet'
+import { ExportMenu } from '@/components/ExportMenu'
+import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
 import type { PaymentStatus } from '@/types'
 import {
@@ -61,6 +60,7 @@ import {
   transactionsForCustomer,
 } from '@/utils/customerLedger'
 import { yearlyProfit, yearlyProfitTotals } from '@/utils/profit'
+import { downloadTextFile } from '@/utils/download'
 import {
   MONTHS,
   firstDayOfMonth,
@@ -824,31 +824,8 @@ export default function ReportsPage() {
   // ---------------------------------------------------------------- export
 
   const exportCsv = (report: ReportDefinition) => {
-    const payload = report.build()
-
-    // Quoting everything is the safe choice: names and details contain
-    // commas, and a report that breaks a spreadsheet is not a report.
-    const escape = (value: string) => `"${String(value ?? '').replace(/"/g, '""')}"`
-
-    const lines = [
-      payload.columns.map((column) => escape(column.label)).join(','),
-      ...payload.rows.map((row) => payload.columns.map((column) => escape(row[column.key] ?? '')).join(',')),
-    ]
-
-    if (payload.totals) {
-      lines.push(payload.columns.map((column) => escape(payload.totals?.[column.key] ?? '')).join(','))
-    }
-
-    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${report.name.replace(/\s+/g, '-').toLowerCase()}-${from}-to-${to}.csv`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-
+    const csv = printPayloadToCsv(report.build())
+    downloadTextFile(`${report.name.replace(/\s+/g, '-').toLowerCase()}-${from}-to-${to}.csv`, csv, 'text/csv;charset=utf-8;')
     toast.success('Report exported', { description: `${report.name} saved as CSV.` })
   }
 
@@ -981,16 +958,11 @@ export default function ReportsPage() {
 
                   <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3">
                     <Badge variant={report.count > 0 ? 'outline' : 'destructive'}>{report.count > 0 ? `${report.count} rows` : 'No data'}</Badge>
-                    <div className="flex gap-1.5">
-                      <Button variant="outline" size="sm" disabled={report.count === 0} onClick={() => exportCsv(report)}>
-                        <Download />
-                        CSV
-                      </Button>
-                      <Button size="sm" disabled={report.count === 0} onClick={() => print(report.build())}>
-                        <Printer />
-                        Print
-                      </Button>
-                    </div>
+                    <ExportMenu
+                      onCsv={() => exportCsv(report)}
+                      onPdf={() => print(report.build())}
+                      disabled={report.count === 0}
+                    />
                   </div>
                 </div>
               ))}

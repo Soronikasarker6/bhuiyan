@@ -1,23 +1,31 @@
 import { useMemo, useState } from 'react'
-import { BookText, Printer } from 'lucide-react'
+import { BookText } from 'lucide-react'
+import { toast } from 'sonner'
 import { PageHeader, Section } from '@/components/PageHeader'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Money } from '@/components/Money'
-import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
+import { ExportMenu } from '@/components/ExportMenu'
 import { CustomerLedgerTable } from '@/features/customerLedger/CustomerLedgerTable'
 import { usePrint } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
 import type { CustomerTxnType } from '@/types'
 import {
   buildCustomerLedgerRows,
+  buildCustomerLedgerStatementRows,
+  CUSTOMER_LEDGER_STATEMENT_COLUMNS,
   customerBalance,
+  customerLedgerStatementCsv,
+  customerLedgerStatementPrintRows,
   customerNameOf,
+  dueOrAdvanceLabel,
   filterCustomerTransactions,
 } from '@/utils/customerLedger'
-import { formatCurrency, formatDate } from '@/utils/format'
+import { buildSaleSummaries, filterSaleSummaries } from '@/utils/sales'
+import { downloadTextFile } from '@/utils/download'
+import { formatCurrency, todayISO } from '@/utils/format'
 
 const ALL = '__all__'
 
@@ -66,29 +74,77 @@ export default function CustomerLedgerPage() {
 
   const netBalance = useMemo(() => customerBalance(data.customerTransactions), [data.customerTransactions])
 
-  const printLedger = () => {
+  // ---------------------------------------------------------------- export
+  //
+  // The bill-book export (CSV/PDF) is a different shape from the
+  // bank-statement table above — one row per sale line item, not per
+  // transaction — so it's built from the sales themselves, scoped only by
+  // customer and date range. It deliberately ignores the `type` dropdown:
+  // that filter belongs to the bank-statement view, and a bill-book export
+  // is definitionally about sales and payments.
+  const allSales = useMemo(
+    () =>
+      buildSaleSummaries(
+        data.sales,
+        data.saleItems,
+        data.products,
+        data.meshSizes,
+        data.customers,
+        data.customerTransactions,
+      ),
+    [data.sales, data.saleItems, data.products, data.meshSizes, data.customers, data.customerTransactions],
+  )
+
+  const exportSales = useMemo(
+    () =>
+      filterSaleSummaries(allSales, {
+        customerId: customerId === ALL ? undefined : customerId,
+        from: from || undefined,
+        to: to || undefined,
+      }),
+    [allSales, customerId, from, to],
+  )
+
+  const exportPayments = useMemo(
+    () =>
+      filterCustomerTransactions(data.customerTransactions, {
+        customerId: customerId === ALL ? undefined : customerId,
+        type: 'payment',
+        from: from || undefined,
+        to: to || undefined,
+      }),
+    [data.customerTransactions, customerId, from, to],
+  )
+
+  const statementRows = useMemo(
+    () => buildCustomerLedgerStatementRows(exportSales, exportPayments, (cid) => customerNameOf(data.customers, cid)),
+    [exportSales, exportPayments, data.customers],
+  )
+
+  const statementDue = useMemo(() => {
+    const totalAmount = exportSales.reduce((sum, s) => sum + s.totalAmount, 0)
+    const totalCredit = exportPayments.reduce((sum, t) => sum + t.credit, 0)
+    const balance = totalAmount - totalCredit
+    return { totalDue: Math.max(0, balance), availableAdvance: Math.max(0, -balance) }
+  }, [exportSales, exportPayments])
+
+  const exportStatementCsv = () => {
+    const csv = customerLedgerStatementCsv(statementRows, statementDue)
+    const label = customerId === ALL ? 'all-customers' : customerNameOf(data.customers, customerId).replace(/\s+/g, '-').toLowerCase()
+    downloadTextFile(`customer-ledger-${label}-${todayISO()}.csv`, csv, 'text/csv;charset=utf-8;')
+    toast.success('Ledger exported', { description: 'Statement saved as CSV.' })
+  }
+
+  const exportStatementPdf = () => {
+    const totalAmount = statementRows.reduce((sum, r) => sum + (r.amount ?? 0), 0)
+    const totalCredit = statementRows.reduce((sum, r) => sum + (r.credit ?? 0), 0)
     print({
       title: 'Customer Ledger',
-      subtitle: `${rows.length} entries${customerId !== ALL ? ` · ${customerNameOf(data.customers, customerId)}` : ''}`,
-      columns: [
-        { key: 'date', label: 'Date' },
-        { key: 'reference', label: 'Reference' },
-        { key: 'customer', label: 'Customer' },
-        { key: 'description', label: 'Description' },
-        { key: 'debit', label: 'Debit', align: 'right' },
-        { key: 'credit', label: 'Credit', align: 'right' },
-        { key: 'balance', label: 'Balance', align: 'right' },
-      ],
-      rows: [...rows].reverse().map((r) => ({
-        date: formatDate(r.date),
-        reference: r.reference,
-        customer: r.customerName,
-        description: r.description,
-        debit: r.debit > 0 ? formatCurrency(r.debit) : '',
-        credit: r.credit > 0 ? formatCurrency(r.credit) : '',
-        balance: formatCurrency(r.balance),
-      })),
-      totals: { date: 'Total', debit: formatCurrency(totals.debit), credit: formatCurrency(totals.credit) },
+      subtitle: `${statementRows.length} entries${customerId !== ALL ? ` · ${customerNameOf(data.customers, customerId)}` : ''}`,
+      columns: CUSTOMER_LEDGER_STATEMENT_COLUMNS,
+      rows: customerLedgerStatementPrintRows(statementRows),
+      totals: { date: '', detail: 'Total', total: formatCurrency(totalAmount), credit: formatCurrency(totalCredit) },
+      footnote: dueOrAdvanceLabel(statementDue),
     })
   }
 
@@ -99,12 +155,7 @@ export default function CustomerLedgerPage() {
       <PageHeader
         title="Customer Ledger"
         description="Every sale and payment, across every customer — a running balance, like a bank statement."
-        actions={
-          <Button variant="outline" size="sm" onClick={printLedger} disabled={rows.length === 0}>
-            <Printer />
-            Print
-          </Button>
-        }
+        actions={<ExportMenu onCsv={exportStatementCsv} onPdf={exportStatementPdf} disabled={statementRows.length === 0} />}
       />
 
       <StatGrid columns={3} className="mb-4">

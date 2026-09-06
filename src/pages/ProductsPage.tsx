@@ -89,6 +89,7 @@ export default function ProductsPage() {
           <div className="pt-4">
             <ProductManager
               products={data.products}
+              unitsOfMeasure={data.unitsOfMeasure}
               usageOf={(id) => productUsage.get(id) ?? 0}
               onChange={(next) => update('products', next)}
             />

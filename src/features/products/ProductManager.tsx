@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Box, Package, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Product } from '@/types'
+import type { Product, UnitOfMeasure } from '@/types'
 import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Field } from '@/components/Field'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge, Switch } from '@/components/ui/misc'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { now, uid } from '@/utils/id'
@@ -22,18 +23,22 @@ import { cn } from '@/utils/cn'
  */
 export function ProductManager({
   products,
+  unitsOfMeasure,
   usageOf,
   onChange,
 }: {
   products: Product[]
+  /** From Settings → Units of Measure — offered as a dropdown, never free text. */
+  unitsOfMeasure: UnitOfMeasure[]
   usageOf: (productId: string) => number
   onChange: (next: Product[]) => void
 }) {
+  const defaultUnit = unitsOfMeasure[0]?.name ?? 'Ton'
   const [editingId, setEditingId] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Product | null>(null)
-  const [form, setForm] = useState({ name: '', code: '', description: '', unit: 'Ton' })
+  const [form, setForm] = useState({ name: '', code: '', description: '', unit: defaultUnit })
 
-  const resetForm = () => setForm({ name: '', code: '', description: '', unit: 'Ton' })
+  const resetForm = () => setForm({ name: '', code: '', description: '', unit: defaultUnit })
 
   const add = (event: React.FormEvent) => {
     event.preventDefault()
@@ -117,6 +122,7 @@ export function ProductManager({
                     {editing ? (
                       <EditRow
                         product={product}
+                        unitsOfMeasure={unitsOfMeasure}
                         onCancel={() => setEditingId(null)}
                         onSave={(patch) => {
                           save(product, patch)
@@ -189,8 +195,19 @@ export function ProductManager({
             placeholder="e.g. VWL"
           />
         </Field>
-        <Field label="Unit">
-          <Input value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} placeholder="Ton" />
+        <Field label="Unit" hint={unitsOfMeasure.length === 0 ? 'Add one in Settings → Units of Measure' : undefined}>
+          <Select value={form.unit} onValueChange={(value) => setForm((f) => ({ ...f, unit: value }))}>
+            <SelectTrigger>
+              <SelectValue placeholder="Unit" />
+            </SelectTrigger>
+            <SelectContent>
+              {unitsOfMeasure.map((unit) => (
+                <SelectItem key={unit.id} value={unit.name}>
+                  {unit.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="Description (optional)">
           <Input
@@ -222,10 +239,12 @@ export function ProductManager({
 
 function EditRow({
   product,
+  unitsOfMeasure,
   onSave,
   onCancel,
 }: {
   product: Product
+  unitsOfMeasure: UnitOfMeasure[]
   onSave: (patch: Partial<Product>) => void
   onCancel: () => void
 }) {
@@ -234,12 +253,30 @@ function EditRow({
   const [description, setDescription] = useState(product.description ?? '')
   const [unit, setUnit] = useState(product.unit)
 
+  // A product's current unit might not be in today's list any more (renamed
+  // out from under it, or never added) — keep it selectable regardless, so
+  // editing the name/code doesn't force a unit change no one asked for.
+  const unitOptions = unitsOfMeasure.some((u) => u.name === unit)
+    ? unitsOfMeasure
+    : [...unitsOfMeasure, { id: '__current__', name: unit, createdAt: '' }]
+
   return (
     <div className="space-y-2">
       <div className="grid gap-2 sm:grid-cols-2">
         <Input value={name} onChange={(e) => setName(e.target.value)} aria-label="Product name" autoFocus />
         <Input value={code} onChange={(e) => setCode(e.target.value)} aria-label="Product code" />
-        <Input value={unit} onChange={(e) => setUnit(e.target.value)} aria-label="Unit" />
+        <Select value={unit} onValueChange={setUnit}>
+          <SelectTrigger aria-label="Unit">
+            <SelectValue placeholder="Unit" />
+          </SelectTrigger>
+          <SelectContent>
+            {unitOptions.map((u) => (
+              <SelectItem key={u.id} value={u.name}>
+                {u.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}

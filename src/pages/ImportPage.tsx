@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Factory, Package, Printer, Scale, TriangleAlert } from 'lucide-react'
+import { Factory, Package, Scale, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { TabContainer } from '@ui5/webcomponents-react/TabContainer'
 import { Tab } from '@ui5/webcomponents-react/Tab'
@@ -11,16 +11,18 @@ import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PageSkeleton } from '@/components/PageSkeleton'
+import { ExportMenu } from '@/components/ExportMenu'
 import { ImportEntryForm, type ImportSubmit } from '@/features/imports/ImportEntryForm'
 import { ImportTable } from '@/features/imports/ImportTable'
 import { WastageForm, type WastageSubmit } from '@/features/imports/WastageForm'
 import { WastageTable } from '@/features/imports/WastageTable'
-import { usePrint } from '@/features/reports/PrintSheet'
+import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
 import type { RawMaterialImport, WastageEntry } from '@/types'
 import { activeProducts, bagKgOf } from '@/utils/products'
 import { buildImportRows, importTotals, todaysImports } from '@/utils/imports'
 import { allRawMaterialStock, buildWastageRows } from '@/utils/rawMaterial'
+import { downloadTextFile } from '@/utils/download'
 import { formatDate, formatNumber, formatTons, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
 
@@ -157,8 +159,8 @@ export default function ImportPage() {
     [data.wastageEntries, update],
   )
 
-  const printRegister = useCallback(() => {
-    print({
+  const buildRegisterPayload = useCallback(
+    (): PrintPayload => ({
       title: 'Raw Material Import Register',
       subtitle: `${rows.length} entries`,
       meta: [
@@ -195,8 +197,16 @@ export default function ImportPage() {
         net: formatNumber(totals.netWeightKg),
         ton: formatTons(totals.netWeightTon),
       },
-    })
-  }, [rows, totals, print])
+    }),
+    [rows, totals],
+  )
+
+  const printRegister = useCallback(() => print(buildRegisterPayload()), [buildRegisterPayload, print])
+
+  const exportRegisterCsv = useCallback(() => {
+    downloadTextFile(`import-register-${todayISO()}.csv`, printPayloadToCsv(buildRegisterPayload()), 'text/csv;charset=utf-8;')
+    toast.success('Register exported', { description: 'Saved as CSV.' })
+  }, [buildRegisterPayload])
 
   if (loading) return <PageSkeleton />
 
@@ -226,12 +236,7 @@ export default function ImportPage() {
       <PageHeader
         title="Raw Material Import"
         description="Limestone received from a ship, weighed gross and tare — net weight is worked out for you."
-        actions={
-          <Button variant="outline" size="sm" onClick={printRegister} disabled={rows.length === 0}>
-            <Printer />
-            Print register
-          </Button>
-        }
+        actions={<ExportMenu onCsv={exportRegisterCsv} onPdf={printRegister} disabled={rows.length === 0} />}
       />
 
       <StatGrid columns={4} className="mb-4">

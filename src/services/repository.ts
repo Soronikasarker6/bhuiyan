@@ -24,6 +24,7 @@ import { seedData } from '@/data/seed'
 const KEYS = {
   products: 'products',
   meshSizes: 'mesh-sizes',
+  unitsOfMeasure: 'units-of-measure',
   rawMaterialImports: 'production-entries',
   productionEntries: 'mesh-production-entries',
   customers: 'customers',
@@ -63,6 +64,7 @@ export const repository = {
     return {
       products: storageService.get(KEYS.products) ?? fallback.products,
       meshSizes: storageService.get(KEYS.meshSizes) ?? fallback.meshSizes,
+      unitsOfMeasure: storageService.get(KEYS.unitsOfMeasure) ?? fallback.unitsOfMeasure,
       rawMaterialImports: storageService.get(KEYS.rawMaterialImports) ?? [],
       productionEntries: storageService.get(KEYS.productionEntries) ?? [],
       customers: storageService.get(KEYS.customers) ?? [],

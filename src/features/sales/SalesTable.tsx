@@ -1,10 +1,11 @@
 import { Fragment, useState } from 'react'
-import { ChevronDown, ChevronRight, Printer, Receipt, Search, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Receipt, Search, Trash2 } from 'lucide-react'
 import type { SaleSummary } from '@/types'
 import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/misc'
+import { ExportMenu } from '@/components/ExportMenu'
 import { Money } from '@/components/Money'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { SortableHead } from '@/components/SortableHead'
@@ -19,11 +20,13 @@ const PAGE_SIZE = 20
 export function SalesTable({
   sales,
   onDelete,
-  onPrint,
+  onExportCsv,
+  onExportPdf,
 }: {
   sales: SaleSummary[]
   onDelete: (saleId: string) => void
-  onPrint: (sale: SaleSummary) => void
+  onExportCsv: (sale: SaleSummary) => void
+  onExportPdf: (sale: SaleSummary) => void
 }) {
   const [page, setPage] = useState(0)
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -109,9 +112,12 @@ export function SalesTable({
                       </TableCell>
                       <TableCell numeric onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">
-                          <Button size="icon-sm" variant="ghost" onClick={() => onPrint(sale)} aria-label="Print invoice">
-                            <Printer />
-                          </Button>
+                          <ExportMenu
+                            iconOnly
+                            label="Export invoice"
+                            onCsv={() => onExportCsv(sale)}
+                            onPdf={() => onExportPdf(sale)}
+                          />
                           <Button
                             size="icon-sm"
                             variant="ghost"

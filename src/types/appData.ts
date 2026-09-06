@@ -1,4 +1,5 @@
 import type { Product, MeshSize } from './product'
+import type { UnitOfMeasure } from './unitOfMeasure'
 import type { RawMaterialImport, WastageEntry } from './rawMaterialImport'
 import type { ProductionEntry } from './production'
 import type { Customer } from './customer'
@@ -9,6 +10,8 @@ import type { Account, Category, Transaction, LedgerClosing } from './ledger'
 export interface AppData {
   products: Product[]
   meshSizes: MeshSize[]
+  /** The units a product can be sold/counted in — Ton, KG, Bag, … */
+  unitsOfMeasure: UnitOfMeasure[]
   /** Raw material received from ships — gross/tare/net at the yard, priced. */
   rawMaterialImports: RawMaterialImport[]
   /** Raw material lost during processing or handling. */

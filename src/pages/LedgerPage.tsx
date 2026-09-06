@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowDownLeft, ArrowUpRight, Landmark, Printer, Wallet } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Landmark, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader, Section } from '@/components/PageHeader'
 import { StatCard, StatGrid } from '@/components/StatCard'
@@ -8,10 +8,11 @@ import { Money } from '@/components/Money'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
 import { PageSkeleton } from '@/components/PageSkeleton'
+import { ExportMenu } from '@/components/ExportMenu'
 import { TransactionForm, type TransactionSubmit } from '@/features/ledger/TransactionForm'
 import { LedgerTable } from '@/features/ledger/LedgerTable'
 import { BalanceSummary } from '@/features/dashboard/BalanceSummary'
-import { usePrint } from '@/features/reports/PrintSheet'
+import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
 import type { Transaction } from '@/types'
 import {
@@ -21,6 +22,7 @@ import {
   summariseRows,
   totalBalances,
 } from '@/utils/ledger'
+import { downloadTextFile } from '@/utils/download'
 import { formatCurrency, formatDate, monthKeyOf, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
 
@@ -129,11 +131,11 @@ export default function LedgerPage() {
 
   // ---------------------------------------------------------------- printing
 
-  const printRegister = useCallback(() => {
+  const buildRegisterPayload = useCallback((): PrintPayload => {
     const rows = buildLedgerRows(data.transactions, data.accounts)
     const summary = summariseRows(rows)
 
-    print({
+    return {
       title: 'Cash & Bank Ledger',
       subtitle: `${rows.length} entries`,
       meta: [
@@ -168,8 +170,15 @@ export default function LedgerPage() {
       },
       footnote:
         'Transfers appear as two linked entries — one out, one in — and do not change the combined cash and bank total.',
-    })
-  }, [data.transactions, data.accounts, totals, print])
+    }
+  }, [data.transactions, data.accounts, totals])
+
+  const printRegister = useCallback(() => print(buildRegisterPayload()), [buildRegisterPayload, print])
+
+  const exportRegisterCsv = useCallback(() => {
+    downloadTextFile(`cash-bank-ledger-${todayISO()}.csv`, printPayloadToCsv(buildRegisterPayload()), 'text/csv;charset=utf-8;')
+    toast.success('Register exported', { description: 'Saved as CSV.' })
+  }, [buildRegisterPayload])
 
   if (loading) return <PageSkeleton />
 
@@ -199,17 +208,7 @@ export default function LedgerPage() {
       <PageHeader
         title="Cash & Bank Ledger"
         description="Every receipt, payment and transfer. Balances are calculated from the entries — never stored separately."
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={printRegister}
-            disabled={data.transactions.length === 0}
-          >
-            <Printer />
-            Print register
-          </Button>
-        }
+        actions={<ExportMenu onCsv={exportRegisterCsv} onPdf={printRegister} disabled={data.transactions.length === 0} />}
       />
 
       <StatGrid className="mb-4">

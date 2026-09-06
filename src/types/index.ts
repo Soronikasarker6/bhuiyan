@@ -24,6 +24,7 @@
 
 export * from './common'
 export * from './product'
+export * from './unitOfMeasure'
 export * from './rawMaterialImport'
 export * from './production'
 export * from './customer'

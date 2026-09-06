@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -7,12 +8,13 @@ import { Section } from '@/components/PageHeader'
 import { Field } from '@/components/Field'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
+import { NumberInput } from '@/components/ui/number-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Money } from '@/components/Money'
 import { bagKgOf, meshSizeNameOf } from '@/utils/products'
-import { saleItemAmount, saleItemWeightTon } from '@/utils/sales'
-import { formatCurrency, formatNumber, todayISO } from '@/utils/format'
+import { billableWeightTon, saleItemAmount, saleItemWeightTon } from '@/utils/sales'
+import { formatCurrency, formatNumber, formatTons, todayISO } from '@/utils/format'
 
 /**
  * Record a sale — one header, one or more items.
@@ -22,11 +24,17 @@ import { formatCurrency, formatNumber, todayISO } from '@/utils/format'
  * one form that has to hold both, which is why it is built around a
  * repeatable row rather than a flat set of fields.
  *
- * Bags is what a person actually counts and what stock is deducted by —
- * weight and amount are always derived from it (§10/§17: never let a sale
- * exceed available stock). `availableBags` is the same function the
- * Production & Stock page's cards use, so this form can never show a
- * different number than the stock it's checking against.
+ * Bags is what a person actually counts and what stock is deducted by, and
+ * that is untouched by any of this. But real bags are rarely exactly their
+ * configured weight — a "50kg" bag might scale at 50.2kg on the
+ * weighbridge — so **Calculated Ton** (bags × bag weight, shown, never
+ * entered) is only ever a starting point. **Actual/Billable Ton** is what
+ * the invoice is actually billed on: it starts equal to the calculated
+ * figure and stays in sync with it automatically as bags/mesh change, right
+ * up until the user types a different number into it — from that point on
+ * it's the truck's own figure, and nothing here silently recalculates over
+ * it again (tracked via react-hook-form's own per-field `dirtyFields`, not
+ * a separate flag).
  */
 
 const itemSchema = z.object({
@@ -39,11 +47,13 @@ const itemSchema = z.object({
   ratePerTon: z.coerce
     .number({ invalid_type_error: 'Enter the rate.' })
     .positive('Rate must be more than zero.'),
+  actualWeightTon: z.coerce
+    .number({ invalid_type_error: 'Enter the actual/billable ton.' })
+    .positive('Actual/Billable Ton must be more than zero.'),
 })
 
 function buildSchema(
   availableBags: (productId: string, meshSizeId: string) => number,
-  bagKg: (meshSizeId: string) => number,
   meshName: (meshSizeId: string) => string,
 ) {
   return z
@@ -59,7 +69,8 @@ function buildSchema(
       // §7: never allow a sale to exceed available stock. Bags requested
       // against the same (product, mesh) accumulate across lines in this one
       // invoice — two lines selling the same grade must be checked together,
-      // not each against the full stock independently.
+      // not each against the full stock independently. Stock is always
+      // checked in bags — the actual/billable ton override never touches it.
       const requested = new Map<string, number>()
       values.items.forEach((item, index) => {
         if (!item.productId || !item.meshSizeId) return
@@ -77,8 +88,14 @@ function buildSchema(
         }
       })
 
+      // The invoice total the "paid at sale" cap checks against must be the
+      // same billable amount the invoice is actually raised for — using the
+      // calculated (pre-weighbridge) figure here would let someone collect
+      // more than the real invoice once the actual ton comes in lower.
+      // `actualWeightTon` is always populated (auto-synced to the calculated
+      // figure until the user overrides it), so it's already the billable one.
       const total = values.items.reduce(
-        (sum, item) => sum + saleItemAmount(saleItemWeightTon(item.bags, bagKg(item.meshSizeId)), item.ratePerTon),
+        (sum, item) => sum + saleItemAmount(Number(item.actualWeightTon) || 0, item.ratePerTon),
         0,
       )
       if ((values.paidAtSale ?? 0) > total) {
@@ -97,7 +114,7 @@ export type SaleFormValues = {
   truckNo?: string
   notes?: string
   paidAtSale?: number
-  items: Array<{ productId: string; meshSizeId: string; bags: number; ratePerTon: number }>
+  items: Array<{ productId: string; meshSizeId: string; bags: number; ratePerTon: number; actualWeightTon: number }>
 }
 export type SaleSubmit = SaleFormValues
 
@@ -117,11 +134,7 @@ export function SaleForm({
   availableBags: (productId: string, meshSizeId: string) => number
   onSubmit: (values: SaleSubmit) => void
 }) {
-  const schema = buildSchema(
-    availableBags,
-    (meshSizeId) => bagKgOf(meshSizes, meshSizeId),
-    (meshSizeId) => meshSizeNameOf(meshSizes, meshSizeId),
-  )
+  const schema = buildSchema(availableBags, (meshSizeId) => meshSizeNameOf(meshSizes, meshSizeId))
 
   const {
     register,
@@ -130,7 +143,7 @@ export function SaleForm({
     watch,
     setValue,
     reset,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, dirtyFields },
   } = useForm<SaleFormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -139,7 +152,15 @@ export function SaleForm({
       truckNo: '',
       notes: '',
       paidAtSale: '' as unknown as number,
-      items: [{ productId: products[0]?.id ?? '', meshSizeId: meshSizes[0]?.id ?? '', bags: '' as unknown as number, ratePerTon: '' as unknown as number }],
+      items: [
+        {
+          productId: products[0]?.id ?? '',
+          meshSizeId: meshSizes[0]?.id ?? '',
+          bags: '' as unknown as number,
+          ratePerTon: '' as unknown as number,
+          actualWeightTon: '' as unknown as number,
+        },
+      ],
     },
   })
 
@@ -149,13 +170,33 @@ export function SaleForm({
   const items = watch('items')
   const paidAtSale = Number(watch('paidAtSale')) || 0
 
-  const itemAmount = (bags: number, meshSizeId: string, ratePerTon: number) => {
-    const bagKg = bagKgOf(meshSizes, meshSizeId)
-    const weightTon = saleItemWeightTon(Number(bags) || 0, bagKg)
-    return { weightTon, amount: saleItemAmount(weightTon, Number(ratePerTon) || 0) }
+  // Keeps each row's Actual/Billable Ton tracking the calculated figure as
+  // bags/mesh change — right up until the user edits that field themselves,
+  // at which point react-hook-form marks it dirty and this stops touching it.
+  useEffect(() => {
+    items.forEach((item, index) => {
+      if (!item) return
+      const touched = Boolean(dirtyFields.items?.[index]?.actualWeightTon)
+      if (touched) return
+
+      const bagKg = bagKgOf(meshSizes, item.meshSizeId)
+      const calculated = saleItemWeightTon(Number(item.bags) || 0, bagKg)
+      if (Number(item.actualWeightTon) !== calculated) {
+        setValue(`items.${index}.actualWeightTon`, calculated, { shouldDirty: false, shouldValidate: false })
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(items.map((i) => [i?.bags, i?.meshSizeId])), meshSizes])
+
+  const itemCalcs = (item: SaleFormValues['items'][number] | undefined) => {
+    const bagKg = bagKgOf(meshSizes, item?.meshSizeId ?? '')
+    const calculatedWeightTon = saleItemWeightTon(Number(item?.bags) || 0, bagKg)
+    const weightTon = billableWeightTon(calculatedWeightTon, item?.actualWeightTon)
+    const amount = saleItemAmount(weightTon, Number(item?.ratePerTon) || 0)
+    return { bagKg, calculatedWeightTon, weightTon, amount }
   }
 
-  const total = items.reduce((sum, item) => sum + itemAmount(item?.bags, item?.meshSizeId, item?.ratePerTon).amount, 0)
+  const total = items.reduce((sum, item) => sum + itemCalcs(item).amount, 0)
   const due = Math.max(0, total - paidAtSale)
 
   const submit = handleSubmit((values) => {
@@ -166,7 +207,15 @@ export function SaleForm({
       truckNo: '',
       notes: '',
       paidAtSale: '' as unknown as number,
-      items: [{ productId: products[0]?.id ?? '', meshSizeId: meshSizes[0]?.id ?? '', bags: '' as unknown as number, ratePerTon: '' as unknown as number }],
+      items: [
+        {
+          productId: products[0]?.id ?? '',
+          meshSizeId: meshSizes[0]?.id ?? '',
+          bags: '' as unknown as number,
+          ratePerTon: '' as unknown as number,
+          actualWeightTon: '' as unknown as number,
+        },
+      ],
     })
   })
 
@@ -206,13 +255,13 @@ export function SaleForm({
 
           {fields.map((field, index) => {
             const item = items[index]
-            const { weightTon, amount } = itemAmount(item?.bags, item?.meshSizeId, item?.ratePerTon)
+            const { bagKg, calculatedWeightTon, weightTon, amount } = itemCalcs(item)
             const itemErrors = errors.items?.[index]
             const available = item?.productId && item?.meshSizeId ? availableBags(item.productId, item.meshSizeId) : 0
 
             return (
               <div key={field.id} className="rounded-lg border border-border bg-secondary/30 p-3">
-                <div className="grid gap-3 sm:grid-cols-[1.3fr_1fr_0.8fr_0.9fr_1fr_auto] sm:items-end">
+                <div className="grid gap-3 sm:grid-cols-[1.3fr_1fr_0.8fr_0.9fr_auto] sm:items-end">
                   <Field label="Product" error={itemErrors?.productId?.message}>
                     <Controller
                       control={control}
@@ -260,17 +309,33 @@ export function SaleForm({
                     error={itemErrors?.bags?.message}
                     hint={item?.productId && item?.meshSizeId ? `Available: ${formatNumber(available)}` : undefined}
                   >
-                    <Input type="number" min={0} step="1" inputMode="numeric" placeholder="0" {...register(`items.${index}.bags`)} />
+                    <Controller
+                      control={control}
+                      name={`items.${index}.bags`}
+                      render={({ field: f }) => (
+                        <NumberInput
+                          value={f.value as unknown as number}
+                          onChange={f.onChange}
+                          placeholder="0"
+                          invalid={Boolean(itemErrors?.bags)}
+                        />
+                      )}
+                    />
                   </Field>
 
                   <Field label="Rate / Ton (৳)" error={itemErrors?.ratePerTon?.message}>
-                    <Input type="number" min={0} step="1" inputMode="numeric" placeholder="0" {...register(`items.${index}.ratePerTon`)} />
-                  </Field>
-
-                  <Field label="Amount" hint={weightTon > 0 ? `${formatNumber(weightTon)} Ton` : undefined}>
-                    <div className="flex h-[1.625rem] items-center rounded-md border border-transparent bg-card px-2.5">
-                      <Money value={amount} size="sm" weight="semibold" />
-                    </div>
+                    <Controller
+                      control={control}
+                      name={`items.${index}.ratePerTon`}
+                      render={({ field: f }) => (
+                        <NumberInput
+                          value={f.value as unknown as number}
+                          onChange={f.onChange}
+                          placeholder="0"
+                          invalid={Boolean(itemErrors?.ratePerTon)}
+                        />
+                      )}
+                    />
                   </Field>
 
                   <Button
@@ -285,6 +350,51 @@ export function SaleForm({
                     <Trash2 />
                   </Button>
                 </div>
+
+                <div className="mt-3 grid gap-3 border-t border-dashed border-border pt-3 sm:grid-cols-4">
+                  <Field label="Bag weight">
+                    <div className="flex h-[1.625rem] items-center rounded-md border border-transparent bg-card px-2.5 text-[0.8125rem] text-muted-foreground">
+                      {bagKg > 0 ? `${bagKg} KG` : '—'}
+                    </div>
+                  </Field>
+
+                  <Field label="Calculated Ton" hint="Bags × Bag Weight — never entered">
+                    <div className="flex h-[1.625rem] items-center rounded-md border border-transparent bg-card px-2.5 text-[0.8125rem] font-mono tabular">
+                      {formatTons(calculatedWeightTon)}
+                    </div>
+                  </Field>
+
+                  <Field
+                    label="Actual / Billable Ton"
+                    error={itemErrors?.actualWeightTon?.message}
+                    hint="From the weighbridge slip, if different"
+                  >
+                    <Controller
+                      control={control}
+                      name={`items.${index}.actualWeightTon`}
+                      render={({ field: f }) => (
+                        <NumberInput
+                          value={f.value as unknown as number}
+                          onChange={f.onChange}
+                          placeholder="0.00"
+                          invalid={Boolean(itemErrors?.actualWeightTon)}
+                        />
+                      )}
+                    />
+                  </Field>
+
+                  <Field label="Amount">
+                    <div className="flex h-[1.625rem] items-center rounded-md border border-transparent bg-card px-2.5">
+                      <Money value={amount} size="sm" weight="semibold" />
+                    </div>
+                  </Field>
+                </div>
+
+                {weightTon !== calculatedWeightTon && (
+                  <p className="mt-2 text-2xs text-muted-foreground">
+                    Billed on {formatTons(weightTon)} Ton (weighbridge), not the calculated {formatTons(calculatedWeightTon)} Ton.
+                  </p>
+                )}
               </div>
             )
           })}
@@ -303,6 +413,7 @@ export function SaleForm({
                 meshSizeId: meshSizes[0]?.id ?? '',
                 bags: '' as unknown as number,
                 ratePerTon: '' as unknown as number,
+                actualWeightTon: '' as unknown as number,
               })
             }
           >
@@ -313,7 +424,19 @@ export function SaleForm({
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <Field label="Paid at sale (৳)" error={errors.paidAtSale?.message} htmlFor="sale-paid" hint="Leave blank if this is fully on credit.">
-            <Input id="sale-paid" type="number" min={0} step="1" inputMode="numeric" placeholder="0" {...register('paidAtSale')} />
+            <Controller
+              control={control}
+              name="paidAtSale"
+              render={({ field: f }) => (
+                <NumberInput
+                  id="sale-paid"
+                  value={f.value as unknown as number}
+                  onChange={f.onChange}
+                  placeholder="0"
+                  invalid={Boolean(errors.paidAtSale)}
+                />
+              )}
+            />
           </Field>
 
           <Field label="Notes (optional)" htmlFor="sale-notes">

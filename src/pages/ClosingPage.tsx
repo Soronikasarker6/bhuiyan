@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Lock, LockOpen, Printer, Wallet } from 'lucide-react'
+import { Lock, LockOpen, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader, Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -25,10 +25,12 @@ import {
 import { Money } from '@/components/Money'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { PageSkeleton } from '@/components/PageSkeleton'
-import { usePrint } from '@/features/reports/PrintSheet'
+import { ExportMenu } from '@/components/ExportMenu'
+import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
 import type { LedgerClosing } from '@/types'
 import { accountBalances, monthMovement, totalBalances } from '@/utils/ledger'
+import { downloadTextFile } from '@/utils/download'
 import {
   MONTHS,
   formatCurrency,
@@ -143,30 +145,36 @@ function LedgerClosingPanel() {
     })
   }
 
-  const printClosing = (closing: LedgerClosing) => {
-    print({
-      title: `Cash & Bank Closing — ${closing.month} ${closing.year}`,
-      subtitle: 'Frozen month-end snapshot',
-      meta: [
-        { label: 'Closed on', value: formatDateTime(closing.closedAt) },
-        { label: 'Money in', value: formatCurrency(closing.monthIn) },
-        { label: 'Money out', value: formatCurrency(closing.monthOut) },
-        { label: 'Net movement', value: formatCurrency(closing.netMovement) },
-      ],
-      columns: [
-        { key: 'account', label: 'Account' },
-        { key: 'kind', label: 'Type' },
-        { key: 'balance', label: 'Balance at month end', align: 'right' },
-      ],
-      rows: closing.balances.map((balance) => ({
-        account: balance.accountName,
-        kind: balance.kind === 'cash' ? 'Cash' : 'Bank',
-        balance: formatCurrency(balance.balance),
-      })),
-      totals: { account: 'Total cash + bank', balance: formatCurrency(closing.grandTotal) },
-      footnote:
-        'Money in and money out exclude transfers between accounts, which are not income or expenditure.',
-    })
+  const buildClosingPayload = (closing: LedgerClosing): PrintPayload => ({
+    title: `Cash & Bank Closing — ${closing.month} ${closing.year}`,
+    subtitle: 'Frozen month-end snapshot',
+    meta: [
+      { label: 'Closed on', value: formatDateTime(closing.closedAt) },
+      { label: 'Money in', value: formatCurrency(closing.monthIn) },
+      { label: 'Money out', value: formatCurrency(closing.monthOut) },
+      { label: 'Net movement', value: formatCurrency(closing.netMovement) },
+    ],
+    columns: [
+      { key: 'account', label: 'Account' },
+      { key: 'kind', label: 'Type' },
+      { key: 'balance', label: 'Balance at month end', align: 'right' },
+    ],
+    rows: closing.balances.map((balance) => ({
+      account: balance.accountName,
+      kind: balance.kind === 'cash' ? 'Cash' : 'Bank',
+      balance: formatCurrency(balance.balance),
+    })),
+    totals: { account: 'Total cash + bank', balance: formatCurrency(closing.grandTotal) },
+    footnote:
+      'Money in and money out exclude transfers between accounts, which are not income or expenditure.',
+  })
+
+  const printClosing = (closing: LedgerClosing) => print(buildClosingPayload(closing))
+
+  const exportClosingCsv = (closing: LedgerClosing) => {
+    const csv = printPayloadToCsv(buildClosingPayload(closing))
+    downloadTextFile(`cash-bank-closing-${closing.monthKey}.csv`, csv, 'text/csv;charset=utf-8;')
+    toast.success('Closing exported', { description: 'Saved as CSV.' })
   }
 
   const sorted = [...data.ledgerClosings].sort((a, b) => b.monthKey.localeCompare(a.monthKey))
@@ -287,10 +295,7 @@ function LedgerClosingPanel() {
                   </div>
 
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => printClosing(closing)}>
-                      <Printer />
-                      Print
-                    </Button>
+                    <ExportMenu onCsv={() => exportClosingCsv(closing)} onPdf={() => printClosing(closing)} />
                     <Button
                       variant="ghost"
                       size="sm"

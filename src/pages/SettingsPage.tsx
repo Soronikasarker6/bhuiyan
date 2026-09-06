@@ -5,7 +5,9 @@ import {
   Download,
   Landmark,
   Lock,
+  Pencil,
   Plus,
+  Ruler,
   RotateCcw,
   Tags,
   Trash2,
@@ -28,7 +30,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { EmptyState } from '@/components/EmptyState'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { useAppData } from '@/hooks/useAppData'
-import type { Account, AccountKind, Category, Direction } from '@/types'
+import type { Account, AccountKind, Category, Direction, UnitOfMeasure } from '@/types'
 import { balanceOf } from '@/utils/ledger'
 import { formatCurrency, formatDateTime } from '@/utils/format'
 import { now, uid } from '@/utils/id'
@@ -52,7 +54,7 @@ export default function SettingsPage() {
     <div>
       <PageHeader
         title="Settings"
-        description="Cash & bank accounts, categories, and data — configuration that never alters entries you have already recorded. Products and mesh sizes have their own page."
+        description="Cash & bank accounts, categories, units of measure, and data — configuration that never alters entries you have already recorded. Products and mesh sizes have their own page."
       />
 
       <TabContainer contentBackgroundDesign="Transparent" headerBackgroundDesign="Transparent">
@@ -68,6 +70,12 @@ export default function SettingsPage() {
           </div>
         </Tab>
 
+        <Tab text="Units of Measure">
+          <div className="pt-4">
+            <UnitsPanel />
+          </div>
+        </Tab>
+
         <Tab text="Data">
           <div className="pt-4">
             <DataPanel />
@@ -77,7 +85,8 @@ export default function SettingsPage() {
 
       <p className="mt-4 text-center text-2xs text-muted-foreground">
         {data.accounts.length} accounts · {data.categories.length} categories ·{' '}
-        {data.products.length} products · {data.meshSizes.length} mesh sizes
+        {data.unitsOfMeasure.length} units · {data.products.length} products ·{' '}
+        {data.meshSizes.length} mesh sizes
       </p>
     </div>
   )
@@ -235,14 +244,16 @@ function AccountsPanel() {
               {!editing && (
                 <div className="flex items-center gap-1.5">
                   <Button
-                    size="sm"
+                    size="icon-sm"
                     variant="ghost"
+                    className="text-muted-foreground hover:text-foreground"
                     onClick={() => {
                       setEditingId(account.id)
                       setEditName(account.name)
                     }}
+                    aria-label={`Rename ${account.name}`}
                   >
-                    Rename
+                    <Pencil />
                   </Button>
 
                   <Button
@@ -473,7 +484,165 @@ function CategoryList({
   )
 }
 
-// ---------------------------------------------------------------- mesh
+// ---------------------------------------------------------------- units of measure
+
+function UnitsPanel() {
+  const { data, update } = useAppData()
+  const [name, setName] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [pending, setPending] = useState<{ unit: UnitOfMeasure; used: number } | null>(null)
+
+  const usageOf = (unit: UnitOfMeasure) => data.products.filter((p) => p.unit === unit.name).length
+
+  const add = (event: React.FormEvent) => {
+    event.preventDefault()
+
+    const trimmed = name.trim()
+    if (!trimmed) {
+      toast.error('Give the unit a name')
+      return
+    }
+
+    if (data.unitsOfMeasure.some((u) => u.name.toLowerCase() === trimmed.toLowerCase())) {
+      toast.error('That unit already exists')
+      return
+    }
+
+    update('unitsOfMeasure', [...data.unitsOfMeasure, { id: uid(), name: trimmed, createdAt: now() }])
+
+    setName('')
+    toast.success(`${trimmed} added`)
+  }
+
+  // Renaming is safe because a product stores the unit's name directly, the
+  // same way it stores a category's — so this only relabels new entries,
+  // never rewrites which unit a past product was recorded under, unless that
+  // exact name is reused (matched the same way the ledger's categories are).
+  const rename = (unit: UnitOfMeasure) => {
+    const trimmed = editName.trim()
+
+    if (!trimmed) {
+      toast.error('The unit needs a name')
+      return
+    }
+
+    if (data.unitsOfMeasure.some((u) => u.id !== unit.id && u.name.toLowerCase() === trimmed.toLowerCase())) {
+      toast.error('Another unit already has that name')
+      return
+    }
+
+    update(
+      'unitsOfMeasure',
+      data.unitsOfMeasure.map((u) => (u.id === unit.id ? { ...u, name: trimmed } : u)),
+    )
+    update(
+      'products',
+      data.products.map((p) => (p.unit === unit.name ? { ...p, unit: trimmed } : p)),
+    )
+
+    setEditingId(null)
+    toast.success('Unit renamed', { description: 'Every product using it now shows the new name.' })
+  }
+
+  const remove = (unit: UnitOfMeasure) => {
+    update(
+      'unitsOfMeasure',
+      data.unitsOfMeasure.filter((u) => u.id !== unit.id),
+    )
+    setPending(null)
+    toast.success(`${unit.name} removed`)
+  }
+
+  return (
+    <Section
+      title="Units of measure"
+      description="What a product is sold or counted in — offered as a dropdown wherever a unit is picked."
+    >
+      {data.unitsOfMeasure.length === 0 ? (
+        <EmptyState icon={Ruler} size="sm" title="No units yet" description="Add one below — Ton, KG, Bag, Piece…" />
+      ) : (
+        <ul className="mb-4 flex flex-wrap gap-1.5">
+          {data.unitsOfMeasure.map((unit) => {
+            const used = usageOf(unit)
+            const editing = editingId === unit.id
+
+            return editing ? (
+              <li key={unit.id} className="flex items-center gap-1.5 rounded-full border border-border bg-secondary/60 py-1 pl-3 pr-1">
+                <Input
+                  value={editName}
+                  onChange={(event) => setEditName(event.target.value)}
+                  className="h-6 w-24"
+                  aria-label={`Rename ${unit.name}`}
+                  autoFocus
+                />
+                <Button size="sm" variant="success" onClick={() => rename(unit)}>
+                  Save
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
+                  Cancel
+                </Button>
+              </li>
+            ) : (
+              <li
+                key={unit.id}
+                className="flex items-center gap-1.5 rounded-full border border-border bg-secondary/60 py-1 pl-3 pr-1"
+              >
+                <span className="text-xs font-medium">{unit.name}</span>
+                {used > 0 && <span className="font-mono tabular text-2xs text-muted-foreground">{used}</span>}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingId(unit.id)
+                    setEditName(unit.name)
+                  }}
+                  className="grid h-4 w-4 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={`Rename ${unit.name}`}
+                >
+                  <Pencil className="h-2.5 w-2.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPending({ unit, used })}
+                  className="grid h-4 w-4 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-destructive hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={`Remove ${unit.name}`}
+                >
+                  <Trash2 className="h-2.5 w-2.5" />
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      <form onSubmit={add} className="flex gap-2 border-t border-border pt-4">
+        <Input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="e.g. Bag"
+          aria-label="New unit of measure"
+        />
+        <Button type="submit" variant="success">
+          <Plus />
+          Add
+        </Button>
+      </form>
+
+      <ConfirmDialog
+        open={pending !== null}
+        onOpenChange={(open) => !open && setPending(null)}
+        title={pending ? `Remove "${pending.unit.name}"?` : ''}
+        description={
+          pending?.used
+            ? `${pending.used} products currently use this unit. They keep showing "${pending.unit.name}" — this only stops it appearing as a choice for new or edited products.`
+            : 'No products use this unit, so nothing is affected.'
+        }
+        confirmLabel="Remove unit"
+        onConfirm={() => pending && remove(pending.unit)}
+      />
+    </Section>
+  )
+}
 
 // ---------------------------------------------------------------- data
 

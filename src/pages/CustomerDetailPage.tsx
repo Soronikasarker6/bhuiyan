@@ -11,11 +11,24 @@ import { Badge } from '@/components/ui/misc'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { CustomerForm, type CustomerSubmit } from '@/features/customers/CustomerForm'
-import { CustomerLedgerTable } from '@/features/customerLedger/CustomerLedgerTable'
+import { CustomerLedgerStatement } from '@/features/customerLedger/CustomerLedgerStatement'
+import { ExportMenu } from '@/components/ExportMenu'
+import { usePrint } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
 import { buildSaleSummaries } from '@/utils/sales'
-import { buildCustomerLedgerRows, customerTotals, transactionsForCustomer } from '@/utils/customerLedger'
-import { formatDate, formatDateTime } from '@/utils/format'
+import {
+  buildCustomerLedgerStatementRows,
+  CUSTOMER_LEDGER_STATEMENT_COLUMNS,
+  customerLedgerStatementCsv,
+  customerLedgerStatementPrintRows,
+  customerNameOf,
+  customerTotals,
+  dueOrAdvanceLabel,
+  statementTotals,
+  transactionsForCustomer,
+} from '@/utils/customerLedger'
+import { downloadTextFile } from '@/utils/download'
+import { formatCurrency, formatDate, formatDateTime, todayISO } from '@/utils/format'
 import { SALE_STATUS_LABEL, SALE_STATUS_VARIANT } from '@/constants/saleStatus'
 
 /**
@@ -25,6 +38,7 @@ import { SALE_STATUS_LABEL, SALE_STATUS_VARIANT } from '@/constants/saleStatus'
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { data, loading, update } = useAppData()
+  const { print } = usePrint()
   const [editOpen, setEditOpen] = useState(false)
 
   const customer = data.customers.find((c) => c.id === id)
@@ -50,10 +64,31 @@ export default function CustomerDetailPage() {
   )
 
   const totals = useMemo(() => customerTotals(transactions), [transactions])
-  const ledgerRows = useMemo(() => buildCustomerLedgerRows(transactions), [transactions])
+  const statementRows = useMemo(
+    () => buildCustomerLedgerStatementRows(sales, transactions, (cid) => customerNameOf(data.customers, cid)),
+    [sales, transactions, data.customers],
+  )
 
   if (loading) return <PageSkeleton />
   if (!customer) return <Navigate to="/customers" replace />
+
+  const exportStatementCsv = () => {
+    const csv = customerLedgerStatementCsv(statementRows, totals)
+    downloadTextFile(`${customer.name.replace(/\s+/g, '-').toLowerCase()}-ledger-${todayISO()}.csv`, csv, 'text/csv;charset=utf-8;')
+    toast.success('Ledger exported', { description: `${customer.name}'s statement saved as CSV.` })
+  }
+
+  const exportStatementPdf = () => {
+    const { totalAmount, totalCredit } = statementTotals(statementRows)
+    print({
+      title: 'Customer Ledger',
+      subtitle: customer.name,
+      columns: CUSTOMER_LEDGER_STATEMENT_COLUMNS,
+      rows: customerLedgerStatementPrintRows(statementRows),
+      totals: { date: '', detail: 'Total', total: formatCurrency(totalAmount), credit: formatCurrency(totalCredit) },
+      footnote: dueOrAdvanceLabel(totals),
+    })
+  }
 
   const saveEdit = (values: CustomerSubmit) => {
     update(
@@ -85,10 +120,13 @@ export default function CustomerDetailPage() {
         title={customer.name}
         description={[customer.company, customer.phone, customer.address].filter(Boolean).join(' · ') || 'No contact details on file'}
         actions={
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-            <Pencil />
-            Edit
-          </Button>
+          <div className="flex gap-2">
+            <ExportMenu onCsv={exportStatementCsv} onPdf={exportStatementPdf} disabled={statementRows.length === 0} />
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+              <Pencil />
+              Edit
+            </Button>
+          </div>
         }
       />
 
@@ -157,8 +195,12 @@ export default function CustomerDetailPage() {
         )}
       </Section>
 
-      <Section title="Customer ledger" description="Every sale and payment, running balance included" noPadding>
-        <CustomerLedgerTable rows={ledgerRows} />
+      <Section title="Customer ledger" description="Every invoice line and payment, bill-book style" noPadding>
+        <CustomerLedgerStatement
+          rows={statementRows}
+          totalDue={totals.totalDue}
+          availableAdvance={totals.availableAdvance}
+        />
       </Section>
 
       <p className="mt-4 text-center text-2xs text-muted-foreground">Customer since {formatDateTime(customer.createdAt)}</p>

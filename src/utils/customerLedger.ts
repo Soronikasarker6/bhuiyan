@@ -6,8 +6,9 @@ import type {
   CustomerTxnType,
   ID,
   ISODate,
+  SaleSummary,
 } from '@/types'
-import { isWithin } from './format'
+import { formatBags, formatCurrency, formatDate, formatNumber, formatTons, isWithin } from './format'
 
 /**
  * The customer ledger — one running balance per customer, like a bank
@@ -52,6 +53,166 @@ export function buildCustomerLedgerRows(transactions: CustomerTransaction[]): Cu
   })
 
   return rows.reverse()
+}
+
+/**
+ * One line of a customer's bill-book statement (§5, invoice-book layout):
+ *
+ *     Date | Invoice | Customer | Details | Bag(Count, Per Kg) | Ton | Price | Total | Credit
+ *
+ * One row per *sale line item*, not per invoice — a customer buying two
+ * products on one invoice gets two rows, both carrying that invoice's
+ * number. Interleaved chronologically with the customer's payments, each
+ * shown as its own row: `invoice` reads "CASH/BANK", `detail` reads
+ * "PAYMENT", and only `credit` is filled in. `customerName` is always
+ * resolved (even on a single-customer statement, where it repeats every
+ * row) so CSV/PDF exports never lose whose statement a row belongs to.
+ */
+export interface CustomerLedgerStatementRow {
+  id: ID
+  date: ISODate
+  invoice: string
+  customerName: string
+  detail: string
+  bags?: number
+  bagKg?: number
+  weightTon?: number
+  ratePerTon?: number
+  amount?: number
+  credit?: number
+}
+
+/** A customer's sales (exploded to one row per item) and payments, oldest first. */
+export function buildCustomerLedgerStatementRows(
+  sales: SaleSummary[],
+  transactions: CustomerTransaction[],
+  customerNameOfId: (customerId: ID) => string,
+): CustomerLedgerStatementRow[] {
+  const saleRows = sales.flatMap((sale) =>
+    sale.items.map((item) => ({
+      id: item.id,
+      date: sale.date,
+      createdAt: sale.createdAt,
+      invoice: sale.invoiceNo,
+      customerName: customerNameOfId(sale.customerId),
+      detail: `${item.productName} ${item.meshSizeName}`.trim(),
+      bags: item.bags,
+      bagKg: item.bagKg,
+      weightTon: item.weightTon,
+      ratePerTon: item.ratePerTon,
+      amount: item.amount,
+    })),
+  )
+
+  const paymentRows = transactions
+    .filter((t) => t.type === 'payment')
+    .map((t) => ({
+      id: t.id,
+      date: t.date,
+      createdAt: t.createdAt,
+      invoice: 'CASH/BANK',
+      customerName: customerNameOfId(t.customerId),
+      detail: 'PAYMENT',
+      credit: t.credit,
+    }))
+
+  return [...saleRows, ...paymentRows]
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1
+      if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1
+      return a.id < b.id ? -1 : 1
+    })
+    .map(({ createdAt: _createdAt, ...row }) => row)
+}
+
+/** The Total row's two figures — Total (sum of item amounts) and Credit (sum of payments). */
+export function statementTotals(rows: CustomerLedgerStatementRow[]): { totalAmount: number; totalCredit: number } {
+  return {
+    totalAmount: rows.reduce((sum, r) => sum + (r.amount ?? 0), 0),
+    totalCredit: rows.reduce((sum, r) => sum + (r.credit ?? 0), 0),
+  }
+}
+
+/** "Total Due: ৳X" / "Total Advance: ৳X" — the one line a printed statement closes on. */
+export function dueOrAdvanceLabel(totals: { totalDue: number; availableAdvance: number }): string {
+  return totals.totalDue > 0
+    ? `Total Due: ${formatCurrency(totals.totalDue)}`
+    : `Total Advance: ${formatCurrency(totals.availableAdvance)}`
+}
+
+/** The flat column set the print sheet renders the statement with — shared so both pages agree. */
+export const CUSTOMER_LEDGER_STATEMENT_COLUMNS: Array<{ key: string; label: string; align?: 'left' | 'right' }> = [
+  { key: 'date', label: 'Date' },
+  { key: 'invoice', label: 'Invoice' },
+  { key: 'customer', label: 'Customer' },
+  { key: 'detail', label: 'Details' },
+  { key: 'bags', label: 'Bag Count', align: 'right' },
+  { key: 'bagKg', label: 'Per Kg', align: 'right' },
+  { key: 'ton', label: 'Ton', align: 'right' },
+  { key: 'price', label: 'Price', align: 'right' },
+  { key: 'total', label: 'Total', align: 'right' },
+  { key: 'credit', label: 'Credit', align: 'right' },
+]
+
+/** Rows formatted for the print sheet — plain, currency-formatted strings keyed to `CUSTOMER_LEDGER_STATEMENT_COLUMNS`. */
+export function customerLedgerStatementPrintRows(rows: CustomerLedgerStatementRow[]): Array<Record<string, string>> {
+  return rows.map((row) => ({
+    date: formatDate(row.date),
+    invoice: row.invoice,
+    customer: row.customerName,
+    detail: row.detail,
+    bags: row.bags != null ? formatBags(row.bags) : '',
+    bagKg: row.bagKg != null ? formatNumber(row.bagKg) : '',
+    ton: row.weightTon != null ? formatTons(row.weightTon) : '',
+    price: row.ratePerTon != null ? formatCurrency(row.ratePerTon) : '',
+    total: row.amount != null ? formatCurrency(row.amount) : '',
+    credit: row.credit != null ? formatCurrency(row.credit) : '',
+  }))
+}
+
+/**
+ * The statement as CSV, laid out like the paper bill-book it mirrors: a
+ * "BAG" super-header over Count/Per Kg, "TOTAL" under Price with the two
+ * summed columns beside it, and a Total Due/Advance line under Count/Ton —
+ * the same three positions the printed register uses. Numeric cells are
+ * plain numbers (no currency symbol, no digit grouping) so a spreadsheet
+ * can sum them directly.
+ */
+export function customerLedgerStatementCsv(
+  rows: CustomerLedgerStatementRow[],
+  totals: { totalDue: number; availableAdvance: number },
+): string {
+  const { totalAmount, totalCredit } = statementTotals(rows)
+  const isDue = totals.totalDue > 0
+  const dueValue = isDue ? totals.totalDue : totals.availableAdvance
+
+  const escape = (value: string | number | undefined) => `"${String(value ?? '').replace(/"/g, '""')}"`
+  const num = (value: number | undefined) => (value == null ? '' : Math.round(value * 1000) / 1000)
+  const line = (cells: Array<string | number | undefined>) => cells.map(escape).join(',')
+
+  const lines = [
+    line(['', '', '', '', 'BAG', '', '', '', '', '']),
+    line(['Date', 'Invoice', 'Customer', 'Details', 'Count', 'Per Kg', 'Ton', 'Price', 'Total', 'Credit']),
+    ...rows.map((row) =>
+      line([
+        formatDate(row.date),
+        row.invoice,
+        row.customerName,
+        row.detail,
+        num(row.bags),
+        num(row.bagKg),
+        num(row.weightTon),
+        num(row.ratePerTon),
+        num(row.amount),
+        num(row.credit),
+      ]),
+    ),
+    line(['', '', '', '', '', '', '', 'TOTAL', num(totalAmount), num(totalCredit)]),
+    line([]),
+    line(['', '', '', '', isDue ? 'TOTAL DUE' : 'TOTAL ADVANCE', '', num(dueValue), '', '', '']),
+  ]
+
+  return '﻿' + lines.join('\r\n')
 }
 
 export function customerBalance(transactions: CustomerTransaction[]): number {

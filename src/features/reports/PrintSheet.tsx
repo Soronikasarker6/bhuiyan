@@ -70,6 +70,39 @@ export function usePrint(): PrintValue {
 }
 
 /**
+ * The same `PrintPayload` as a CSV — every register in the app builds one
+ * payload and hands it to both `print()` (PDF, via the browser's print
+ * dialog) and this function (CSV), so the two never drift apart. Quoting
+ * everything is the safe choice: names and details contain commas, and a
+ * register that breaks a spreadsheet is not a register.
+ */
+export function printPayloadToCsv(payload: PrintPayload): string {
+  const escape = (value: string) => `"${String(value ?? '').replace(/"/g, '""')}"`
+  const lines: string[] = []
+
+  if (payload.meta && payload.meta.length > 0) {
+    for (const entry of payload.meta) lines.push(`${escape(entry.label)},${escape(entry.value)}`)
+    lines.push('')
+  }
+
+  lines.push(payload.columns.map((column) => escape(column.label)).join(','))
+  for (const row of payload.rows) {
+    lines.push(payload.columns.map((column) => escape(row[column.key] ?? '')).join(','))
+  }
+
+  if (payload.totals) {
+    lines.push(payload.columns.map((column) => escape(payload.totals?.[column.key] ?? '')).join(','))
+  }
+
+  if (payload.footnote) {
+    lines.push('')
+    lines.push(escape(payload.footnote))
+  }
+
+  return '﻿' + lines.join('\r\n')
+}
+
+/**
  * The printed document.
  *
  * Hidden on screen, visible on paper. Black on white with real rules — the

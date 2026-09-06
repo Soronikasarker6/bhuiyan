@@ -10,6 +10,7 @@ import type {
   Sale,
   SaleItem,
   Transaction,
+  UnitOfMeasure,
   WastageEntry,
 } from '@/types'
 import { toISODate } from '@/utils/format'
@@ -67,6 +68,11 @@ const MESH_SEED: Array<{ id: string; name: string; bagKg: number }> = [
   { id: 'mesh-800', name: '800', bagKg: 50 },
   { id: 'mesh-1000', name: '1000', bagKg: 50 },
 ]
+
+// The units a product can be sold/counted in — every product today is
+// "Ton", but the list exists so Settings can add "KG", "Bag", "Piece", …
+// without a code change, the same way categories and accounts already work.
+const UNIT_SEED: string[] = ['Ton', 'KG', 'Bag', 'Piece']
 
 // ---------------------------------------------------------------- customers
 
@@ -132,6 +138,7 @@ export function seedData(): AppData {
 
   const products: Product[] = PRODUCT_SEED.map((p) => ({ ...p, unit: 'Ton', active: true, createdAt: stamp }))
   const meshSizes: MeshSize[] = MESH_SEED.map((m) => ({ ...m, active: true, createdAt: stamp }))
+  const unitsOfMeasure: UnitOfMeasure[] = UNIT_SEED.map((name, i) => ({ id: `unit-${i + 1}`, name, createdAt: stamp }))
   const customers: Customer[] = CUSTOMER_SEED.map((c) => ({ ...c, active: true, createdAt: stamp }))
 
   const accounts: Account[] = ACCOUNT_SEED.map((account, index) => ({
@@ -243,6 +250,7 @@ export function seedData(): AppData {
   return {
     products,
     meshSizes,
+    unitsOfMeasure,
     rawMaterialImports,
     productionEntries,
     customers,
