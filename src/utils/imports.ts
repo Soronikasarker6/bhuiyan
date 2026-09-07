@@ -28,7 +28,8 @@ export function tonsToKg(tons: number): number {
   return (Number(tons) || 0) * 1000
 }
 
-function chronological(a: RawMaterialImport, b: RawMaterialImport): number {
+/** Oldest first — the order shipments actually arrived in, which is what a cycle's sequence (§2) is built on. */
+export function chronological(a: RawMaterialImport, b: RawMaterialImport): number {
   if (a.date !== b.date) return a.date < b.date ? -1 : 1
   if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1
   return a.id < b.id ? -1 : 1

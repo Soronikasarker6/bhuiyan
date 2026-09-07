@@ -24,6 +24,12 @@ const ghPages = process.env.GH_PAGES === 'true'
 export default defineConfig({
   base: ghPages ? '/bhuiyan/' : './',
   plugins: [react()],
+  define: {
+    // True only for the offline, double-clickable single-file build — see
+    // `src/hooks/useAppData.tsx`. Every other build (dev, normal `build`,
+    // GitHub Pages) talks to the Laravel backend instead of localStorage.
+    __OFFLINE__: JSON.stringify(single),
+  },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },

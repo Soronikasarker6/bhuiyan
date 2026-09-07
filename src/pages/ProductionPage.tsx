@@ -18,7 +18,7 @@ import { MeshStockSummary } from '@/features/production/MeshStockSummary'
 import { ProductionStockTable, type StockLedgerDisplayRow } from '@/features/production/ProductionStockTable'
 import { useAppData } from '@/hooks/useAppData'
 import type { ProductionEntry } from '@/types'
-import { activeProducts, activeMeshSizes, meshSizeNameOf } from '@/utils/products'
+import { activeProducts, activeMeshSizes, bagKgOf, meshSizeNameOf } from '@/utils/products'
 import {
   buildStockLedger,
   meshStockSummary,
@@ -29,6 +29,7 @@ import {
   totalStockBags,
   totalStockTon,
 } from '@/utils/productionStock'
+import { rawMaterialStock, cycleStatusForDate } from '@/utils/rawMaterial'
 import { formatDate, formatNumber, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
 
@@ -83,6 +84,27 @@ export default function ProductionPage() {
   const rawEntries = useMemo(
     () => (selectedProductId ? productionRowsForProduct(selectedProductId, data.productionEntries) : []),
     [selectedProductId, data.productionEntries],
+  )
+
+  // §10 — bagging consumes raw material, so a new entry is checked against
+  // the same shipment-wise stock the Raw Material Import page shows, never a
+  // second, independently-tracked figure.
+  const availableRawMaterialTon = useCallback(
+    (productId: string) =>
+      rawMaterialStock(
+        productId,
+        data.products,
+        data.rawMaterialImports,
+        data.wastageEntries,
+        data.productionEntries,
+        (meshId) => bagKgOf(data.meshSizes, meshId),
+      ).availableTon,
+    [data.products, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes],
+  )
+
+  const rawMaterialCycleClosed = useCallback(
+    (productId: string, date: string) => cycleStatusForDate(productId, date, data.rawMaterialImports) === 'closed',
+    [data.rawMaterialImports],
   )
 
   const addEntry = useCallback(
@@ -196,7 +218,13 @@ export default function ProductionPage() {
       </div>
 
       <div className="mb-4">
-        <ProductionEntryForm products={products} meshSizes={meshSizes} onSubmit={addEntry} />
+        <ProductionEntryForm
+          products={products}
+          meshSizes={meshSizes}
+          availableTon={availableRawMaterialTon}
+          cycleClosed={rawMaterialCycleClosed}
+          onSubmit={addEntry}
+        />
       </div>
 
       <div className="mb-4">

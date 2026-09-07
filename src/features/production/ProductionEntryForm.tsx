@@ -21,31 +21,75 @@ import { formatNumber, formatTons, todayISO } from '@/utils/format'
  * There is no "sell" field here on purpose — Today's Sell in the stock
  * ledger is always read from actual sales, never typed alongside
  * production, which is what keeps the two from silently disagreeing.
+ *
+ * Bagging is also what consumes raw material (`utils/rawMaterial.ts`), so
+ * §10's two shipment-cycle rules are checked here the same way `SaleForm`
+ * checks bag stock: this can never take a material's *current* cycle
+ * negative, and it can never land inside a cycle that has already closed.
  */
 
-const schema = z.object({
-  date: z.string().min(1, 'Pick the date.'),
-  productId: z.string().min(1, 'Choose a product.'),
-  meshId: z.string().min(1, 'Choose a mesh size.'),
-  bags: z.coerce
-    .number({ invalid_type_error: 'Enter the number of bags.' })
-    .int('Bags must be a whole number.')
-    .positive('Bags must be more than zero.'),
-  notes: z.string().max(300).optional(),
-})
+function buildSchema(
+  availableTon: (productId: string) => number,
+  cycleClosed: (productId: string, date: string) => boolean,
+  productName: (productId: string) => string,
+  bagKg: (meshId: string) => number,
+) {
+  return z
+    .object({
+      date: z.string().min(1, 'Pick the date.'),
+      productId: z.string().min(1, 'Choose a product.'),
+      meshId: z.string().min(1, 'Choose a mesh size.'),
+      bags: z.coerce
+        .number({ invalid_type_error: 'Enter the number of bags.' })
+        .int('Bags must be a whole number.')
+        .positive('Bags must be more than zero.'),
+      notes: z.string().max(300).optional(),
+    })
+    .superRefine((values, ctx) => {
+      if (!values.productId || !values.date) return
 
-export type ProductionFormValues = z.input<typeof schema>
-export type ProductionSubmit = z.output<typeof schema>
+      if (cycleClosed(values.productId, values.date)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['date'],
+          message: `This falls inside a closed shipment cycle for ${productName(values.productId)}. Reopen that shipment first if this entry must be added.`,
+        })
+        return
+      }
+
+      const available = availableTon(values.productId)
+      const requestedTon = kgToTons((Number(values.bags) || 0) * bagKg(values.meshId))
+      if (requestedTon > available) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['bags'],
+          message: `This would take ${productName(values.productId)} raw material stock negative. Only ${formatTons(available)} Ton is currently available.`,
+        })
+      }
+    })
+}
+
+export type ProductionFormValues = z.input<ReturnType<typeof buildSchema>>
+export type ProductionSubmit = z.output<ReturnType<typeof buildSchema>>
 
 export function ProductionEntryForm({
   products,
   meshSizes,
+  availableTon,
+  cycleClosed,
   onSubmit,
 }: {
   products: Product[]
   meshSizes: MeshSize[]
+  /** Current available raw material tons for a product's *current* shipment cycle. */
+  availableTon: (productId: string) => number
+  /** Whether a date, for a product, falls inside an already-closed shipment cycle. */
+  cycleClosed: (productId: string, date: string) => boolean
   onSubmit: (values: ProductionSubmit) => void
 }) {
+  const productName = (productId: string) => products.find((p) => p.id === productId)?.name ?? 'this product'
+  const schema = buildSchema(availableTon, cycleClosed, productName, (meshId) => bagKgOf(meshSizes, meshId))
+
   const {
     register,
     handleSubmit,

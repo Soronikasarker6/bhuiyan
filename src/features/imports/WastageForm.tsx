@@ -10,34 +10,78 @@ import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
-import { todayISO } from '@/utils/format'
+import { formatTons, todayISO } from '@/utils/format'
+import { kgToTons } from '@/utils/imports'
 
 /**
  * Wastage (§1) — raw material lost to handling, spillage or breakage before
  * it ever became a bag. It is deducted from raw material stock the same way
  * a bagging entry is, but tracked and reported on separately: `Imported →
  * Available → Wastage → Sold → Remaining`.
+ *
+ * Two rules from §10, checked the same way `SaleForm` checks bag stock: this
+ * can never take a material's *current* shipment cycle negative, and it can
+ * never land inside a shipment cycle that has already been closed — both
+ * checked live, against the same figures the stock cards show.
  */
 
-const schema = z.object({
-  date: z.string().min(1, 'Pick the date.'),
-  productId: z.string().min(1, 'Choose a product.'),
-  quantityKg: z.coerce
-    .number({ invalid_type_error: 'Enter the quantity.' })
-    .positive('Quantity must be more than zero.'),
-  reason: z.string().max(200).optional(),
-})
+function buildSchema(
+  availableTon: (productId: string) => number,
+  cycleClosed: (productId: string, date: string) => boolean,
+  productName: (productId: string) => string,
+) {
+  return z
+    .object({
+      date: z.string().min(1, 'Pick the date.'),
+      productId: z.string().min(1, 'Choose a product.'),
+      quantityKg: z.coerce
+        .number({ invalid_type_error: 'Enter the quantity.' })
+        .positive('Quantity must be more than zero.'),
+      reason: z.string().max(200).optional(),
+    })
+    .superRefine((values, ctx) => {
+      if (!values.productId || !values.date) return
 
-export type WastageFormValues = z.input<typeof schema>
-export type WastageSubmit = z.output<typeof schema>
+      if (cycleClosed(values.productId, values.date)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['date'],
+          message: `This falls inside a closed shipment cycle for ${productName(values.productId)}. Reopen that shipment first if this entry must be added.`,
+        })
+        return
+      }
+
+      const available = availableTon(values.productId)
+      const requestedTon = kgToTons(Number(values.quantityKg) || 0)
+      if (requestedTon > available) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['quantityKg'],
+          message: `This would take ${productName(values.productId)} stock negative. Only ${formatTons(available)} Ton is currently available.`,
+        })
+      }
+    })
+}
+
+export type WastageFormValues = z.input<ReturnType<typeof buildSchema>>
+export type WastageSubmit = z.output<ReturnType<typeof buildSchema>>
 
 export function WastageForm({
   products,
+  availableTon,
+  cycleClosed,
   onSubmit,
 }: {
   products: Product[]
+  /** Current available tons for a product's *current* shipment cycle. */
+  availableTon: (productId: string) => number
+  /** Whether a date, for a product, falls inside an already-closed shipment cycle. */
+  cycleClosed: (productId: string, date: string) => boolean
   onSubmit: (values: WastageSubmit) => void
 }) {
+  const productName = (productId: string) => products.find((p) => p.id === productId)?.name ?? 'this product'
+  const schema = buildSchema(availableTon, cycleClosed, productName)
+
   const {
     register,
     handleSubmit,

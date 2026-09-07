@@ -9,9 +9,20 @@ import { Toaster } from 'sonner'
 import { ThemeProvider } from '@ui5/webcomponents-react/ThemeProvider'
 import { TooltipProvider } from '@/components/ui/misc'
 import { AppDataProvider } from '@/hooks/useAppData'
+import { AuthProvider } from '@/hooks/useAuth'
 import { PrintProvider } from '@/features/reports/PrintSheet'
 import { AppRouter } from './router/AppRouter'
 import './styles/index.css'
+
+/**
+ * `AuthProvider` only matters for the backend-connected build — the offline
+ * single-file build never renders a login screen (see AppRouter.tsx), so it
+ * has nothing to authenticate and this is a harmless pass-through.
+ */
+function MaybeAuthProvider({ children }: { children: React.ReactNode }) {
+  if (__OFFLINE__) return <>{children}</>
+  return <AuthProvider>{children}</AuthProvider>
+}
 
 /**
  * Clean URLs when served by a web server; hash URLs when the page is opened
@@ -45,24 +56,26 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>
       <Router basename={basename}>
-        <AppDataProvider>
-          <TooltipProvider delayDuration={200}>
-            <PrintProvider>
-              <AppRouter />
-              <Toaster
-                position="bottom-right"
-                richColors
-                closeButton
-                toastOptions={{
-                  classNames: {
-                    toast: 'font-sans text-[0.8125rem]',
-                    description: 'text-xs',
-                  },
-                }}
-              />
-            </PrintProvider>
-          </TooltipProvider>
-        </AppDataProvider>
+        <MaybeAuthProvider>
+          <AppDataProvider>
+            <TooltipProvider delayDuration={200}>
+              <PrintProvider>
+                <AppRouter />
+                <Toaster
+                  position="bottom-right"
+                  richColors
+                  closeButton
+                  toastOptions={{
+                    classNames: {
+                      toast: 'font-sans text-[0.8125rem]',
+                      description: 'text-xs',
+                    },
+                  }}
+                />
+              </PrintProvider>
+            </TooltipProvider>
+          </AppDataProvider>
+        </MaybeAuthProvider>
       </Router>
     </ThemeProvider>
   </StrictMode>,

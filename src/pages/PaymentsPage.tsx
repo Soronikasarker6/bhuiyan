@@ -11,18 +11,14 @@ import { Button } from '@/components/ui/button'
 import { PaymentForm, type PaymentSubmit } from '@/features/payments/PaymentForm'
 import { CustomerLedgerTable } from '@/features/customerLedger/CustomerLedgerTable'
 import { useAppData } from '@/hooks/useAppData'
-import type { Transaction } from '@/types'
 import {
   buildCustomerLedgerRows,
-  buildPayment,
   customerBalance,
   customerNameOf,
-  nextReference,
   outstandingCustomers,
   transactionsForCustomer,
 } from '@/utils/customerLedger'
 import { formatCurrency } from '@/utils/format'
-import { now, uid } from '@/utils/id'
 
 /**
  * Cash In — a plain credit against a customer's overall balance (§4).
@@ -32,7 +28,7 @@ import { now, uid } from '@/utils/id'
  * grows Advance — there is nothing here that has to know which case it is.
  */
 export default function PaymentsPage() {
-  const { data, loading, updateMany } = useAppData()
+  const { data, loading, recordPayment } = useAppData()
 
   const paymentRows = useMemo(
     () =>
@@ -52,51 +48,30 @@ export default function PaymentsPage() {
 
   const balanceOf = (customerId: string) => customerBalance(transactionsForCustomer(data.customerTransactions, customerId))
 
-  const recordCashIn = (values: PaymentSubmit) => {
-    const stamp = now()
-    const reference = nextReference('payment', data.customerTransactions)
-
-    const row = buildPayment({
-      id: uid(),
-      customerId: values.customerId,
-      date: values.date,
-      reference,
-      amount: values.amount,
-      method: values.method,
-      linkedAccountId: values.accountId,
-      createdAt: stamp,
-    })
-
-    const patch: { customerTransactions: typeof data.customerTransactions; transactions?: Transaction[] } = {
-      customerTransactions: [row, ...data.customerTransactions],
-    }
-
-    if (values.accountId) {
-      patch.transactions = [
-        {
-          id: uid(),
-          date: values.date,
-          details: `Cash In — ${customerNameOf(data.customers, values.customerId)} (${reference})`,
-          accountId: values.accountId,
-          direction: 'in',
-          category: 'Customer Payment',
-          amount: values.amount,
-          createdAt: stamp,
-        },
-        ...data.transactions,
-      ]
-    }
-
-    updateMany(patch)
-
+  const recordCashIn = async (values: PaymentSubmit) => {
     const balanceBefore = balanceOf(values.customerId)
-    const overpayment = Math.max(0, values.amount - Math.max(0, balanceBefore))
 
-    toast.success(`${reference} recorded`, {
-      description: overpayment > 0
-        ? `${formatCurrency(values.amount - overpayment)} applied to due · ${formatCurrency(overpayment)} added to Advance`
-        : formatCurrency(values.amount),
-    })
+    try {
+      const { reference } = await recordPayment({
+        customerId: values.customerId,
+        date: values.date,
+        amount: values.amount,
+        method: values.method,
+        accountId: values.accountId,
+      })
+
+      const overpayment = Math.max(0, values.amount - Math.max(0, balanceBefore))
+
+      toast.success(`${reference} recorded`, {
+        description: overpayment > 0
+          ? `${formatCurrency(values.amount - overpayment)} applied to due · ${formatCurrency(overpayment)} added to Advance`
+          : formatCurrency(values.amount),
+      })
+    } catch (error) {
+      toast.error('Could not record the payment', {
+        description: error instanceof Error ? error.message : undefined,
+      })
+    }
   }
 
   if (loading) return <PageSkeleton />
