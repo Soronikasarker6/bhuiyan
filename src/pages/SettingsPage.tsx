@@ -651,8 +651,8 @@ function DataPanel() {
   const [confirmClear, setConfirmClear] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
 
-  const download = () => {
-    const blob = new Blob([exportBackup()], { type: 'application/json' })
+  const download = async () => {
+    const blob = new Blob([await exportBackup()], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url

@@ -12,20 +12,12 @@ import { SaleForm, type SaleSubmit } from '@/features/sales/SaleForm'
 import { SalesTable } from '@/features/sales/SalesTable'
 import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
-import type { Sale, SaleItem, SaleSummary } from '@/types'
-import { activeProducts, activeMeshSizes, bagKgOf } from '@/utils/products'
-import {
-  billableWeightTon,
-  buildSaleSummaries,
-  buildSaleTransactions,
-  nextInvoiceNo,
-  saleItemAmount,
-  saleItemWeightTon,
-} from '@/utils/sales'
+import type { SaleSummary } from '@/types'
+import { activeProducts, activeMeshSizes } from '@/utils/products'
+import { buildSaleSummaries, nextInvoiceNo } from '@/utils/sales'
 import { availableBags as availableBagsFor } from '@/utils/productionStock'
 import { downloadTextFile } from '@/utils/download'
 import { formatCurrency, formatDate, formatNumber, formatTons, todayISO } from '@/utils/format'
-import { now, uid } from '@/utils/id'
 
 /**
  * Sales — how much stone we sold, to whom, at what rate, and on which truck.
@@ -35,7 +27,7 @@ import { now, uid } from '@/utils/id'
  * items, which is why a sale is a header plus items rather than a flat row.
  */
 export default function SalesPage() {
-  const { data, loading, updateMany } = useAppData()
+  const { data, loading, createSale: persistSale, deleteSale: persistDeleteSale } = useAppData()
   const { print } = usePrint()
 
   const products = useMemo(() => activeProducts(data.products), [data.products])
@@ -68,11 +60,12 @@ export default function SalesPage() {
   )
 
   const addSale = useCallback(
-    (values: SaleSubmit) => {
+    async (values: SaleSubmit) => {
       // Re-checked here, not just in the form — a stale form (another tab
       // already sold the last bags) must not be able to slip an oversell
       // through. §7's rule is enforced at the one place that actually writes
-      // the data, not only at the one that happens to render it.
+      // the data, not only at the one that happens to render it. (The
+      // backend re-checks this again, independently, before writing.)
       const requested = new Map<string, number>()
       for (const item of values.items) {
         const key = `${item.productId}::${item.meshSizeId}`
@@ -87,71 +80,51 @@ export default function SalesPage() {
         }
       }
 
-      const stamp = now()
-      const saleId = uid()
+      const paidAtSale = values.paidAtSale ?? 0
 
-      const sale: Sale = {
-        id: saleId,
-        invoiceNo,
-        date: values.date,
-        customerId: values.customerId,
-        truckNo: values.truckNo?.trim() || undefined,
-        notes: values.notes?.trim() || undefined,
-        paidAtSale: values.paidAtSale ?? 0,
-        createdAt: stamp,
+      try {
+        const { invoiceNo: recordedInvoiceNo } = await persistSale({
+          date: values.date,
+          customerId: values.customerId,
+          truckNo: values.truckNo?.trim() || undefined,
+          notes: values.notes?.trim() || undefined,
+          paidAtSale,
+          items: values.items.map((item) => ({
+            productId: item.productId,
+            meshSizeId: item.meshSizeId,
+            bags: item.bags,
+            ratePerTon: item.ratePerTon,
+            // The weighbridge/scale figure, when it differs from the
+            // calculated bag-weight arithmetic — this is what the invoice is
+            // actually billed on, so it has to survive the save.
+            actualWeightTon: item.actualWeightTon,
+          })),
+        })
+
+        toast.success(`${recordedInvoiceNo} recorded`, {
+          description: paidAtSale > 0 ? `Paid ${formatCurrency(paidAtSale)}` : undefined,
+        })
+      } catch (error) {
+        toast.error('Could not record the sale', {
+          description: error instanceof Error ? error.message : undefined,
+        })
       }
-
-      const items: SaleItem[] = values.items.map((item) => ({
-        id: uid(),
-        saleId,
-        productId: item.productId,
-        meshSizeId: item.meshSizeId,
-        bags: item.bags,
-        ratePerTon: item.ratePerTon,
-        // The weighbridge/scale figure, when it differs from the calculated
-        // bag-weight arithmetic — this is what the invoice is actually
-        // billed on, so it has to survive the save, not just the form.
-        actualWeightTon: item.actualWeightTon,
-      }))
-
-      // Billable weight (actual reading if given, else calculated) is what
-      // the invoice, the customer ledger debit and everything downstream
-      // must agree on — never the theoretical bag-weight figure alone.
-      const totalAmount = items.reduce((sum, item) => {
-        const calculatedWeightTon = saleItemWeightTon(item.bags, bagKgOf(data.meshSizes, item.meshSizeId))
-        const weightTon = billableWeightTon(calculatedWeightTon, item.actualWeightTon)
-        return sum + saleItemAmount(weightTon, item.ratePerTon)
-      }, 0)
-
-      const ledgerRows = buildSaleTransactions({
-        sale,
-        totalAmount,
-        paymentReference: `${invoiceNo}-PD`,
-      })
-
-      updateMany({
-        sales: [sale, ...data.sales],
-        saleItems: [...data.saleItems, ...items],
-        customerTransactions: [...ledgerRows, ...data.customerTransactions],
-      })
-
-      toast.success(`${invoiceNo} recorded`, {
-        description: `Total ${formatCurrency(totalAmount)}${sale.paidAtSale > 0 ? ` · Paid ${formatCurrency(sale.paidAtSale)}` : ''}`,
-      })
     },
-    [data.sales, data.saleItems, data.customerTransactions, data.meshSizes, invoiceNo, availableBags, updateMany],
+    [availableBags, persistSale],
   )
 
   const deleteSale = useCallback(
-    (saleId: string) => {
-      updateMany({
-        sales: data.sales.filter((s) => s.id !== saleId),
-        saleItems: data.saleItems.filter((i) => i.saleId !== saleId),
-        customerTransactions: data.customerTransactions.filter((t) => t.referenceSaleId !== saleId),
-      })
-      toast.success('Invoice deleted', { description: 'Its ledger entries were removed with it.' })
+    async (saleId: string) => {
+      try {
+        await persistDeleteSale(saleId)
+        toast.success('Invoice deleted', { description: 'Its ledger entries were removed with it.' })
+      } catch (error) {
+        toast.error('Could not delete the invoice', {
+          description: error instanceof Error ? error.message : undefined,
+        })
+      }
     },
-    [data.sales, data.saleItems, data.customerTransactions, updateMany],
+    [persistDeleteSale],
   )
 
   const buildInvoicePayload = useCallback(

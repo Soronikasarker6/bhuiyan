@@ -5,6 +5,7 @@ import {
   ChevronRight,
   CircleUser,
   CloudOff,
+  LogOut,
   Menu,
   PackageX,
   TriangleAlert,
@@ -15,8 +16,30 @@ import { Badge } from '@/components/ui/misc'
 import { cn } from '@/utils/cn'
 import { activePath, navigation } from '@/router/navigation'
 import { useAppData } from '@/hooks/useAppData'
+import { useAuth } from '@/hooks/useAuth'
 import { formatDateLong, todayISO } from '@/utils/format'
 import { allMeshStock } from '@/utils/productionStock'
+
+/**
+ * Who's signed in, and how to sign out — real in the backend-connected build,
+ * static in the offline single-file build, which has no login to speak of.
+ * Isolated in its own component so `useAuth()` (which needs an `AuthProvider`
+ * ancestor that only the online build renders) is never called at all when
+ * `__OFFLINE__` is true.
+ */
+function useAccountIdentity(): { name: string; subtitle: string; onLogOut: (() => void) | null } {
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- __OFFLINE__ is a build-time constant
+  return __OFFLINE__ ? useOfflineIdentity() : useOnlineIdentity()
+}
+
+function useOfflineIdentity() {
+  return { name: 'Office Admin', subtitle: 'BHUIYAN INDUSTRY', onLogOut: null }
+}
+
+function useOnlineIdentity() {
+  const { user, logout } = useAuth()
+  return { name: user?.name ?? 'Signed in', subtitle: user?.email ?? 'BHUIYAN INDUSTRY', onLogOut: logout }
+}
 
 /**
  * The header.
@@ -28,6 +51,7 @@ import { allMeshStock } from '@/utils/productionStock'
 export function Header({ onOpenNav }: { onOpenNav: () => void }) {
   const location = useLocation()
   const { data, persistent } = useAppData()
+  const identity = useAccountIdentity()
 
   const current = activePath(location.pathname)
   const item = navigation.find((n) => n.path === current) ?? navigation[0]!
@@ -126,9 +150,9 @@ export function Header({ onOpenNav }: { onOpenNav: () => void }) {
                 BI
               </span>
               <span className="hidden text-left sm:block">
-                <span className="block text-xs font-medium leading-tight">Office Admin</span>
+                <span className="block text-xs font-medium leading-tight">{identity.name}</span>
                 <span className="block text-2xs leading-tight text-muted-foreground">
-                  BHUIYAN INDUSTRY
+                  {identity.subtitle}
                 </span>
               </span>
             </button>
@@ -141,8 +165,8 @@ export function Header({ onOpenNav }: { onOpenNav: () => void }) {
               className="z-50 w-56 rounded-lg border border-border bg-popover p-1 shadow-pop animate-in fade-in-0 zoom-in-95"
             >
               <div className="px-2.5 py-2">
-                <p className="text-[0.8125rem] font-medium">Office Admin</p>
-                <p className="text-2xs text-muted-foreground">Full access</p>
+                <p className="text-[0.8125rem] font-medium">{identity.name}</p>
+                <p className="text-2xs text-muted-foreground">{identity.onLogOut ? identity.subtitle : 'Full access'}</p>
               </div>
               <DropdownMenu.Separator className="my-1 h-px bg-border" />
               <DropdownMenu.Item asChild>
@@ -154,12 +178,24 @@ export function Header({ onOpenNav }: { onOpenNav: () => void }) {
                   Settings
                 </Link>
               </DropdownMenu.Item>
+              {identity.onLogOut && (
+                <DropdownMenu.Item asChild>
+                  <button
+                    type="button"
+                    onClick={identity.onLogOut}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[0.8125rem] outline-none focus:bg-accent"
+                  >
+                    <LogOut className="h-3.5 w-3.5" aria-hidden />
+                    Log out
+                  </button>
+                </DropdownMenu.Item>
+              )}
               <DropdownMenu.Separator className="my-1 h-px bg-border" />
               <div className="flex items-center gap-2 px-2.5 py-1.5 text-2xs text-muted-foreground">
                 {persistent ? (
                   <>
                     <span className="h-1.5 w-1.5 rounded-full bg-success-600" aria-hidden />
-                    Saving to this browser
+                    {identity.onLogOut ? 'Saving to the server' : 'Saving to this browser'}
                   </>
                 ) : (
                   <>

@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Factory, Search, Trash2 } from 'lucide-react'
+import { Factory, Lock, Search, Trash2 } from 'lucide-react'
 import type { ImportRow } from '@/types'
 import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/misc'
 import {
   Table,
   TableBody,
@@ -94,6 +95,7 @@ export function ImportTable({
                 <TableHead numeric>Ton</TableHead>
                 <TableHead numeric>Price/Ton</TableHead>
                 <TableHead numeric>Value</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -119,13 +121,25 @@ export function ImportTable({
                   <TableCell numeric className="font-mono tabular text-muted-foreground">
                     {row.value ? formatCurrency(row.value) : '—'}
                   </TableCell>
+                  <TableCell>
+                    {row.status === 'closed' ? (
+                      <Badge variant="success">
+                        <Lock className="h-2.5 w-2.5" aria-hidden />
+                        Closed
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline">Open</Badge>
+                    )}
+                  </TableCell>
                   <TableCell numeric>
                     <Button
                       size="icon-sm"
                       variant="ghost"
-                      className="text-muted-foreground hover:text-destructive"
+                      className="text-muted-foreground hover:text-destructive disabled:hover:text-muted-foreground"
                       onClick={() => setPendingDelete(row)}
-                      aria-label="Delete entry"
+                      disabled={row.status === 'closed'}
+                      aria-label={row.status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : 'Delete entry'}
+                      title={row.status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : undefined}
                     >
                       <Trash2 />
                     </Button>
@@ -154,6 +168,7 @@ export function ImportTable({
                 <TableCell numeric className="font-mono tabular font-bold">
                   {formatCurrency(rows.reduce((s, r) => s + (r.value ?? 0), 0))}
                 </TableCell>
+                <TableCell />
                 <TableCell />
               </TableRow>
             </TableFooter>

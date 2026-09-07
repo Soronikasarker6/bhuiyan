@@ -16,12 +16,14 @@ import { ImportEntryForm, type ImportSubmit } from '@/features/imports/ImportEnt
 import { ImportTable } from '@/features/imports/ImportTable'
 import { WastageForm, type WastageSubmit } from '@/features/imports/WastageForm'
 import { WastageTable } from '@/features/imports/WastageTable'
+import { RawMaterialStockSummary } from '@/features/imports/RawMaterialStockSummary'
+import { ShipmentTable } from '@/features/imports/ShipmentTable'
 import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
-import type { RawMaterialImport, WastageEntry } from '@/types'
+import type { RawMaterialImport, ShipmentCycleRow, WastageEntry } from '@/types'
 import { activeProducts, bagKgOf } from '@/utils/products'
 import { buildImportRows, importTotals, todaysImports } from '@/utils/imports'
-import { allRawMaterialStock, buildWastageRows } from '@/utils/rawMaterial'
+import { allRawMaterialStock, allShipmentCycles, buildWastageRows, cycleStatusForDate } from '@/utils/rawMaterial'
 import { downloadTextFile } from '@/utils/download'
 import { formatDate, formatNumber, formatTons, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
@@ -70,6 +72,68 @@ export default function ImportPage() {
         (meshId) => bagKgOf(data.meshSizes, meshId),
       ),
     [data.products, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes],
+  )
+
+  // §2/§3 — every shipment as its own inventory cycle, never a lifetime sum.
+  const allCycles = useMemo(
+    () =>
+      allShipmentCycles(
+        data.products,
+        data.rawMaterialImports,
+        data.wastageEntries,
+        data.productionEntries,
+        (meshId) => bagKgOf(data.meshSizes, meshId),
+      ),
+    [data.products, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes],
+  )
+  const shipmentRows = useMemo(
+    () => allCycles.filter((c) => productFilter === ALL || c.productId === productFilter),
+    [allCycles, productFilter],
+  )
+
+  const closeShipment = useCallback(
+    (row: ShipmentCycleRow) => {
+      const entry = data.rawMaterialImports.find((i) => i.id === row.id)
+      if (!entry || entry.status === 'closed') return
+
+      const updated: RawMaterialImport = {
+        ...entry,
+        status: 'closed',
+        closing: {
+          openingTon: row.openingTon,
+          receivedTon: row.receivedTon,
+          consumedTon: row.consumedTon,
+          closingTon: row.closingTon,
+          closedAt: now(),
+        },
+      }
+
+      update(
+        'rawMaterialImports',
+        data.rawMaterialImports.map((i) => (i.id === entry.id ? updated : i)),
+      )
+      toast.success('Shipment closed', {
+        description: `Closing balance ${formatTons(row.closingTon)} Ton carries forward as the next ${row.productName} shipment's opening balance.`,
+      })
+    },
+    [data.rawMaterialImports, update],
+  )
+
+  const reopenShipment = useCallback(
+    (row: ShipmentCycleRow) => {
+      const entry = data.rawMaterialImports.find((i) => i.id === row.id)
+      if (!entry) return
+
+      const { closing: _closing, ...rest } = entry
+      const updated: RawMaterialImport = { ...rest, status: 'open' }
+
+      update(
+        'rawMaterialImports',
+        data.rawMaterialImports.map((i) => (i.id === entry.id ? updated : i)),
+      )
+      toast.success('Shipment reopened', { description: 'Its balance is live again, and later shipments will recompute from it.' })
+    },
+    [data.rawMaterialImports, update],
   )
 
   const pricesForProduct = useCallback(
@@ -125,6 +189,12 @@ export default function ImportPage() {
 
   const deleteEntry = useCallback(
     (id: string) => {
+      const entry = data.rawMaterialImports.find((i) => i.id === id)
+      if (entry?.status === 'closed') {
+        toast.error('This shipment is closed', { description: 'Reopen it in Shipment History first if it needs to be removed.' })
+        return
+      }
+
       update(
         'rawMaterialImports',
         data.rawMaterialImports.filter((entry) => entry.id !== id),
@@ -132,6 +202,17 @@ export default function ImportPage() {
       toast.success('Entry deleted')
     },
     [data.rawMaterialImports, update],
+  )
+
+  // §10 — a wastage entry cannot take a material's current cycle negative,
+  // and cannot be dated inside a cycle that has already been closed.
+  const wastageAvailableTon = useCallback(
+    (productId: string) => rawStock.find((s) => s.productId === productId)?.availableTon ?? 0,
+    [rawStock],
+  )
+  const wastageCycleClosed = useCallback(
+    (productId: string, date: string) => cycleStatusForDate(productId, date, data.rawMaterialImports) === 'closed',
+    [data.rawMaterialImports],
   )
 
   const addWastage = useCallback(
@@ -239,7 +320,7 @@ export default function ImportPage() {
         actions={<ExportMenu onCsv={exportRegisterCsv} onPdf={printRegister} disabled={rows.length === 0} />}
       />
 
-      <StatGrid columns={4} className="mb-4">
+      <StatGrid columns={3} className="mb-4">
         <StatCard
           label="Today's import"
           icon={Factory}
@@ -247,18 +328,11 @@ export default function ImportPage() {
           value={<Num value={todayTotals.netWeightTon} suffix="Ton" size="2xl" className="font-bold" />}
         />
         <StatCard
-          label="Total imported"
+          label="Total imported (all-time)"
           icon={Scale}
           accent="brass"
           value={<Num value={totals.netWeightTon} suffix="Ton" size="2xl" className="font-bold" />}
-          footer={<span className="text-2xs text-muted-foreground">{totals.entryCount} entries</span>}
-        />
-        <StatCard
-          label="Available raw material"
-          icon={Scale}
-          accent="primary"
-          value={<Num value={rawStock.reduce((s, r) => s + r.availableTon, 0)} suffix="Ton" size="2xl" className="font-bold" />}
-          footer={<span className="text-2xs text-muted-foreground">Imported − Wastage − Bagged</span>}
+          footer={<span className="text-2xs text-muted-foreground">{totals.entryCount} entries · a history total, not current stock</span>}
         />
         <StatCard
           label="Total wastage"
@@ -268,6 +342,16 @@ export default function ImportPage() {
           footer={<span className="text-2xs text-muted-foreground">{data.wastageEntries.length} entries</span>}
         />
       </StatGrid>
+
+      {/* §1/§7 — one card per limestone type, each its own shipment cycle.
+          Never combined into a single blended figure. */}
+      <Section
+        title="Raw Material Stock"
+        description="Opening, received, used and closing — per limestone type, one shipment cycle at a time."
+        className="mb-4"
+      >
+        <RawMaterialStockSummary rows={rawStock} />
+      </Section>
 
       {rawStock.some((s) => s.averageCostPerTon) && (
         <Section title="Average raw material cost" description="Weighted by net tons, over every priced import." className="mb-4">
@@ -307,9 +391,20 @@ export default function ImportPage() {
         <Tab text="Wastage">
           <div className="pt-4">
             <div className="mb-4">
-              <WastageForm products={products} onSubmit={addWastage} />
+              <WastageForm
+                products={products}
+                availableTon={wastageAvailableTon}
+                cycleClosed={wastageCycleClosed}
+                onSubmit={addWastage}
+              />
             </div>
             <WastageTable rows={wastageRows} onDelete={deleteWastage} />
+          </div>
+        </Tab>
+
+        <Tab text="Shipment History">
+          <div className="pt-4">
+            <ShipmentTable rows={shipmentRows} onClose={closeShipment} onReopen={reopenShipment} />
           </div>
         </Tab>
       </TabContainer>

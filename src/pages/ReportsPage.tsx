@@ -42,7 +42,7 @@ import {
 } from '@/utils/ledger'
 import { buildImportRows, importsByProduct } from '@/utils/imports'
 import { allMeshStock, totalStockBags, totalStockTon } from '@/utils/productionStock'
-import { allRawMaterialStock, buildWastageRows } from '@/utils/rawMaterial'
+import { allRawMaterialStock, allShipmentCycles, buildWastageRows } from '@/utils/rawMaterial'
 import {
   buildSaleSummaries,
   filterSaleSummaries,
@@ -182,6 +182,13 @@ export default function ReportsPage() {
     const stock = allMeshStock(data.products, data.meshSizes, data.productionEntries, data.saleItems, data.sales)
     const importProductTotals = importsByProduct(importsInRange, data.products)
     const rawStock = allRawMaterialStock(
+      data.products,
+      data.rawMaterialImports,
+      data.wastageEntries,
+      data.productionEntries,
+      (meshId) => bagKgOf(data.meshSizes, meshId),
+    )
+    const shipmentCycles = allShipmentCycles(
       data.products,
       data.rawMaterialImports,
       data.wastageEntries,
@@ -366,37 +373,75 @@ export default function ReportsPage() {
         id: 'raw-material-stock',
         group: 'Production',
         name: 'Raw Material Stock',
-        description: 'Imported, wasted, produced and available raw material per limestone, with average cost.',
+        description: 'Current shipment cycle — opening, received, used and closing — per limestone, with average cost. Never a combined total.',
         icon: Ship,
         count: rawStock.filter((s) => productFilter === ALL || s.productId === productFilter).length,
         build: () => {
           const rows = rawStock.filter((s) => productFilter === ALL || s.productId === productFilter)
           return {
             title: 'Raw Material Stock',
-            subtitle: `As at ${formatDateLong(todayISO())}`,
+            subtitle: `As at ${formatDateLong(todayISO())} — each limestone's current shipment cycle`,
             columns: [
               { key: 'product', label: 'Limestone' },
-              { key: 'imported', label: 'Imported (Ton)', align: 'right' },
-              { key: 'wastage', label: 'Wastage (Ton)', align: 'right' },
-              { key: 'produced', label: 'Bagged (Ton)', align: 'right' },
-              { key: 'available', label: 'Available (Ton)', align: 'right' },
+              { key: 'opening', label: 'Opening (Ton)', align: 'right' },
+              { key: 'received', label: 'Received (Ton)', align: 'right' },
+              { key: 'used', label: 'Used (Ton)', align: 'right' },
+              { key: 'closing', label: 'Closing / Available (Ton)', align: 'right' },
+              { key: 'imported', label: 'Imported All-Time (Ton)', align: 'right' },
               { key: 'avgCost', label: 'Avg. Cost/Ton', align: 'right' },
             ],
             rows: rows.map((s) => ({
               product: s.productName,
+              opening: formatTons(s.openingTon),
+              received: formatTons(s.receivedTon),
+              used: formatTons(s.consumedTon),
+              closing: formatTons(s.closingTon),
               imported: formatTons(s.importedTon),
-              wastage: formatTons(s.wastageTon),
-              produced: formatTons(s.producedTon),
-              available: formatTons(s.availableTon),
               avgCost: s.averageCostPerTon ? formatCurrency(s.averageCostPerTon) : '—',
             })),
             totals: {
               product: 'Total',
+              opening: formatTons(rows.reduce((s, r) => s + r.openingTon, 0)),
+              received: formatTons(rows.reduce((s, r) => s + r.receivedTon, 0)),
+              used: formatTons(rows.reduce((s, r) => s + r.consumedTon, 0)),
+              closing: formatTons(rows.reduce((s, r) => s + r.closingTon, 0)),
               imported: formatTons(rows.reduce((s, r) => s + r.importedTon, 0)),
-              wastage: formatTons(rows.reduce((s, r) => s + r.wastageTon, 0)),
-              produced: formatTons(rows.reduce((s, r) => s + r.producedTon, 0)),
-              available: formatTons(rows.reduce((s, r) => s + r.availableTon, 0)),
             },
+          }
+        },
+      },
+      {
+        id: 'shipment-history',
+        group: 'Production',
+        name: 'Shipment History',
+        description: 'Every raw material shipment as its own inventory cycle, with status — open or closed.',
+        icon: Ship,
+        count: shipmentCycles.filter((c) => productFilter === ALL || c.productId === productFilter).length,
+        build: () => {
+          const cycles = shipmentCycles.filter((c) => productFilter === ALL || c.productId === productFilter)
+          return {
+            title: 'Shipment History',
+            subtitle: rangeLabel,
+            columns: [
+              { key: 'date', label: 'Received Date' },
+              { key: 'product', label: 'Raw Material' },
+              { key: 'received', label: 'Received (Ton)', align: 'right' },
+              { key: 'opening', label: 'Opening (Ton)', align: 'right' },
+              { key: 'consumed', label: 'Consumed (Ton)', align: 'right' },
+              { key: 'closing', label: 'Closing (Ton)', align: 'right' },
+              { key: 'status', label: 'Status' },
+            ],
+            rows: cycles
+              .filter((c) => isWithin(c.date, from, to))
+              .map((c) => ({
+                date: formatDate(c.date),
+                product: c.productName,
+                received: formatTons(c.receivedTon),
+                opening: formatTons(c.openingTon),
+                consumed: formatTons(c.consumedTon),
+                closing: formatTons(c.closingTon),
+                status: c.status === 'closed' ? 'Closed' : 'Open',
+              })),
           }
         },
       },
