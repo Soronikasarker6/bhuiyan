@@ -24,6 +24,8 @@ class DatabaseSeeder extends Seeder
             UnitOfMeasureSeeder::class,
             AccountSeeder::class,
             CategorySeeder::class,
+            PermissionSeeder::class,
+            RoleSeeder::class,
             AdminUserSeeder::class,
         ]);
     }

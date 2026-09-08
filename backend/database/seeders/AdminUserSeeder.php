@@ -10,12 +10,17 @@ class AdminUserSeeder extends Seeder
 {
     public function run(): void
     {
-        User::firstOrCreate(
+        $user = User::firstOrCreate(
             ['email' => env('ADMIN_EMAIL', 'admin@bhuiyan-industry.test')],
             [
                 'name' => env('ADMIN_NAME', 'Office Admin'),
                 'password' => env('ADMIN_PASSWORD', 'change-me-please'),
+                'is_active' => true,
             ]
         );
+
+        if (! $user->hasRole('Admin')) {
+            $user->assignRole('Admin');
+        }
     }
 }
