@@ -1,0 +1,4 @@
+# Shell scripts run inside Linux containers (Docker/Render) — they must keep
+# LF endings regardless of what platform commits them, or the shell fails
+# with a cryptic "no such file or directory" from the CRLF in the shebang.
+*.sh text eol=lf

@@ -1,0 +1,78 @@
+# Render Blueprint — "New +" → "Blueprint" in the Render dashboard, pointed at
+# this repo, picks this up automatically.
+#
+# The database itself is NOT defined here: Render doesn't offer managed MySQL
+# (only Postgres/Redis), so the app talks to an external MySQL host instead
+# (TiDB Cloud Serverless, PlanetScale, etc.) — its connection details are
+# entered by hand in the dashboard as the `sync: false` vars below.
+#
+# `sync: false` means "set this manually in the dashboard" — Render won't
+# store or overwrite it from this file. Everything else here is safe to
+# commit because it isn't a secret.
+services:
+  - type: web
+    name: bhuiyan-industry-api
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /up
+    envVars:
+      - key: APP_NAME
+        value: "BHUIYAN INDUSTRY"
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_TIMEZONE
+        value: Asia/Dhaka
+      - key: LOG_CHANNEL
+        value: stderr
+      # https://dashboard.render.com/ → this service → Settings once it
+      # exists, e.g. https://bhuiyan-industry-api.onrender.com
+      - key: APP_URL
+        sync: false
+      # `php artisan key:generate --show` locally, paste the output here.
+      - key: APP_KEY
+        sync: false
+
+      - key: DB_CONNECTION
+        value: mysql
+      # TiDB Cloud Serverless (or whichever host) connection details —
+      # from its dashboard's "Connect" panel.
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "4000"
+      - key: DB_DATABASE
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      # TiDB Serverless requires TLS; this is the standard CA bundle path on
+      # the Debian base FrankenPHP's image uses. Only needed for hosts that
+      # require verified TLS — leave unset for a host that doesn't.
+      - key: MYSQL_ATTR_SSL_CA
+        value: /etc/ssl/certs/ca-certificates.crt
+
+      - key: SESSION_DRIVER
+        value: database
+      - key: CACHE_STORE
+        value: database
+      - key: QUEUE_CONNECTION
+        value: database
+
+      # Origins allowed to call this API — the GitHub Pages site. Add more,
+      # comma-separated, if another frontend needs to reach this API too.
+      - key: FRONTEND_URL
+        value: https://soronikasarker6.github.io
+
+      # The one seeded admin login (AdminUserSeeder) — change the password
+      # here before the first deploy, not after.
+      - key: ADMIN_NAME
+        value: "Office Admin"
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
