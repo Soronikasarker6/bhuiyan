@@ -6,7 +6,6 @@ import {
   Landmark,
   Lock,
   Pencil,
-  Plus,
   Ruler,
   RotateCcw,
   Tags,
@@ -342,10 +341,7 @@ function AccountsPanel() {
           </Select>
         </div>
 
-        <Button type="submit" variant="success">
-          <Plus />
-          Add account
-        </Button>
+        <Button type="submit">Add account</Button>
       </form>
 
       <ConfirmDialog
@@ -506,8 +502,7 @@ function CategoryList({
           placeholder={direction === 'in' ? 'Export Payment' : 'Insurance'}
           aria-label={`New ${direction === 'in' ? 'cash in' : 'cash out'} category`}
         />
-        <Button type="submit" variant="success">
-          <Plus />
+        <Button type="submit" className="shrink-0">
           Add
         </Button>
       </form>
@@ -653,8 +648,7 @@ function UnitsPanel() {
           placeholder="e.g. Bag"
           aria-label="New unit of measure"
         />
-        <Button type="submit" variant="success">
-          <Plus />
+        <Button type="submit" className="shrink-0">
           Add
         </Button>
       </form>
@@ -910,13 +904,11 @@ function UsersPanel() {
       {canCreate && (
         <div className="flex justify-end">
           <Button
-            variant="success"
             onClick={() => {
               setEditing(null)
               setFormOpen(true)
             }}
           >
-            <Plus />
             Add user
           </Button>
         </div>
@@ -996,13 +988,11 @@ function RolesPanel() {
       {canEdit && (
         <div className="flex justify-end">
           <Button
-            variant="success"
             onClick={() => {
               setEditing(null)
               setFormOpen(true)
             }}
           >
-            <Plus />
             Add role
           </Button>
         </div>

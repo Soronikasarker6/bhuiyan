@@ -159,9 +159,7 @@ export function MeshSizeManager({
             aria-label="Bag weight (kg)"
             className="max-w-[10rem]"
           />
-          <Button type="submit" variant="success">
-            + Add mesh size
-          </Button>
+          <Button type="submit">Add mesh size</Button>
         </form>
       )}
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Users, Wallet } from 'lucide-react'
+import { Users, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/PageHeader'
 import { PageSkeleton } from '@/components/PageSkeleton'
@@ -117,7 +117,6 @@ export default function CustomersPage() {
                 setFormOpen(true)
               }}
             >
-              <Plus />
               Add customer
             </Button>
           )

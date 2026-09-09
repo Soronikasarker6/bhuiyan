@@ -228,8 +228,8 @@ export function ProductManager({
             placeholder="Short note for the team"
           />
         </Field>
-        <Button type="submit" variant="success" className="sm:col-span-2">
-          + Add product
+        <Button type="submit" className="sm:col-span-2">
+          Add product
         </Button>
       </form>
       )}
