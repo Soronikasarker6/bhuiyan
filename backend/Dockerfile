@@ -38,3 +38,11 @@ COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
+
+# Declaring an ENTRYPOINT resets the base image's CMD to null, so FrankenPHP's
+# own default server command has to be restated here — without it entrypoint.sh
+# reaches `exec "$@"` with no arguments, the container exits as soon as the
+# migrations finish, and Render reports "Application exited early". Handing off
+# to the base image's docker-entrypoint.sh (rather than calling frankenphp
+# directly) keeps its /data and /config permission setup.
+CMD ["docker-entrypoint.sh", "--config", "/etc/frankenphp/Caddyfile", "--adapter", "caddyfile"]
