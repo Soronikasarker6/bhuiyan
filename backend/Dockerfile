@@ -26,6 +26,14 @@ FROM dunglas/frankenphp:php8.3
 # Laravel app + spatie/laravel-permission expects to find.
 RUN install-php-extensions pdo_mysql intl zip bcmath gd opcache
 
+# The base image runs `setcap cap_net_bind_service=+ep` on the frankenphp
+# binary so it can bind port 80 as a non-root user. Render's runtime drops that
+# capability from the container's bounding set, and execve() refuses any binary
+# whose file capabilities exceed that set — the server died with
+# "exec: frankenphp: Operation not permitted" (exit 126). Nothing here needs it:
+# Render hands us a high $PORT, which any user may bind.
+RUN setcap -r /usr/local/bin/frankenphp
+
 WORKDIR /app
 COPY --from=vendor /app /app
 
