@@ -26,6 +26,14 @@ FROM dunglas/frankenphp:php8.3
 # Laravel app + spatie/laravel-permission expects to find.
 RUN install-php-extensions pdo_mysql intl zip bcmath gd opcache
 
+# The base image runs `setcap cap_net_bind_service=+ep` on the frankenphp
+# binary so it can bind port 80 as a non-root user. Render's runtime drops that
+# capability from the container's bounding set, and execve() refuses any binary
+# whose file capabilities exceed that set — the server died with
+# "exec: frankenphp: Operation not permitted" (exit 126). Nothing here needs it:
+# Render hands us a high $PORT, which any user may bind.
+RUN setcap -r /usr/local/bin/frankenphp
+
 WORKDIR /app
 COPY --from=vendor /app /app
 
@@ -38,3 +46,12 @@ COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
+
+# Declaring an ENTRYPOINT resets the base image's CMD to null, so FrankenPHP's
+# own default server command has to be restated here — without it entrypoint.sh
+# reaches `exec "$@"` with no arguments, the container exits as soon as the
+# migrations finish, and Render reports "Application exited early". The base
+# image's docker-entrypoint.sh isn't on PATH, so invoke the server directly;
+# all that wrapper adds is a `frankenphp run` prefix and a chown of /data and
+# /config that is already a no-op for the root user this container runs as.
+CMD ["frankenphp", "run", "--config", "/etc/frankenphp/Caddyfile", "--adapter", "caddyfile"]
