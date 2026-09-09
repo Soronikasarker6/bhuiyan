@@ -42,7 +42,8 @@ ENTRYPOINT ["/entrypoint.sh"]
 # Declaring an ENTRYPOINT resets the base image's CMD to null, so FrankenPHP's
 # own default server command has to be restated here — without it entrypoint.sh
 # reaches `exec "$@"` with no arguments, the container exits as soon as the
-# migrations finish, and Render reports "Application exited early". Handing off
-# to the base image's docker-entrypoint.sh (rather than calling frankenphp
-# directly) keeps its /data and /config permission setup.
-CMD ["docker-entrypoint.sh", "--config", "/etc/frankenphp/Caddyfile", "--adapter", "caddyfile"]
+# migrations finish, and Render reports "Application exited early". The base
+# image's docker-entrypoint.sh isn't on PATH, so invoke the server directly;
+# all that wrapper adds is a `frankenphp run` prefix and a chown of /data and
+# /config that is already a no-op for the root user this container runs as.
+CMD ["frankenphp", "run", "--config", "/etc/frankenphp/Caddyfile", "--adapter", "caddyfile"]
