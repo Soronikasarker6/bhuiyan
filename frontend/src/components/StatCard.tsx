@@ -17,6 +17,12 @@ export function StatCard({
   icon: Icon,
   footer,
   accent = 'neutral',
+  /**
+   * Opt-in card background, for the Dashboard's stone/slate mood board only
+   * (see `styles/dashboard-theme.css`) — omitted, this renders exactly as it
+   * always has, so every other page's `StatCard` is unaffected.
+   */
+  theme = 'default',
   className,
 }: {
   label: string
@@ -24,6 +30,7 @@ export function StatCard({
   icon?: LucideIcon
   footer?: ReactNode
   accent?: 'neutral' | 'primary' | 'success' | 'brass'
+  theme?: 'default' | 'stone' | 'slate'
   className?: string
 }) {
   const accents = {
@@ -33,19 +40,21 @@ export function StatCard({
     brass: 'text-brass-700 bg-brass-50',
   }
 
+  const isDark = theme === 'slate'
+  const surface =
+    theme === 'default' ? 'border-border bg-card' : theme === 'stone' ? 'dash-card-stone' : 'dash-card-slate'
+
   return (
-    <div
-      className={cn(
-        'rounded-xl border border-border bg-card p-4 shadow-card transition-shadow hover:shadow-raised',
-        className,
-      )}
-    >
+    <div className={cn('rounded-xl p-4 shadow-card transition-shadow hover:shadow-raised', surface, className)}>
       <div className="flex items-start justify-between gap-3">
-        <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {label}
-        </p>
+        <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
         {Icon && (
-          <span className={cn('grid h-7 w-7 shrink-0 place-items-center rounded-lg', accents[accent])}>
+          <span
+            className={cn(
+              'grid h-7 w-7 shrink-0 place-items-center rounded-lg',
+              isDark ? 'bg-white/10 text-cream-50' : accents[accent],
+            )}
+          >
             <Icon className="h-3.5 w-3.5" aria-hidden />
           </span>
         )}

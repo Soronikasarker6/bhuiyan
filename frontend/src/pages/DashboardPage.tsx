@@ -29,6 +29,7 @@ import { customerTotals, outstandingCustomers, transactionsForCustomer } from '@
 import { monthlyProfit } from '@/utils/profit'
 import { MONTHS_SHORT, formatDate, formatNumber, formatTons, todayISO } from '@/utils/format'
 import { SALE_STATUS_LABEL, SALE_STATUS_VARIANT } from '@/constants/saleStatus'
+import '@/styles/quarry-theme.css'
 
 /**
  * A labelled cluster of stat cards.
@@ -46,6 +47,31 @@ function StatGroup({ label, children }: { label: string; children: ReactNode }) 
       </p>
       {children}
     </div>
+  )
+}
+
+/**
+ * A ring-cut cross-section, purely decorative — sits low-opacity behind the
+ * "Current stock" card, absolutely positioned by the caller.
+ */
+function TreeRingAccent({ className }: { className?: string }) {
+  const rings = [92, 78, 64, 50, 36, 22]
+  return (
+    <svg viewBox="0 0 200 200" className={className} aria-hidden focusable="false">
+      <circle cx="100" cy="100" r="98" fill="hsl(32 32% 82%)" />
+      {rings.map((r, i) => (
+        <circle
+          key={r}
+          cx="100"
+          cy="100"
+          r={r}
+          fill="none"
+          stroke={i % 2 === 0 ? 'hsl(28 30% 66%)' : 'hsl(34 30% 74%)'}
+          strokeWidth={i === 0 ? 2.5 : 1.25}
+        />
+      ))}
+      <circle cx="100" cy="100" r="4" fill="hsl(26 30% 52%)" />
+    </svg>
   )
 }
 
@@ -200,41 +226,48 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Dashboard"
-        description={`Financial year ${year} — figures update as entries are recorded.`}
-        actions={
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/reports">
-              View reports
-              <ArrowRight />
-            </Link>
-          </Button>
-        }
-      />
+      <div className="mb-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 sm:flex-1">
+          <p className="text-sm font-medium text-foreground/80">Dashboard</p>
+          <p className="mt-0.5 max-w-xs text-xs leading-relaxed text-muted-foreground">
+            Financial year {year} — figures update as entries are recorded.
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center justify-center sm:flex-1 sm:justify-end">
+          <Link
+            to="/reports"
+            className="dash-pill-dark inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium shadow-raised transition-transform hover:scale-[1.02]"
+          >
+            View reports
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      </div>
 
       <div className="mb-4 space-y-4">
         <StatGroup label="Today">
           <StatGrid columns={4}>
-            <StatCard label="Raw material import" icon={Ship} accent="primary" value={<Num value={todayImportTotal.netWeightTon} suffix="Ton" size="2xl" className="font-bold" />} />
-            <StatCard label="Production" icon={Factory} accent="primary" value={<Num value={todayProductionBags} suffix="Bag" size="2xl" className="font-bold" />} />
-            <StatCard label="Sales" icon={Receipt} accent="primary" value={<Money value={todaySales.reduce((s, r) => s + r.totalAmount, 0)} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{todaySales.length} invoices · {formatTons(todaySalesTon)} Ton</span>} />
-            <StatCard label="Cash in" icon={Banknote} accent="success" value={<Money value={todayCashIn} size="2xl" weight="bold" tone="positive" />} />
+            <StatCard theme="stone" label="Raw material import" icon={Ship} accent="primary" value={<Num value={todayImportTotal.netWeightTon} suffix="Ton" size="2xl" className="font-bold" />} />
+            <StatCard theme="stone" label="Production" icon={Factory} accent="primary" value={<Num value={todayProductionBags} suffix="Bag" size="2xl" className="font-bold" />} />
+            <StatCard theme="stone" label="Sales" icon={Receipt} accent="primary" value={<Money value={todaySales.reduce((s, r) => s + r.totalAmount, 0)} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{todaySales.length} invoices · {formatTons(todaySalesTon)} Ton</span>} />
+            <StatCard theme="stone" label="Cash in" icon={Banknote} accent="success" value={<Money value={todayCashIn} size="2xl" weight="bold" tone="positive" />} />
           </StatGrid>
         </StatGroup>
 
         <StatGroup label="Totals">
           <StatGrid columns={3}>
-            <StatCard label="Total imported" icon={Ship} accent="brass" value={<Num value={importTotal.netWeightTon} suffix="Ton" size="2xl" className="font-bold" />} />
-            <StatCard label="Total production" icon={Boxes} accent="brass" value={<Num value={totalProdBags} suffix="Bag" size="2xl" className="font-bold" />} footer={<span className="text-2xs text-muted-foreground">Current stock: {formatNumber(stockTon)} Ton</span>} />
-            <StatCard label="Total sales" icon={Receipt} accent="brass" value={<Money value={totalSalesAmount} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{sales.length} invoices · {formatTons(totalSalesTon)} Ton</span>} />
+            <StatCard theme="slate" label="Total imported" icon={Ship} accent="brass" value={<Num value={importTotal.netWeightTon} suffix="Ton" size="2xl" className="font-bold" />} />
+            <StatCard theme="slate" label="Total production" icon={Boxes} accent="brass" value={<Num value={totalProdBags} suffix="Bag" size="2xl" className="font-bold" />} footer={<span className="text-2xs text-muted-foreground">Current stock: {formatNumber(stockTon)} Ton</span>} />
+            <StatCard theme="slate" label="Total sales" icon={Receipt} accent="brass" value={<Money value={totalSalesAmount} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{sales.length} invoices · {formatTons(totalSalesTon)} Ton</span>} />
           </StatGrid>
         </StatGroup>
 
         <StatGroup label="This month's money">
           <StatGrid columns={2}>
-            <StatCard label="Total customer due" icon={Wallet} accent={totalDue > 0 ? 'primary' : 'success'} value={<Money value={totalDue} size="2xl" weight="bold" tone={totalDue > 0 ? 'negative' : 'positive'} />} />
+            <StatCard theme="slate" label="Total customer due" icon={Wallet} accent={totalDue > 0 ? 'primary' : 'success'} value={<Money value={totalDue} size="2xl" weight="bold" tone={totalDue > 0 ? 'negative' : 'positive'} />} />
             <StatCard
+              theme="slate"
               label="Net profit"
               icon={TrendingUp}
               accent={thisMonthProfit.netProfit < 0 ? 'primary' : 'success'}
@@ -246,33 +279,46 @@ export default function DashboardPage() {
       </div>
 
       <div className="mb-4 grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
-        <Section title="Sales overview" description={`Monthly revenue through ${year}`}>
+        <Section
+          title="Sales overview"
+          description={`Monthly revenue through ${year}`}
+          className="dash-wood-panel border-none"
+          bodyClassName="rounded-lg bg-card/90 shadow-inner"
+        >
           <SalesTrendChart data={salesTrend} />
         </Section>
 
-        <Section title="Current stock" description="Total tons in hand, by product" noPadding>
-          {productWiseStock.length === 0 ? (
-            <EmptyState icon={Boxes} size="sm" title="No stock yet" description="Record production to see product totals here." />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Product</TableHead>
-                  <TableHead numeric>Stock (Ton)</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {productWiseStock.map((p) => (
-                  <TableRow key={p.productName}>
-                    <TableCell className="font-medium">{p.productName}</TableCell>
-                    <TableCell numeric>
-                      <Num value={p.stockTon} size="sm" tone={p.stockTon <= 0 ? 'negative' : 'neutral'} />
-                    </TableCell>
+        <Section
+          title="Current stock"
+          description="Total tons in hand, by product"
+          className="dash-marble relative overflow-hidden"
+          noPadding
+        >
+          <TreeRingAccent className="pointer-events-none absolute -bottom-12 -right-12 z-0 h-48 w-48 opacity-20" />
+          <div className="relative z-10">
+            {productWiseStock.length === 0 ? (
+              <EmptyState icon={Boxes} size="sm" title="No stock yet" description="Record production to see product totals here." />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product</TableHead>
+                    <TableHead numeric>Stock (Ton)</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+                </TableHeader>
+                <TableBody>
+                  {productWiseStock.map((p) => (
+                    <TableRow key={p.productName}>
+                      <TableCell className="font-medium">{p.productName}</TableCell>
+                      <TableCell numeric>
+                        <Num value={p.stockTon} size="sm" tone={p.stockTon <= 0 ? 'negative' : 'neutral'} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
         </Section>
       </div>
 
@@ -288,6 +334,7 @@ export default function DashboardPage() {
               </Link>
             </Button>
           }
+          className="dash-marble"
           noPadding
         >
           {topOutstanding.length === 0 ? (
@@ -318,7 +365,7 @@ export default function DashboardPage() {
           )}
         </Section>
 
-        <Section title="Recent sales" description="The latest invoices" noPadding>
+        <Section title="Recent sales" description="The latest invoices" className="dash-marble" noPadding>
           {recentSales.length === 0 ? (
             <EmptyState
               icon={Receipt}
@@ -356,7 +403,7 @@ export default function DashboardPage() {
         </Section>
       </div>
 
-      <Section title="Recent raw material imports" description="The latest weighbridge receipts" noPadding>
+      <Section title="Recent raw material imports" description="The latest weighbridge receipts" className="dash-marble" noPadding>
         {recentImports.length === 0 ? (
           <EmptyState
             icon={Factory}

@@ -1,0 +1,83 @@
+/**
+ * Dashboard-only decorative theme — a limestone-quarry mood board (a carved
+ * stone plaque in the header, a wood-panel behind the sales chart, marble
+ * veining under the registers, a tree-ring accent behind the stock table).
+ *
+ * Scoped entirely to the classes below and imported only by
+ * `pages/DashboardPage.tsx` — no other page's styling is touched. All colours
+ * stay in the same warm-quarry palette as `tokens.css` (cream/brass/olive),
+ * just recombined into a couple of textures this one page uses.
+ */
+
+/* The raised stone plaque behind the page's display-serif "Dashboard" title. */
+.dash-plaque {
+  background: linear-gradient(155deg, hsl(40 30% 99%) 0%, hsl(40 24% 93%) 45%, hsl(38 20% 86%) 100%);
+  border: 1px solid hsl(38 20% 82%);
+  box-shadow:
+    0 1px 0 hsl(0 0% 100% / 0.7) inset,
+    0 -8px 16px hsl(30 22% 68% / 0.16) inset,
+    0 10px 24px -10px rgb(46 32 19 / 0.28);
+}
+
+/* The dark "View reports" pill beside it. */
+.dash-pill-dark {
+  background: linear-gradient(160deg, hsl(220 9% 32%), hsl(222 12% 17%));
+  border: 1px solid hsl(220 8% 40%);
+  color: hsl(40 20% 94%);
+}
+.dash-pill-dark:hover {
+  background: linear-gradient(160deg, hsl(220 9% 36%), hsl(222 12% 20%));
+}
+
+/* Stat-card themes, opted into via `StatCard`'s `theme` prop. */
+.dash-card-stone {
+  background-image: linear-gradient(155deg, hsl(40 32% 97%) 0%, hsl(38 26% 90%) 100%);
+  border: 1px solid hsl(38 22% 83%);
+}
+
+.dash-card-slate {
+  background-image: linear-gradient(155deg, hsl(220 10% 34%) 0%, hsl(222 14% 19%) 100%);
+  border: 1px solid hsl(220 10% 29%);
+}
+
+/*
+ * `Money`/`Num` set their own text colour via the shared tone classes below,
+ * tuned for a light card everywhere else in the app. On the dark slate card
+ * those same classes read too dark to pass contrast, so — scoped strictly to
+ * `.dash-card-slate` — each is brightened to a lighter tint of the *same*
+ * hue family (olive stays olive, green stays green), preserving what "due"
+ * vs "paid" mean everywhere else while keeping this one card legible.
+ */
+.dash-card-slate .text-foreground {
+  color: hsl(40 22% 95%) !important;
+}
+.dash-card-slate .text-muted-foreground {
+  color: hsl(40 12% 74%) !important;
+}
+.dash-card-slate .text-success-700 {
+  color: hsl(140 42% 70%) !important;
+}
+.dash-card-slate .text-primary-700 {
+  color: hsl(88 32% 74%) !important;
+}
+
+/* A soft wood-grain wash behind the sales trend chart's card. */
+.dash-wood-panel {
+  background-color: hsl(32 30% 86%);
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      hsl(28 32% 80% / 0.9) 0px,
+      hsl(33 36% 85% / 0.9) 4px,
+      hsl(26 26% 76% / 0.9) 9px,
+      hsl(33 36% 85% / 0.9) 14px
+    ),
+    linear-gradient(180deg, hsl(36 30% 90% / 0.5), hsl(26 24% 76% / 0.35));
+}
+
+/* A faint marble veining wash for the register/table cards. */
+.dash-marble {
+  background-image:
+    radial-gradient(ellipse 60% 40% at 12% 15%, hsl(38 22% 91% / 0.7), transparent 60%),
+    radial-gradient(ellipse 55% 45% at 90% 85%, hsl(38 22% 91% / 0.6), transparent 55%);
+}
