@@ -111,12 +111,7 @@ const Button = React.forwardRef<HTMLElement, ButtonProps>(function Button(
     <UI5Button
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ref={ref as any}
-      // The lucide icon passed as a child projects through ui5-button's
-      // default slot but stays a light-DOM node, so this selector still
-      // reaches it — without it, an unconstrained lucide `<svg>` renders at
-      // its own default size (24px) inside a button barely taller than
-      // that, which is exactly the "oversized icon" look this fixes.
-      className={cn('[&_svg]:size-3.5 [&_svg]:shrink-0', SIZE_CLASS[size ?? 'default'], className)}
+      className={cn(SIZE_CLASS[size ?? 'default'], className)}
       design={DESIGN[variant ?? 'default']}
       disabled={disabled}
       loading={loading}
@@ -125,7 +120,21 @@ const Button = React.forwardRef<HTMLElement, ButtonProps>(function Button(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       {...(props as any)}
     >
-      {children}
+      {/*
+        ui5-button wraps its default slot's content in its own text
+        container, which lays out in normal flow, not a flex row. Tailwind's
+        preflight sets every <svg> to `display: block`, so an icon slotted
+        next to a text node there breaks onto its own line above the label
+        instead of sitting beside it. This inline-flex wrapper is *our*
+        light-DOM element around that content — it establishes its own row
+        layout for the icon + text regardless of how UI5 wraps the slot.
+        `[&_svg]:size-3.5` also lives here rather than on the host: an
+        unconstrained lucide icon renders at its 24px default, oversized for
+        a button this compact.
+      */}
+      <span className="inline-flex items-center justify-center gap-1.5 [&_svg]:size-3.5 [&_svg]:shrink-0">
+        {children}
+      </span>
     </UI5Button>
   )
 })

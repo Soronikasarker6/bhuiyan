@@ -14,8 +14,16 @@ import { Button } from '@/components/ui/button'
 import { useSortableSearch } from '@/hooks/useSortableSearch'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
-import { formatCurrency, formatDate } from '@/utils/format'
+import { formatCurrency, formatDate, formatTons } from '@/utils/format'
+import { itemsBagsTotal } from '@/utils/sales'
 import { SALE_STATUS_LABEL, SALE_STATUS_VARIANT } from '@/constants/saleStatus'
+
+/** A single-item invoice can show that item's own figure directly; a multi-item one can't collapse to one value. */
+function itemFieldOrMultiple(sale: SaleSummary, field: 'productName' | 'meshSizeName'): string {
+  if (sale.items.length === 0) return '—'
+  if (sale.items.length === 1) return sale.items[0][field]
+  return 'Multiple'
+}
 
 const PAGE_SIZE = 20
 
@@ -37,12 +45,15 @@ export function SalesTable({
 
   const { search, setSearch, sortKey, direction, toggleSort, rows: sorted } = useSortableSearch({
     rows: sales,
-    searchText: (s) => `${s.invoiceNo} ${s.customerName} ${s.truckNo ?? ''}`,
+    searchText: (s) =>
+      `${s.invoiceNo} ${s.customerName} ${s.truckNo ?? ''} ${s.items.map((i) => `${i.productName} ${i.meshSizeName}`).join(' ')}`,
     sorters: {
       date: (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0),
       invoice: (a, b) => a.invoiceNo.localeCompare(b.invoiceNo),
       customer: (a, b) => a.customerName.localeCompare(b.customerName),
+      ton: (a, b) => a.totalWeightTon - b.totalWeightTon,
       total: (a, b) => a.totalAmount - b.totalAmount,
+      paid: (a, b) => a.amountPaid - b.amountPaid,
       due: (a, b) => a.amountDue - b.amountDue,
     },
     defaultSortKey: 'date',
@@ -85,7 +96,13 @@ export function SalesTable({
                 <SortableHead label="Date" sortKey="date" activeKey={sortKey} direction={direction} onSort={toggleSort} />
                 <SortableHead label="Customer" sortKey="customer" activeKey={sortKey} direction={direction} onSort={toggleSort} />
                 <TableHead>Truck</TableHead>
+                <TableHead>Product</TableHead>
+                <TableHead>Mesh / Size</TableHead>
+                <TableHead numeric>Qty (Bags)</TableHead>
+                <SortableHead label="Billable TON" sortKey="ton" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
+                <TableHead numeric>Rate / Ton</TableHead>
                 <SortableHead label="Total" sortKey="total" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
+                <SortableHead label="Paid" sortKey="paid" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
                 <SortableHead label="Due" sortKey="due" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
                 <TableHead>Status</TableHead>
                 <TableHead />
@@ -104,8 +121,18 @@ export function SalesTable({
                       <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(sale.date)}</TableCell>
                       <TableCell className="max-w-[10rem] truncate font-medium">{sale.customerName}</TableCell>
                       <TableCell className="font-mono text-2xs text-muted-foreground">{sale.truckNo || '—'}</TableCell>
+                      <TableCell className="max-w-[8rem] truncate">{itemFieldOrMultiple(sale, 'productName')}</TableCell>
+                      <TableCell className="max-w-[8rem] truncate text-muted-foreground">{itemFieldOrMultiple(sale, 'meshSizeName')}</TableCell>
+                      <TableCell numeric>{itemsBagsTotal(sale.items)}</TableCell>
+                      <TableCell numeric className="font-medium">{formatTons(sale.totalWeightTon)}</TableCell>
+                      <TableCell numeric className="text-muted-foreground">
+                        {sale.items.length === 1 ? formatCurrency(sale.items[0].ratePerTon) : 'Multiple'}
+                      </TableCell>
                       <TableCell numeric>
                         <Money value={sale.totalAmount} size="sm" weight="semibold" />
+                      </TableCell>
+                      <TableCell numeric>
+                        <Money value={sale.amountPaid} size="sm" tone={sale.amountPaid > 0 ? 'positive' : 'muted'} />
                       </TableCell>
                       <TableCell numeric>
                         <Money value={sale.amountDue} size="sm" tone={sale.amountDue > 0 ? 'negative' : 'positive'} />
@@ -138,32 +165,32 @@ export function SalesTable({
 
                     {isOpen && (
                       <TableRow className="bg-secondary/30 hover:bg-secondary/30">
-                        <TableCell colSpan={9} className="p-0">
-                          <div className="p-4">
-                            <table className="w-full text-[0.8125rem]">
-                              <thead>
-                                <tr className="text-2xs uppercase tracking-wider text-muted-foreground">
-                                  <th className="pb-1.5 text-left font-semibold">Product</th>
-                                  <th className="pb-1.5 text-left font-semibold">Mesh</th>
-                                  <th className="pb-1.5 text-right font-semibold">Bags</th>
-                                  <th className="pb-1.5 text-right font-semibold">Weight (Ton)</th>
-                                  <th className="pb-1.5 text-right font-semibold">Rate / Ton</th>
-                                  <th className="pb-1.5 text-right font-semibold">Amount</th>
-                                </tr>
-                              </thead>
-                              <tbody>
+                        <TableCell colSpan={15} className="p-0">
+                          <div className="p-3">
+                            <Table containerClassName="rounded-lg border border-border bg-card">
+                              <TableHeader>
+                                <TableRow className="hover:bg-transparent">
+                                  <TableHead>Product</TableHead>
+                                  <TableHead>Mesh</TableHead>
+                                  <TableHead numeric>Bags</TableHead>
+                                  <TableHead numeric>Weight (Ton)</TableHead>
+                                  <TableHead numeric>Rate / Ton</TableHead>
+                                  <TableHead numeric>Amount</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
                                 {sale.items.map((item) => (
-                                  <tr key={item.id} className="border-t border-border/60">
-                                    <td className="py-1.5 font-medium">{item.productName}</td>
-                                    <td className="py-1.5 text-muted-foreground">{item.meshSizeName}</td>
-                                    <td className="py-1.5 text-right font-mono tabular">{item.bags}</td>
-                                    <td className="py-1.5 text-right font-mono tabular">{item.weightTon.toFixed(2)}</td>
-                                    <td className="py-1.5 text-right font-mono tabular">{formatCurrency(item.ratePerTon)}</td>
-                                    <td className="py-1.5 text-right font-mono tabular font-medium">{formatCurrency(item.amount)}</td>
-                                  </tr>
+                                  <TableRow key={item.id} className="hover:bg-transparent">
+                                    <TableCell className="font-medium">{item.productName}</TableCell>
+                                    <TableCell className="text-muted-foreground">{item.meshSizeName}</TableCell>
+                                    <TableCell numeric>{item.bags}</TableCell>
+                                    <TableCell numeric>{item.weightTon.toFixed(2)}</TableCell>
+                                    <TableCell numeric>{formatCurrency(item.ratePerTon)}</TableCell>
+                                    <TableCell numeric className="font-medium">{formatCurrency(item.amount)}</TableCell>
+                                  </TableRow>
                                 ))}
-                              </tbody>
-                            </table>
+                              </TableBody>
+                            </Table>
                             {sale.notes && <p className="mt-2 text-xs text-muted-foreground">Note: {sale.notes}</p>}
                           </div>
                         </TableCell>

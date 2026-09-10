@@ -19,6 +19,9 @@ class StoreSaleRequest extends FormRequest
             'truck_no' => ['nullable', 'string', 'max:40'],
             'notes' => ['nullable', 'string', 'max:500'],
             'paid_at_sale' => ['nullable', 'numeric', 'gte:0'],
+            // Which Cash & Bank account a "paid at sale" amount lands in — falls
+            // back to the system Cash account when omitted (see SalesService).
+            'account_id' => ['nullable', 'exists:accounts,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.mesh_size_id' => ['required', 'exists:mesh_sizes,id'],

@@ -83,7 +83,17 @@ export default function ProfitPage() {
         </div>
       </Section>
 
-      <StatGrid columns={4} className="mb-4">
+      {/*
+        One grid, not three — Total sales/COGS/Gross profit/Company costs
+        (row 1) and Net profit/Net margin (row 2, a size up: these two are
+        the answer, the rest are how it was reached) used to repeat across a
+        second StatGrid *and* a `<dl>` breakdown below, all showing the exact
+        same five numbers. The year-at-a-glance table already presents
+        Sales → COGS → Gross Profit → Company Costs → Net Profit in that
+        left-to-right order for every month, selected month included and
+        highlighted, so the formula is still traceable without a third copy.
+      */}
+      <StatGrid columns={3} className="mb-4">
         <StatCard label="Total sales" icon={Receipt} accent="primary" value={<Money value={selected.totalSales} size="xl" weight="bold" />} />
         <StatCard label="Cost of goods sold" icon={Scale} accent="brass" value={<Money value={selected.costOfGoodsSold} size="xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">Weight actually sold × avg. cost/ton</span>} />
         <StatCard
@@ -93,9 +103,6 @@ export default function ProfitPage() {
           value={<Money value={selected.grossProfit} size="xl" weight="bold" tone={selected.grossProfit >= 0 ? 'positive' : 'negative'} />}
         />
         <StatCard label="Company costs" icon={Wallet} accent="brass" value={<Money value={selected.totalExpenses} size="xl" weight="bold" />} />
-      </StatGrid>
-
-      <StatGrid columns={2} className="mb-4">
         <StatCard
           label="Net profit"
           icon={TrendingUp}
@@ -111,31 +118,6 @@ export default function ProfitPage() {
           footer={<span className="text-2xs text-muted-foreground">Net profit ÷ total sales</span>}
         />
       </StatGrid>
-
-      <Section title={`${MONTHS[monthIndex]} ${year}`} description="Total Sales − Cost of Goods Sold − Total Company Costs" className="mb-4">
-        <dl className="grid gap-1.5 text-[0.8125rem] sm:grid-cols-2">
-          <div className="flex justify-between gap-3 rounded-md px-2.5 py-1.5">
-            <dt className="text-muted-foreground">Total sales</dt>
-            <dd><Money value={selected.totalSales} size="sm" weight="medium" /></dd>
-          </div>
-          <div className="flex justify-between gap-3 rounded-md px-2.5 py-1.5">
-            <dt className="text-muted-foreground">− Cost of goods sold</dt>
-            <dd><Money value={selected.costOfGoodsSold} size="sm" weight="medium" tone="negative" /></dd>
-          </div>
-          <div className="flex justify-between gap-3 rounded-md bg-secondary px-2.5 py-1.5">
-            <dt className="font-medium">= Gross profit</dt>
-            <dd><Money value={selected.grossProfit} size="sm" weight="bold" /></dd>
-          </div>
-          <div className="flex justify-between gap-3 rounded-md px-2.5 py-1.5">
-            <dt className="text-muted-foreground">− Total company costs</dt>
-            <dd><Money value={selected.totalExpenses} size="sm" weight="medium" tone="negative" /></dd>
-          </div>
-          <div className="flex justify-between gap-3 rounded-md bg-secondary px-2.5 py-1.5 sm:col-span-2">
-            <dt className="font-semibold">= Net profit</dt>
-            <dd><Money value={selected.netProfit} size="sm" weight="bold" tone={selected.netProfit >= 0 ? 'positive' : 'negative'} /></dd>
-          </div>
-        </dl>
-      </Section>
 
       <Section title={`${year} at a glance`} description="Every month, computed the same way" noPadding>
         <div className="overflow-x-auto">

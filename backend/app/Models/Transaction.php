@@ -17,7 +17,7 @@ class Transaction extends Model
 
     protected $fillable = [
         'date', 'details', 'account_id', 'direction', 'category_id',
-        'category_name', 'amount', 'transfer_id',
+        'category_name', 'amount', 'transfer_id', 'reference_sale_id',
     ];
 
     protected function casts(): array
@@ -41,5 +41,11 @@ class Transaction extends Model
     public function isTransfer(): bool
     {
         return $this->transfer_id !== null;
+    }
+
+    /** Set only on the row a sale's "paid at sale" amount posted — null for every other transaction. */
+    public function sale(): BelongsTo
+    {
+        return $this->belongsTo(Sale::class, 'reference_sale_id');
     }
 }

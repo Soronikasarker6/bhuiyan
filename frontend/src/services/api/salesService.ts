@@ -15,6 +15,8 @@ export interface SaleInput {
   truckNo?: string
   notes?: string
   paidAtSale?: number
+  /** Which Cash & Bank account a "paid at sale" amount lands in — the backend falls back to the system Cash account when omitted. */
+  accountId?: ID
   items: SaleItemInput[]
 }
 
@@ -25,6 +27,7 @@ function toPayload(data: SaleInput) {
     truck_no: data.truckNo,
     notes: data.notes,
     paid_at_sale: data.paidAtSale ?? 0,
+    account_id: data.accountId,
     items: data.items.map((item) => ({
       product_id: item.productId,
       mesh_size_id: item.meshSizeId,

@@ -150,3 +150,49 @@ export function activePath(pathname: string): string {
 
   return matches[0] ?? '/'
 }
+
+/**
+ * The sidebar as sections, derived from `navigation` rather than duplicated.
+ *
+ * `NavItem.group` only ever marks the *first* item of a new section — every
+ * item after it belongs to that same section until another `group` label
+ * appears (see the data above: "Operations" covers Raw Material Import,
+ * Production & Stock and Sales; a lone item with no `group` at all, like
+ * Dashboard, stays standalone). This walks that convention once so
+ * `Sidebar.tsx` never has to re-derive it, and computing it here — not per
+ * render — means it's also trivial to unit test on its own.
+ */
+export type NavSegment =
+  | { type: 'item'; item: NavItem }
+  | { type: 'group'; name: string; items: NavItem[] }
+
+export function buildNavigationSegments(items: NavItem[]): NavSegment[] {
+  const segments: NavSegment[] = []
+
+  for (const item of items) {
+    if (item.group) {
+      segments.push({ type: 'group', name: item.group, items: [item] })
+      continue
+    }
+
+    const last = segments[segments.length - 1]
+    if (last?.type === 'group') {
+      last.items.push(item)
+    } else {
+      segments.push({ type: 'item', item })
+    }
+  }
+
+  return segments
+}
+
+export const navigationSegments: NavSegment[] = buildNavigationSegments(navigation)
+
+/** Which group (if any) the given path currently falls under — used to open that group by default. */
+export function groupContaining(pathname: string): string | null {
+  const current = activePath(pathname)
+  const segment = navigationSegments.find(
+    (s) => s.type === 'group' && s.items.some((item) => item.path === current),
+  )
+  return segment?.type === 'group' ? segment.name : null
+}

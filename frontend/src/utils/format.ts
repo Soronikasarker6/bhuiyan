@@ -164,6 +164,15 @@ export function firstDayOfMonth(year: number, monthIndex: number): ISODate {
   return toISODate(new Date(year, monthIndex, 1))
 }
 
+/** Monday of the week containing `date` — the "This week" report preset runs Monday through today. */
+export function firstDayOfWeek(date: Date = new Date()): ISODate {
+  const day = date.getDay() // 0=Sun..6=Sat
+  const sinceMonday = (day + 6) % 7
+  const monday = new Date(date)
+  monday.setDate(date.getDate() - sinceMonday)
+  return toISODate(monday)
+}
+
 /** Inclusive on both ends. Empty bounds mean unbounded on that side. */
 export function isWithin(iso: ISODate, from?: string, to?: string): boolean {
   if (from && iso < from) return false

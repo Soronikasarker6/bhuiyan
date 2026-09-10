@@ -3,7 +3,7 @@ import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Plus, Receipt, Trash2 } from 'lucide-react'
-import type { Customer, MeshSize, Product } from '@/types'
+import type { Account, Customer, MeshSize, Product } from '@/types'
 import { Section } from '@/components/PageHeader'
 import { Field } from '@/components/Field'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import { DatePicker } from '@/components/ui/date-picker'
 import { Money } from '@/components/Money'
 import { bagKgOf, meshSizeNameOf } from '@/utils/products'
 import { billableWeightTon, saleItemAmount, saleItemWeightTon } from '@/utils/sales'
+import { defaultCashAccountId } from '@/utils/ledger'
 import { formatCurrency, formatNumber, formatTons, todayISO } from '@/utils/format'
 
 /**
@@ -63,6 +64,8 @@ function buildSchema(
       truckNo: z.string().max(40).optional(),
       notes: z.string().max(300).optional(),
       paidAtSale: z.coerce.number().min(0, 'Cannot be negative.').optional(),
+      /** Which Cash & Bank account a "paid at sale" amount lands in — only meaningful once paidAtSale > 0. */
+      accountId: z.string().optional(),
       items: z.array(itemSchema).min(1, 'Add at least one item.'),
     })
     .superRefine((values, ctx) => {
@@ -114,6 +117,7 @@ export type SaleFormValues = {
   truckNo?: string
   notes?: string
   paidAtSale?: number
+  accountId?: string
   items: Array<{ productId: string; meshSizeId: string; bags: number; ratePerTon: number; actualWeightTon: number }>
 }
 export type SaleSubmit = SaleFormValues
@@ -122,6 +126,7 @@ export function SaleForm({
   customers,
   products,
   meshSizes,
+  accounts,
   nextInvoiceNo,
   availableBags,
   onSubmit,
@@ -129,12 +134,14 @@ export function SaleForm({
   customers: Customer[]
   products: Product[]
   meshSizes: MeshSize[]
+  accounts: Account[]
   nextInvoiceNo: string
   /** Stock currently available for one (product, mesh) — see `utils/productionStock.ts`. */
   availableBags: (productId: string, meshSizeId: string) => number
   onSubmit: (values: SaleSubmit) => void
 }) {
   const schema = buildSchema(availableBags, (meshSizeId) => meshSizeNameOf(meshSizes, meshSizeId))
+  const defaultAccountId = defaultCashAccountId(accounts) ?? accounts[0]?.id ?? ''
 
   const {
     register,
@@ -152,6 +159,7 @@ export function SaleForm({
       truckNo: '',
       notes: '',
       paidAtSale: '' as unknown as number,
+      accountId: defaultAccountId,
       items: [
         {
           productId: products[0]?.id ?? '',
@@ -167,6 +175,7 @@ export function SaleForm({
   const { fields, append, remove } = useFieldArray({ control, name: 'items' })
 
   const customerId = watch('customerId')
+  const accountId = watch('accountId')
   const items = watch('items')
   const paidAtSale = Number(watch('paidAtSale')) || 0
 
@@ -207,6 +216,7 @@ export function SaleForm({
       truckNo: '',
       notes: '',
       paidAtSale: '' as unknown as number,
+      accountId: defaultAccountId,
       items: [
         {
           productId: products[0]?.id ?? '',
@@ -261,6 +271,11 @@ export function SaleForm({
 
             return (
               <div key={field.id} className="rounded-lg border border-border bg-secondary/30 p-3">
+                {fields.length > 1 && (
+                  <p className="mb-2.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Item {index + 1}
+                  </p>
+                )}
                 <div className="grid gap-3 sm:grid-cols-[1.3fr_1fr_0.8fr_0.9fr_auto] sm:items-end">
                   <Field label="Product" error={itemErrors?.productId?.message}>
                     <Controller
@@ -438,6 +453,27 @@ export function SaleForm({
               )}
             />
           </Field>
+
+          {paidAtSale > 0 && (
+            <Field
+              label="Payment account"
+              htmlFor="sale-account"
+              hint="This amount is recorded on the Cash & Bank Ledger too."
+            >
+              <Select value={accountId} onValueChange={(value) => setValue('accountId', value)}>
+                <SelectTrigger id="sale-account">
+                  <SelectValue placeholder="Choose an account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
 
           <Field label="Notes (optional)" htmlFor="sale-notes">
             <Textarea id="sale-notes" rows={1} placeholder="Anything worth noting on this invoice" {...register('notes')} />

@@ -25,6 +25,11 @@ import { isWithin, monthKeyOf } from './format'
 
 // ---------------------------------------------------------------- balances
 
+/** The one system Cash account every business has — the default "Payment Account" for money received at the moment of sale. */
+export function defaultCashAccountId(accounts: Account[]): ID | undefined {
+  return accounts.find((a) => a.system)?.id ?? accounts.find((a) => a.kind === 'cash')?.id
+}
+
 export function balanceOf(transactions: Transaction[], accountId: ID): number {
   return transactions
     .filter((t) => t.accountId === accountId)

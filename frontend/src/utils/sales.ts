@@ -306,20 +306,26 @@ export function salesByProduct(
     .sort((a, b) => b.amount - a.amount)
 }
 
-/** Sales revenue per customer, biggest first — "customer-wise sales". */
+/** Sales revenue per customer, biggest first — "customer-wise sales" (§6: invoices, TON, amount, paid, due — together with whatever date/customer filter narrowed `sales` first). */
 export function salesByCustomer(
   sales: SaleSummary[],
-): Array<{ customerId: ID; customerName: string; amount: number; count: number }> {
-  const totals = new Map<ID, { customerName: string; amount: number; count: number }>()
+): Array<{ customerId: ID; customerName: string; amount: number; count: number; weightTon: number; paid: number; due: number }> {
+  const totals = new Map<ID, { customerName: string; amount: number; count: number; weightTon: number; paid: number; due: number }>()
 
   for (const sale of sales) {
     const existing = totals.get(sale.customerId) ?? {
       customerName: sale.customerName,
       amount: 0,
       count: 0,
+      weightTon: 0,
+      paid: 0,
+      due: 0,
     }
     existing.amount += sale.totalAmount
     existing.count += 1
+    existing.weightTon += sale.totalWeightTon
+    existing.paid += sale.amountPaid
+    existing.due += sale.amountDue
     totals.set(sale.customerId, existing)
   }
 

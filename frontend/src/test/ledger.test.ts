@@ -6,6 +6,7 @@ import {
   buildLedgerRows,
   buildTransferLegs,
   categoryBreakdown,
+  defaultCashAccountId,
   idsToRemoveWith,
   monthMovement,
   totalBalances,
@@ -204,5 +205,21 @@ describe('the register', () => {
   it('resolves the account name for display', () => {
     const rows = buildLedgerRows(transactions, ACCOUNTS, { accountId: 'ucb' })
     expect(rows[0]!.accountName).toBe('UCB')
+  })
+})
+
+describe('defaultCashAccountId', () => {
+  it('prefers the system account over any other cash-kind account', () => {
+    const secondCash: Account = { id: 'cash2', name: 'Petty Cash', kind: 'cash', system: false, createdAt: '2026-01-01T00:00:00Z' }
+    expect(defaultCashAccountId([secondCash, ...ACCOUNTS])).toBe('cash')
+  })
+
+  it('falls back to any cash-kind account when none is marked system', () => {
+    const nonSystemCash: Account = { ...CASH, system: false }
+    expect(defaultCashAccountId([nonSystemCash, UCB, DBBL])).toBe('cash')
+  })
+
+  it('returns undefined when there is no cash account at all', () => {
+    expect(defaultCashAccountId([UCB, DBBL])).toBeUndefined()
   })
 })

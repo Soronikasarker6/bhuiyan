@@ -2,14 +2,13 @@ import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Factory, Package, Scale, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
-import { TabContainer } from '@ui5/webcomponents-react/TabContainer'
-import { Tab } from '@ui5/webcomponents-react/Tab'
 import { PageHeader, Section } from '@/components/PageHeader'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Money, Num } from '@/components/Money'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { ExportMenu } from '@/components/ExportMenu'
 import { ImportEntryForm, type ImportSubmit } from '@/features/imports/ImportEntryForm'
@@ -47,6 +46,7 @@ export default function ImportPage() {
   const { print } = usePrint()
   const canCreate = usePermission(PERMISSIONS.RAW_MATERIAL_CREATE)
   const [productFilter, setProductFilter] = useState(ALL)
+  const [activeTab, setActiveTab] = useState('imports')
 
   const products = useMemo(() => activeProducts(data.products), [data.products])
 
@@ -370,51 +370,47 @@ export default function ImportPage() {
         </Section>
       )}
 
-      <div className="mb-4 max-w-xs">
-        <label className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Filter by limestone type</label>
-        <Select value={productFilter} onValueChange={setProductFilter}>
-          <SelectTrigger><SelectValue placeholder="All types" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>All types</SelectItem>
-            {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <TabsList>
+            <TabsTrigger value="imports">Imports</TabsTrigger>
+            <TabsTrigger value="wastage">Wastage</TabsTrigger>
+            <TabsTrigger value="history">Shipment History</TabsTrigger>
+          </TabsList>
 
-      <TabContainer contentBackgroundDesign="Transparent" headerBackgroundDesign="Transparent">
-        <Tab text="Imports">
-          <div className="pt-4">
-            {canCreate && (
-              <div className="mb-4">
-                <ImportEntryForm products={products} pricesForProduct={pricesForProduct} onSubmit={addEntry} />
-              </div>
-            )}
-            <ImportTable rows={rows} onDelete={deleteEntry} />
+          <div className="flex items-center gap-2">
+            <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Type</span>
+            <Select value={productFilter} onValueChange={setProductFilter}>
+              <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="All types" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All types</SelectItem>
+                {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
-        </Tab>
+        </div>
 
-        <Tab text="Wastage">
-          <div className="pt-4">
-            {canCreate && (
-              <div className="mb-4">
-                <WastageForm
-                  products={products}
-                  availableTon={wastageAvailableTon}
-                  cycleClosed={wastageCycleClosed}
-                  onSubmit={addWastage}
-                />
-              </div>
-            )}
-            <WastageTable rows={wastageRows} onDelete={deleteWastage} />
-          </div>
-        </Tab>
+        <TabsContent value="imports" className="space-y-4">
+          {canCreate && <ImportEntryForm products={products} pricesForProduct={pricesForProduct} onSubmit={addEntry} />}
+          <ImportTable rows={rows} onDelete={deleteEntry} />
+        </TabsContent>
 
-        <Tab text="Shipment History">
-          <div className="pt-4">
-            <ShipmentTable rows={shipmentRows} onClose={closeShipment} onReopen={reopenShipment} />
-          </div>
-        </Tab>
-      </TabContainer>
+        <TabsContent value="wastage" className="space-y-4">
+          {canCreate && (
+            <WastageForm
+              products={products}
+              availableTon={wastageAvailableTon}
+              cycleClosed={wastageCycleClosed}
+              onSubmit={addWastage}
+            />
+          )}
+          <WastageTable rows={wastageRows} onDelete={deleteWastage} />
+        </TabsContent>
+
+        <TabsContent value="history">
+          <ShipmentTable rows={shipmentRows} onClose={closeShipment} onReopen={reopenShipment} />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
