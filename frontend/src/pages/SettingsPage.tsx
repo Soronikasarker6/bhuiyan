@@ -2,18 +2,20 @@ import { useEffect, useState } from 'react'
 import {
   AlertTriangle,
   Banknote,
+  BookText,
+  Boxes,
   Download,
   Landmark,
   Lock,
   Pencil,
+  Receipt,
   Ruler,
   RotateCcw,
   Tags,
   Trash2,
+  Wallet,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { TabContainer } from '@ui5/webcomponents-react/TabContainer'
-import { Tab } from '@ui5/webcomponents-react/Tab'
 import { PageHeader, Section } from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,9 +27,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { EmptyState } from '@/components/EmptyState'
 import { PageSkeleton } from '@/components/PageSkeleton'
+import { StatCard, StatGrid } from '@/components/StatCard'
 import { useAppData } from '@/hooks/useAppData'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
@@ -61,6 +65,7 @@ export default function SettingsPage() {
   // exist there, rather than existing but always denying access.
   const canViewUsers = !__OFFLINE__ && usePermission(PERMISSIONS.USERS_VIEW)
   const canViewRoles = !__OFFLINE__ && usePermission(PERMISSIONS.ROLES_VIEW)
+  const [activeTab, setActiveTab] = useState('accounts')
 
   if (loading) return <PageSkeleton />
 
@@ -71,47 +76,44 @@ export default function SettingsPage() {
         description="Cash & bank accounts, categories, units of measure, users, roles, and data — configuration that never alters entries you have already recorded. Products and mesh sizes have their own page."
       />
 
-      <TabContainer contentBackgroundDesign="Transparent" headerBackgroundDesign="Transparent">
-        <Tab text="Accounts">
-          <div className="pt-4">
-            <AccountsPanel />
-          </div>
-        </Tab>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-4 flex-wrap">
+          <TabsTrigger value="accounts">Accounts</TabsTrigger>
+          <TabsTrigger value="categories">Categories</TabsTrigger>
+          <TabsTrigger value="units">Units of Measure</TabsTrigger>
+          {canViewUsers && <TabsTrigger value="users">Users</TabsTrigger>}
+          {canViewRoles && <TabsTrigger value="roles">Roles</TabsTrigger>}
+          <TabsTrigger value="data">Data</TabsTrigger>
+        </TabsList>
 
-        <Tab text="Categories">
-          <div className="pt-4">
-            <CategoriesPanel />
-          </div>
-        </Tab>
+        <TabsContent value="accounts">
+          <AccountsPanel />
+        </TabsContent>
 
-        <Tab text="Units of Measure">
-          <div className="pt-4">
-            <UnitsPanel />
-          </div>
-        </Tab>
+        <TabsContent value="categories">
+          <CategoriesPanel />
+        </TabsContent>
+
+        <TabsContent value="units">
+          <UnitsPanel />
+        </TabsContent>
 
         {canViewUsers && (
-          <Tab text="Users">
-            <div className="pt-4">
-              <UsersPanel />
-            </div>
-          </Tab>
+          <TabsContent value="users">
+            <UsersPanel />
+          </TabsContent>
         )}
 
         {canViewRoles && (
-          <Tab text="Roles">
-            <div className="pt-4">
-              <RolesPanel />
-            </div>
-          </Tab>
+          <TabsContent value="roles">
+            <RolesPanel />
+          </TabsContent>
         )}
 
-        <Tab text="Data">
-          <div className="pt-4">
-            <DataPanel />
-          </div>
-        </Tab>
-      </TabContainer>
+        <TabsContent value="data">
+          <DataPanel />
+        </TabsContent>
+      </Tabs>
 
       <p className="mt-4 text-center text-2xs text-muted-foreground">
         {data.accounts.length} accounts · {data.categories.length} categories ·{' '}
@@ -693,26 +695,26 @@ function DataPanel() {
   }
 
   const counts = [
-    { label: 'Production entries', value: data.productionEntries.length },
-    { label: 'Sales invoices', value: data.sales.length },
-    { label: 'Customer transactions', value: data.customerTransactions.length },
-    { label: 'Ledger transactions', value: data.transactions.length },
-    { label: 'Cash closings', value: data.ledgerClosings.length },
+    { label: 'Production entries', value: data.productionEntries.length, icon: Boxes },
+    { label: 'Sales invoices', value: data.sales.length, icon: Receipt },
+    { label: 'Customer transactions', value: data.customerTransactions.length, icon: BookText },
+    { label: 'Ledger transactions', value: data.transactions.length, icon: Wallet },
+    { label: 'Cash closings', value: data.ledgerClosings.length, icon: Lock },
   ]
 
   return (
     <div className="space-y-4">
       <Section title="Your data" description="Everything is stored in this browser on this computer.">
-        <dl className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatGrid columns={5} className="mb-4">
           {counts.map((entry) => (
-            <div key={entry.label} className="rounded-lg border border-border bg-secondary/40 px-3 py-2.5">
-              <dt className="text-2xs uppercase tracking-wider text-muted-foreground">
-                {entry.label}
-              </dt>
-              <dd className="mt-1 font-mono tabular text-lg font-semibold">{entry.value}</dd>
-            </div>
+            <StatCard
+              key={entry.label}
+              label={entry.label}
+              icon={entry.icon}
+              value={<span className="font-mono tabular text-xl font-bold">{entry.value}</span>}
+            />
           ))}
-        </dl>
+        </StatGrid>
 
         {!persistent && (
           <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/[0.04] p-3">

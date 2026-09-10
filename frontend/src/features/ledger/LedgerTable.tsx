@@ -5,7 +5,7 @@ import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { DatePicker } from '@/components/ui/date-picker'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Badge } from '@/components/ui/misc'
 import {
   Select,
@@ -167,18 +167,15 @@ export function LedgerTable({
             </SelectContent>
           </Select>
 
-          <div className="flex items-center gap-1.5 sm:col-span-2 xl:col-span-1">
-            <DatePicker
-              value={filters.from ?? ''}
-              onChange={(value) => setFilter('from', value)}
-              aria-label="From date"
-              className="text-xs"
-            />
-            <span className="text-xs text-muted-foreground">to</span>
-            <DatePicker
-              value={filters.to ?? ''}
-              onChange={(value) => setFilter('to', value)}
-              aria-label="To date"
+          <div className="sm:col-span-2 xl:col-span-1">
+            <DateRangePicker
+              from={filters.from ?? ''}
+              to={filters.to ?? ''}
+              onChange={(from, to) => {
+                setFilters((current) => ({ ...current, from, to }))
+                setPage(1)
+              }}
+              aria-label="Date range"
               className="text-xs"
             />
           </div>

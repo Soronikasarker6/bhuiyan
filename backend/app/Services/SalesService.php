@@ -3,16 +3,22 @@
 namespace App\Services;
 
 use App\Exceptions\InsufficientStockException;
+use App\Models\Account;
 use App\Models\CustomerTransaction;
 use App\Models\MeshSize;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\Transaction;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Ported from src/utils/sales.ts. A single sale can hold multiple product/mesh
  * line items; creating one always posts a `sale` debit to the customer ledger,
- * plus a linked `payment` credit if anything was paid at the moment of sale.
+ * plus a linked `payment` credit if anything was paid at the moment of sale —
+ * and, since that credit is real cash/bank money received, a matching `in`
+ * row on the Cash & Bank ledger too (same pattern as a standalone Cash In via
+ * CustomerLedgerService::recordPayment — one payment, reflected in both
+ * ledgers, never two payment records).
  *
  *   Weight (Ton) = actualWeightTon ?? (Bags x BagKg / 1000)
  *   Amount       = Weight (Ton) x Rate/Ton
@@ -23,7 +29,7 @@ class SalesService
 
     /**
      * @param  array{date:string, customer_id:int, truck_no?:string, notes?:string,
-     *   paid_at_sale?:float, items: array<int, array{product_id:int, mesh_size_id:int,
+     *   paid_at_sale?:float, account_id?:int, items: array<int, array{product_id:int, mesh_size_id:int,
      *   bags:int, rate_per_ton:float, actual_weight_ton?:float}>} $payload
      */
     public function createSale(array $payload): Sale
@@ -72,6 +78,10 @@ class SalesService
 
             $paidAtSale = (float) $sale->paid_at_sale;
             if ($paidAtSale > 0) {
+                // Falls back to the one system Cash account when the form didn't send
+                // one — this money must land in the Cash & Bank ledger regardless.
+                $accountId = $payload['account_id'] ?? Account::where('system', true)->value('id');
+
                 CustomerTransaction::create([
                     'customer_id' => $sale->customer_id,
                     'date' => $sale->date,
@@ -81,7 +91,20 @@ class SalesService
                     'debit' => 0,
                     'credit' => $paidAtSale,
                     'reference_sale_id' => $sale->id,
+                    'linked_account_id' => $accountId,
                 ]);
+
+                if ($accountId) {
+                    Transaction::create([
+                        'date' => $sale->date,
+                        'details' => "Paid at sale — {$sale->invoice_no}",
+                        'account_id' => $accountId,
+                        'direction' => 'in',
+                        'category_name' => 'Payment at Sale',
+                        'amount' => $paidAtSale,
+                        'reference_sale_id' => $sale->id,
+                    ]);
+                }
             }
 
             return $sale->fresh(['items', 'transactions']);
@@ -93,6 +116,10 @@ class SalesService
         DB::transaction(function () use ($saleId) {
             $sale = Sale::findOrFail($saleId);
             CustomerTransaction::where('reference_sale_id', $sale->id)->delete();
+            // The Cash & Bank ledger row a "paid at sale" amount posted, if any —
+            // otherwise deleting the invoice would leave cash-in-hand overstated
+            // by money whose invoice no longer exists.
+            Transaction::where('reference_sale_id', $sale->id)->delete();
             $sale->items()->delete();
             $sale->delete();
         });

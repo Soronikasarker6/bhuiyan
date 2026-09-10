@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
-import { BookText } from 'lucide-react'
+import { BookText, Receipt, Scale, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader, Section } from '@/components/PageHeader'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Money } from '@/components/Money'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { DatePicker } from '@/components/ui/date-picker'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { ExportMenu } from '@/components/ExportMenu'
 import { CustomerLedgerTable } from '@/features/customerLedger/CustomerLedgerTable'
 import { usePrint } from '@/features/reports/PrintSheet'
@@ -159,13 +159,13 @@ export default function CustomerLedgerPage() {
       />
 
       <StatGrid columns={3} className="mb-4">
-        <StatCard label="Total out (sales)" value={<Money value={totals.debit} size="2xl" weight="bold" tone="negative" />} />
-        <StatCard label="Total in (payments)" value={<Money value={totals.credit} size="2xl" weight="bold" tone="positive" />} />
-        <StatCard label="Net position, all customers" value={<Money value={netBalance} size="2xl" weight="bold" />} />
+        <StatCard label="Total out (sales)" icon={Receipt} accent="primary" value={<Money value={totals.debit} size="2xl" weight="bold" tone="negative" />} />
+        <StatCard label="Total in (payments)" icon={Wallet} accent="success" value={<Money value={totals.credit} size="2xl" weight="bold" tone="positive" />} />
+        <StatCard label="Net position, all customers" icon={Scale} accent={netBalance > 0 ? 'primary' : 'success'} value={<Money value={netBalance} size="2xl" weight="bold" />} />
       </StatGrid>
 
       <Section title="Filters" className="mb-4">
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-3">
           <Select value={customerId} onValueChange={setCustomerId}>
             <SelectTrigger>
               <SelectValue />
@@ -193,8 +193,7 @@ export default function CustomerLedgerPage() {
             </SelectContent>
           </Select>
 
-          <DatePicker value={from} onChange={setFrom} aria-label="From date" />
-          <DatePicker value={to} onChange={setTo} aria-label="To date" />
+          <DateRangePicker from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} aria-label="Date range" />
         </div>
       </Section>
 

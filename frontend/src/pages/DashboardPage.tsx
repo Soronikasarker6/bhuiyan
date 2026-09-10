@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
@@ -27,8 +27,27 @@ import { allMeshStock, todaysProductionBags, totalProductionBags, totalStockTon 
 import { buildSaleSummaries, monthlySalesSeries } from '@/utils/sales'
 import { customerTotals, outstandingCustomers, transactionsForCustomer } from '@/utils/customerLedger'
 import { monthlyProfit } from '@/utils/profit'
-import { MONTHS_SHORT, formatDate, formatNumber, todayISO } from '@/utils/format'
+import { MONTHS_SHORT, formatDate, formatNumber, formatTons, todayISO } from '@/utils/format'
 import { SALE_STATUS_LABEL, SALE_STATUS_VARIANT } from '@/constants/saleStatus'
+
+/**
+ * A labelled cluster of stat cards.
+ *
+ * Nine cards in one flat grid read as noise — nothing says which figures are
+ * "what happened today" versus "the running total" versus "money that needs a
+ * decision". Three short, named groups give the same figures a hierarchy
+ * without adding another bordered card around them.
+ */
+function StatGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="mb-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </p>
+      {children}
+    </div>
+  )
+}
 
 /**
  * The dashboard.
@@ -62,6 +81,9 @@ export default function DashboardPage() {
   )
   const todaySales = useMemo(() => sales.filter((s) => s.date === today), [sales, today])
   const totalSalesAmount = useMemo(() => sales.reduce((sum, s) => sum + s.totalAmount, 0), [sales])
+  // Same `totalWeightTon` the Sales Register and every report read (§15) — never a separate bag-count estimate.
+  const todaySalesTon = useMemo(() => todaySales.reduce((sum, s) => sum + s.totalWeightTon, 0), [todaySales])
+  const totalSalesTon = useMemo(() => sales.reduce((sum, s) => sum + s.totalWeightTon, 0), [sales])
 
   const todayCashIn = useMemo(
     () => data.customerTransactions.filter((t) => t.type === 'payment' && t.date === today).reduce((sum, t) => sum + t.credit, 0),
@@ -123,12 +145,19 @@ export default function DashboardPage() {
     return (
       <div>
         <PageHeader title="Dashboard" description="Loading today's figures…" />
-        <StatGrid className="mb-5">
-          <StatCardSkeleton />
-          <StatCardSkeleton />
-          <StatCardSkeleton />
-          <StatCardSkeleton />
-        </StatGrid>
+        <div className="mb-5 space-y-4">
+          <StatGrid columns={4}>
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+          </StatGrid>
+          <StatGrid columns={3}>
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+          </StatGrid>
+        </div>
         <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
           <ChartSkeleton />
           <TableSkeleton />
@@ -184,23 +213,37 @@ export default function DashboardPage() {
         }
       />
 
-      <StatGrid columns={4} className="mb-4">
-        <StatCard label="Today's raw material import" icon={Ship} accent="primary" value={<Num value={todayImportTotal.netWeightTon} suffix="Ton" size="2xl" className="font-bold" />} />
-        <StatCard label="Total imported" icon={Ship} accent="brass" value={<Num value={importTotal.netWeightTon} suffix="Ton" size="2xl" className="font-bold" />} />
-        <StatCard label="Today's production" icon={Factory} accent="primary" value={<Num value={todayProductionBags} suffix="Bag" size="2xl" className="font-bold" />} />
-        <StatCard label="Total production" icon={Boxes} accent="brass" value={<Num value={totalProdBags} suffix="Bag" size="2xl" className="font-bold" />} footer={<span className="text-2xs text-muted-foreground">Current stock: {formatNumber(stockTon)} Ton</span>} />
-        <StatCard label="Today's sales" icon={Receipt} accent="primary" value={<Money value={todaySales.reduce((s, r) => s + r.totalAmount, 0)} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{todaySales.length} invoices</span>} />
-        <StatCard label="Total sales" icon={Receipt} accent="brass" value={<Money value={totalSalesAmount} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{sales.length} invoices</span>} />
-        <StatCard label="Total customer due" icon={Wallet} accent={totalDue > 0 ? 'primary' : 'success'} value={<Money value={totalDue} size="2xl" weight="bold" tone={totalDue > 0 ? 'negative' : 'positive'} />} />
-        <StatCard label="Today's cash in" icon={Banknote} accent="success" value={<Money value={todayCashIn} size="2xl" weight="bold" tone="positive" />} />
-        <StatCard
-          label="Net profit (this month)"
-          icon={TrendingUp}
-          accent={thisMonthProfit.netProfit < 0 ? 'primary' : 'success'}
-          value={<Money value={thisMonthProfit.netProfit} size="2xl" weight="bold" tone={thisMonthProfit.netProfit < 0 ? 'negative' : 'positive'} />}
-          footer={<span className="text-2xs text-muted-foreground">Sales {formatNumber(thisMonthProfit.totalSales)} · COGS {formatNumber(thisMonthProfit.costOfGoodsSold)}</span>}
-        />
-      </StatGrid>
+      <div className="mb-4 space-y-4">
+        <StatGroup label="Today">
+          <StatGrid columns={4}>
+            <StatCard label="Raw material import" icon={Ship} accent="primary" value={<Num value={todayImportTotal.netWeightTon} suffix="Ton" size="2xl" className="font-bold" />} />
+            <StatCard label="Production" icon={Factory} accent="primary" value={<Num value={todayProductionBags} suffix="Bag" size="2xl" className="font-bold" />} />
+            <StatCard label="Sales" icon={Receipt} accent="primary" value={<Money value={todaySales.reduce((s, r) => s + r.totalAmount, 0)} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{todaySales.length} invoices · {formatTons(todaySalesTon)} Ton</span>} />
+            <StatCard label="Cash in" icon={Banknote} accent="success" value={<Money value={todayCashIn} size="2xl" weight="bold" tone="positive" />} />
+          </StatGrid>
+        </StatGroup>
+
+        <StatGroup label="Totals">
+          <StatGrid columns={3}>
+            <StatCard label="Total imported" icon={Ship} accent="brass" value={<Num value={importTotal.netWeightTon} suffix="Ton" size="2xl" className="font-bold" />} />
+            <StatCard label="Total production" icon={Boxes} accent="brass" value={<Num value={totalProdBags} suffix="Bag" size="2xl" className="font-bold" />} footer={<span className="text-2xs text-muted-foreground">Current stock: {formatNumber(stockTon)} Ton</span>} />
+            <StatCard label="Total sales" icon={Receipt} accent="brass" value={<Money value={totalSalesAmount} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{sales.length} invoices · {formatTons(totalSalesTon)} Ton</span>} />
+          </StatGrid>
+        </StatGroup>
+
+        <StatGroup label="This month's money">
+          <StatGrid columns={2}>
+            <StatCard label="Total customer due" icon={Wallet} accent={totalDue > 0 ? 'primary' : 'success'} value={<Money value={totalDue} size="2xl" weight="bold" tone={totalDue > 0 ? 'negative' : 'positive'} />} />
+            <StatCard
+              label="Net profit"
+              icon={TrendingUp}
+              accent={thisMonthProfit.netProfit < 0 ? 'primary' : 'success'}
+              value={<Money value={thisMonthProfit.netProfit} size="2xl" weight="bold" tone={thisMonthProfit.netProfit < 0 ? 'negative' : 'positive'} />}
+              footer={<span className="text-2xs text-muted-foreground">Sales {formatNumber(thisMonthProfit.totalSales)} · COGS {formatNumber(thisMonthProfit.costOfGoodsSold)}</span>}
+            />
+          </StatGrid>
+        </StatGroup>
+      </div>
 
       <div className="mb-4 grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
         <Section title="Sales overview" description={`Monthly revenue through ${year}`}>

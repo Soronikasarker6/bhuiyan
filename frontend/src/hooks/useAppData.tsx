@@ -13,6 +13,7 @@ import type { AppData, ID } from '@/types'
 import { repository, type DataSlice } from '@/services/repository'
 import { storageIsPersistent } from '@/services/storageService'
 import { now, uid } from '@/utils/id'
+import { defaultCashAccountId } from '@/utils/ledger'
 import { appDataService } from '@/services/api/appDataService'
 import { backupService } from '@/services/api/backupService'
 import { customerService } from '@/services/api/customerService'
@@ -57,6 +58,8 @@ export interface SaleInput {
   truckNo?: string
   notes?: string
   paidAtSale?: number
+  /** Which Cash & Bank account a "paid at sale" amount lands in — falls back to the system Cash account when omitted. */
+  accountId?: ID
   items: SaleItemInput[]
 }
 
@@ -231,6 +234,13 @@ function useLocalAppData(): AppDataValue {
         },
       ]
 
+      // Real cash/bank money received, so — same as a standalone Cash In — it
+      // must also land in the Cash & Bank Ledger, via one linked Transaction
+      // row (never a second customer-ledger entry). Falls back to the system
+      // Cash account when the form didn't send one.
+      const accountId = input.accountId ?? defaultCashAccountId(current.accounts)
+      const cashLedgerRows: AppData['transactions'] = []
+
       if (sale.paidAtSale > 0) {
         ledgerRows.push({
           id: uid(),
@@ -242,14 +252,30 @@ function useLocalAppData(): AppDataValue {
           debit: 0,
           credit: sale.paidAtSale,
           referenceSaleId: saleId,
+          linkedAccountId: accountId,
           createdAt: stamp,
         })
+
+        if (accountId) {
+          cashLedgerRows.push({
+            id: uid(),
+            date: sale.date,
+            details: `Paid at sale — ${invoiceNo}`,
+            accountId,
+            direction: 'in',
+            category: 'Payment at Sale',
+            amount: sale.paidAtSale,
+            referenceSaleId: saleId,
+            createdAt: stamp,
+          })
+        }
       }
 
       updateMany({
         sales: [sale, ...current.sales],
         saleItems: [...current.saleItems, ...items],
         customerTransactions: [...ledgerRows, ...current.customerTransactions],
+        ...(cashLedgerRows.length > 0 ? { transactions: [...cashLedgerRows, ...current.transactions] } : {}),
       })
 
       return { invoiceNo }
@@ -264,6 +290,9 @@ function useLocalAppData(): AppDataValue {
         sales: current.sales.filter((s) => s.id !== saleId),
         saleItems: current.saleItems.filter((i) => i.saleId !== saleId),
         customerTransactions: current.customerTransactions.filter((t) => t.referenceSaleId !== saleId),
+        // The linked Cash & Bank row a "paid at sale" amount posted, if any —
+        // otherwise deleting the invoice would leave cash-in-hand overstated.
+        transactions: current.transactions.filter((t) => t.referenceSaleId !== saleId),
       })
     },
     [updateMany],

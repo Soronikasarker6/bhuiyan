@@ -34,6 +34,8 @@ export interface Transaction {
    * this is what keeps them together when one is deleted.
    */
   transferId?: ID
+  /** Set only on the row a sale's "paid at sale" amount posted — mirrors CustomerTransaction.referenceSaleId. */
+  referenceSaleId?: ID
   createdAt: string
 }
 

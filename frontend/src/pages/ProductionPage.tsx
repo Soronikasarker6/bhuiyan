@@ -2,9 +2,6 @@ import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Boxes, Factory, Package, Receipt, Scale, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { TabContainer } from '@ui5/webcomponents-react/TabContainer'
-import { Tab } from '@ui5/webcomponents-react/Tab'
-import type { TabContainerPropTypes } from '@ui5/webcomponents-react/TabContainer'
 import { PageHeader, Section } from '@/components/PageHeader'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Num } from '@/components/Money'
@@ -13,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ProductionEntryForm, type ProductionSubmit } from '@/features/production/ProductionEntryForm'
 import { MeshStockSummary } from '@/features/production/MeshStockSummary'
 import { ProductionStockTable, type StockLedgerDisplayRow } from '@/features/production/ProductionStockTable'
@@ -185,24 +183,18 @@ export default function ProductionPage() {
     <div>
       <PageHeader title="Production & Stock" description="Today's bagging, mesh by mesh, and what's left in the yard." />
 
-      {/* A product selector, not N independent panels — every stat below is
-          already keyed off `selectedProductId`, so each `Tab` only needs to
-          hold a label; UI5's TabContainer keeps every tab's content mounted
-          at once (unlike Radix's Tabs), so per-product content would
-          otherwise render identically in every tab. */}
-      <TabContainer
-        contentBackgroundDesign="Transparent"
-        headerBackgroundDesign="Transparent"
-        className="mb-4"
-        onTabSelect={((e) => {
-          const product = products[e.detail.tabIndex]
-          if (product) setActiveProductId(product.id)
-        }) as TabContainerPropTypes['onTabSelect']}
-      >
-        {products.map((product) => (
-          <Tab key={product.id} text={product.name} selected={product.id === selectedProductId} />
-        ))}
-      </TabContainer>
+      {/* A product picker, not real tabbed content — everything below is
+          already keyed off `selectedProductId`, and there's exactly one
+          panel, which just re-renders for whichever product is selected. */}
+      <Tabs value={selectedProductId} onValueChange={setActiveProductId} className="mb-4">
+        <TabsList className="flex-wrap">
+          {products.map((product) => (
+            <TabsTrigger key={product.id} value={product.id}>
+              {product.name}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <StatGrid className="mb-4">
         <StatCard label="Today's production" icon={Factory} accent="primary" value={<Num value={todayBags} suffix="Bag" size="2xl" className="font-bold" />} />

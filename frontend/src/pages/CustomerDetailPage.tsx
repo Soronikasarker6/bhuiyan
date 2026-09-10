@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pencil, Receipt, Wallet } from 'lucide-react'
+import { ArrowLeft, Clock, Hash, Pencil, Receipt, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader, Section } from '@/components/PageHeader'
 import { PageSkeleton } from '@/components/PageSkeleton'
@@ -135,23 +135,22 @@ export default function CustomerDetailPage() {
         }
       />
 
-      <StatGrid className="mb-4">
+      <StatGrid columns={3} className="mb-4">
         <StatCard label="Total sales" icon={Receipt} accent="primary" value={<Money value={totals.totalSales} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{sales.length} invoices</span>} />
         <StatCard label="Total paid" icon={Wallet} accent="success" value={<Money value={totals.totalPaid} size="2xl" weight="bold" tone="positive" />} />
         <StatCard label="Total due" icon={Wallet} accent={totals.totalDue > 0 ? 'primary' : 'success'} value={<Money value={totals.totalDue} size="2xl" weight="bold" tone={totals.totalDue > 0 ? 'negative' : 'positive'} />} />
         <StatCard label="Advance" icon={Wallet} accent="brass" value={<Money value={totals.availableAdvance} size="2xl" weight="bold" tone={totals.availableAdvance > 0 ? 'positive' : 'neutral'} />} footer={<span className="text-2xs text-muted-foreground">Shown when the balance runs ahead</span>} />
+        <StatCard label="Transactions" icon={Hash} value={<Num value={totals.transactionCount} size="2xl" className="font-bold" />} />
+        <StatCard
+          label="Last activity"
+          icon={Clock}
+          value={
+            <span className="text-2xl font-bold sm:text-[1.75rem]">
+              {totals.lastTransactionDate ? formatDate(totals.lastTransactionDate) : '—'}
+            </span>
+          }
+        />
       </StatGrid>
-
-      <div className="mb-4 grid gap-4 sm:grid-cols-2">
-        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-          <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Transactions</p>
-          <Num value={totals.transactionCount} size="xl" className="mt-1 font-bold" />
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-          <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Last activity</p>
-          <p className="mt-1 text-xl font-bold">{totals.lastTransactionDate ? formatDate(totals.lastTransactionDate) : '—'}</p>
-        </div>
-      </div>
 
       {customer.notes && (
         <div className="mb-4 rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-xs text-muted-foreground">

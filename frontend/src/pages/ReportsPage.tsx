@@ -3,6 +3,7 @@ import {
   BarChart3,
   BookText,
   Boxes,
+  ChevronDown,
   FileText,
   Landmark,
   PiggyBank,
@@ -19,7 +20,7 @@ import { PageHeader, Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { DatePicker } from '@/components/ui/date-picker'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Badge } from '@/components/ui/misc'
 import {
   Select,
@@ -30,6 +31,7 @@ import {
 } from '@/components/ui/select'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { ExportMenu } from '@/components/ExportMenu'
+import { cn } from '@/utils/cn'
 import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
 import type { PaymentStatus } from '@/types'
@@ -52,6 +54,7 @@ import {
   salesByTruck,
 } from '@/utils/sales'
 import { bagKgOf, meshSizeNameOf, productNameOf } from '@/utils/products'
+import { SALE_STATUS_LABEL } from '@/constants/saleStatus'
 import {
   buildCustomerLedgerRows,
   customerNameOf,
@@ -64,6 +67,7 @@ import { downloadTextFile } from '@/utils/download'
 import {
   MONTHS,
   firstDayOfMonth,
+  firstDayOfWeek,
   formatCurrency,
   formatDate,
   formatDateLong,
@@ -110,6 +114,11 @@ export default function ReportsPage() {
   const [customerFilter, setCustomerFilter] = useState(ALL)
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | typeof ALL>(ALL)
   const [accountFilter, setAccountFilter] = useState(ALL)
+  const [showMoreFilters, setShowMoreFilters] = useState(false)
+
+  const activeSecondaryFilters = [productFilter, customerFilter, statusFilter, accountFilter].filter(
+    (v) => v !== ALL,
+  ).length
 
   const rangeLabel = `${formatDateLong(from)} to ${formatDateLong(to)}`
 
@@ -482,32 +491,45 @@ export default function ReportsPage() {
         id: 'sales',
         group: 'Sales',
         name: 'Sales Report',
-        description: 'Every invoice in the range, with paid and due.',
+        description: 'Every invoice in the range — product, mesh, billable TON, rate, paid and due.',
         icon: Receipt,
         count: salesInRange.length,
         build: () => ({
           title: 'Sales Report',
           subtitle: rangeLabel,
+          meta: [
+            { label: 'Total TON sold', value: `${formatTons(salesInRange.reduce((s, r) => s + r.totalWeightTon, 0))} Ton` },
+            { label: 'Total invoices', value: String(salesInRange.length) },
+          ],
           columns: [
             { key: 'invoice', label: 'Invoice' },
             { key: 'date', label: 'Date' },
             { key: 'customer', label: 'Customer' },
             { key: 'truck', label: 'Truck' },
+            { key: 'product', label: 'Product' },
+            { key: 'mesh', label: 'Mesh / Size' },
+            { key: 'ton', label: 'Billable TON', align: 'right' },
             { key: 'total', label: 'Total', align: 'right' },
             { key: 'paid', label: 'Paid', align: 'right' },
             { key: 'due', label: 'Due', align: 'right' },
+            { key: 'status', label: 'Status' },
           ],
           rows: salesInRange.map((s) => ({
             invoice: s.invoiceNo,
             date: formatDate(s.date),
             customer: s.customerName,
             truck: s.truckNo ?? '—',
+            product: s.items.length === 1 ? s.items[0].productName : s.items.length > 1 ? 'Multiple' : '—',
+            mesh: s.items.length === 1 ? s.items[0].meshSizeName : s.items.length > 1 ? 'Multiple' : '—',
+            ton: formatTons(s.totalWeightTon),
             total: formatCurrency(s.totalAmount),
             paid: formatCurrency(s.amountPaid),
             due: formatCurrency(s.amountDue),
+            status: SALE_STATUS_LABEL[s.status],
           })),
           totals: {
             invoice: `Total (${salesInRange.length})`,
+            ton: `${formatTons(salesInRange.reduce((s, r) => s + r.totalWeightTon, 0))} Ton`,
             total: formatCurrency(salesInRange.reduce((s, r) => s + r.totalAmount, 0)),
             paid: formatCurrency(salesInRange.reduce((s, r) => s + r.amountPaid, 0)),
             due: formatCurrency(salesInRange.reduce((s, r) => s + r.amountDue, 0)),
@@ -540,7 +562,7 @@ export default function ReportsPage() {
         id: 'sales-by-customer',
         group: 'Sales',
         name: 'Customer-wise Sales',
-        description: 'Revenue per customer in the range.',
+        description: 'Invoices, TON sold, amount, paid and due per customer in the range (§6).',
         icon: Users,
         count: salesByCustomer(salesInRange).length,
         build: () => {
@@ -551,10 +573,27 @@ export default function ReportsPage() {
             columns: [
               { key: 'customer', label: 'Customer' },
               { key: 'count', label: 'Invoices', align: 'right' },
+              { key: 'ton', label: 'TON Sold', align: 'right' },
               { key: 'amount', label: 'Amount', align: 'right' },
+              { key: 'paid', label: 'Paid', align: 'right' },
+              { key: 'due', label: 'Due', align: 'right' },
             ],
-            rows: rows.map((r) => ({ customer: r.customerName, count: String(r.count), amount: formatCurrency(r.amount) })),
-            totals: { customer: 'Total', count: String(rows.reduce((s, r) => s + r.count, 0)), amount: formatCurrency(rows.reduce((s, r) => s + r.amount, 0)) },
+            rows: rows.map((r) => ({
+              customer: r.customerName,
+              count: String(r.count),
+              ton: formatTons(r.weightTon),
+              amount: formatCurrency(r.amount),
+              paid: formatCurrency(r.paid),
+              due: formatCurrency(r.due),
+            })),
+            totals: {
+              customer: 'Total',
+              count: String(rows.reduce((s, r) => s + r.count, 0)),
+              ton: formatTons(rows.reduce((s, r) => s + r.weightTon, 0)),
+              amount: formatCurrency(rows.reduce((s, r) => s + r.amount, 0)),
+              paid: formatCurrency(rows.reduce((s, r) => s + r.paid, 0)),
+              due: formatCurrency(rows.reduce((s, r) => s + r.due, 0)),
+            },
           }
         },
       },
@@ -908,77 +947,89 @@ export default function ReportsPage() {
       <PageHeader title="Reports" description="Pick a date range and filters, then print a document or export a spreadsheet." />
 
       <Section title="Date range and filters" className="mb-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-          <div>
-            <label htmlFor="report-from" className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">From</label>
-            <DatePicker id="report-from" value={from} onChange={setFrom} />
-          </div>
-          <div>
-            <label htmlFor="report-to" className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">To</label>
-            <DatePicker id="report-to" value={to} onChange={setTo} />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Product</label>
-            <Select value={productFilter} onValueChange={setProductFilter}>
-              <SelectTrigger><SelectValue placeholder="All products" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All products</SelectItem>
-                {data.products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Customer</label>
-            <Select value={customerFilter} onValueChange={setCustomerFilter}>
-              <SelectTrigger><SelectValue placeholder="All customers" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All customers</SelectItem>
-                {data.customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Payment status</label>
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as PaymentStatus | typeof ALL)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All statuses</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="partial">Partial</SelectItem>
-                <SelectItem value="due">Due</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Account</label>
-            <Select value={accountFilter} onValueChange={setAccountFilter}>
-              <SelectTrigger><SelectValue placeholder="All accounts" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All accounts</SelectItem>
-                {data.accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="max-w-sm">
+          <label htmlFor="report-date-range" className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Date range</label>
+          <DateRangePicker id="report-date-range" from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
         </div>
 
-        <div className="mt-3 flex flex-wrap items-end gap-3">
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              { label: 'This month', from: firstDayOfMonth(thisYear, thisMonth), to: todayISO() },
-              { label: 'Last month', from: firstDayOfMonth(thisYear, thisMonth - 1), to: lastDayOfMonth(thisYear, thisMonth - 1) },
-              { label: 'This year', from: firstDayOfMonth(thisYear, 0), to: todayISO() },
-            ].map((preset) => (
-              <Button key={preset.label} variant="outline" size="sm" onClick={() => { setFrom(preset.from); setTo(preset.to) }}>
-                {preset.label}
-              </Button>
-            ))}
-          </div>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {[
+            { label: 'Today', from: todayISO(), to: todayISO() },
+            { label: 'This week', from: firstDayOfWeek(), to: todayISO() },
+            { label: 'This month', from: firstDayOfMonth(thisYear, thisMonth), to: todayISO() },
+            { label: 'Last month', from: firstDayOfMonth(thisYear, thisMonth - 1), to: lastDayOfMonth(thisYear, thisMonth - 1) },
+            { label: 'This year', from: firstDayOfMonth(thisYear, 0), to: todayISO() },
+          ].map((preset) => (
+            <Button key={preset.label} variant="outline" size="sm" onClick={() => { setFrom(preset.from); setTo(preset.to) }}>
+              {preset.label}
+            </Button>
+          ))}
 
-          <div className="ml-auto">
-            <label htmlFor="report-year" className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">P&amp;L year</label>
-            <Input id="report-year" type="number" min={2000} max={2100} className="w-28" value={year} onChange={(e) => setYear(Number(e.target.value))} />
-          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto"
+            onClick={() => setShowMoreFilters((v) => !v)}
+            aria-expanded={showMoreFilters}
+          >
+            {showMoreFilters ? 'Fewer filters' : 'More filters'}
+            {!showMoreFilters && activeSecondaryFilters > 0 && (
+              <Badge variant="primary" className="ml-0.5">{activeSecondaryFilters}</Badge>
+            )}
+            <ChevronDown className={cn('transition-transform', showMoreFilters && 'rotate-180')} />
+          </Button>
         </div>
+
+        {showMoreFilters && (
+          <div className="mt-3 grid gap-3 border-t border-dashed border-border pt-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div>
+              <label className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Product</label>
+              <Select value={productFilter} onValueChange={setProductFilter}>
+                <SelectTrigger><SelectValue placeholder="All products" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All products</SelectItem>
+                  {data.products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Customer</label>
+              <Select value={customerFilter} onValueChange={setCustomerFilter}>
+                <SelectTrigger><SelectValue placeholder="All customers" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All customers</SelectItem>
+                  {data.customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Payment status</label>
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as PaymentStatus | typeof ALL)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All statuses</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem>
+                  <SelectItem value="partial">Partial</SelectItem>
+                  <SelectItem value="due">Due</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Account</label>
+              <Select value={accountFilter} onValueChange={setAccountFilter}>
+                <SelectTrigger><SelectValue placeholder="All accounts" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All accounts</SelectItem>
+                  {data.accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label htmlFor="report-year" className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">P&amp;L year</label>
+              <Input id="report-year" type="number" min={2000} max={2100} value={year} onChange={(e) => setYear(Number(e.target.value))} />
+            </div>
+          </div>
+        )}
       </Section>
 
       {groups.map((group) => {
