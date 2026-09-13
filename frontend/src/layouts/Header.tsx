@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import {
   Bell,
-  ChevronRight,
+  ChevronDown,
   CircleUser,
   CloudOff,
   LogOut,
@@ -15,9 +15,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/misc'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { cn } from '@/utils/cn'
-import { activePath, navigation } from '@/router/navigation'
 import { useAppData } from '@/hooks/useAppData'
 import { useAuth } from '@/hooks/useAuth'
+import { usePageHeaderContent } from '@/hooks/usePageHeader'
 import { formatDateLong, todayISO } from '@/utils/format'
 import { allMeshStock } from '@/utils/productionStock'
 
@@ -45,19 +45,20 @@ function useOnlineIdentity() {
 /**
  * The header.
  *
- * Carries the things that are true of the whole application rather than of one
- * screen: where you are, what today is, anything that needs attention, and who
- * is signed in.
+ * The one piece of chrome every page shares, so it carries both what's true
+ * of the whole application (today's date, anything that needs attention, who
+ * is signed in — hard right) and, on the left, whatever the *current* page
+ * published as its own name and actions via `usePageHeader` — a "View
+ * reports" link, an export menu, a month picker, each page's own choice.
+ * Nothing here knows what any page is called; it only ever renders the last
+ * thing handed to it.
  */
 export function Header({ onOpenNav }: { onOpenNav: () => void }) {
-  const location = useLocation()
   const { data, persistent } = useAppData()
   const identity = useAccountIdentity()
+  const { title, description, actions } = usePageHeaderContent()
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [confirmLogOut, setConfirmLogOut] = useState(false)
-
-  const current = activePath(location.pathname)
-  const item = navigation.find((n) => n.path === current) ?? navigation[0]!
 
   /**
    * Notifications are derived, not stored.
@@ -121,18 +122,23 @@ export function Header({ onOpenNav }: { onOpenNav: () => void }) {
           <Menu />
         </Button>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
-            <Link to="/" className="transition-colors hover:text-foreground">
-              BHUIYAN INDUSTRY
-            </Link>
-            <ChevronRight className="h-3 w-3" aria-hidden />
-            <span className="truncate text-foreground/70">{item.label}</span>
+        {title && (
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium leading-tight text-foreground/80">{title}</p>
+            {description && (
+              <p className="mt-0.5 hidden max-w-md truncate text-xs leading-tight text-muted-foreground sm:block">
+                {description}
+              </p>
+            )}
           </div>
-          <h2 className="truncate text-sm font-semibold leading-tight">{item.label}</h2>
-        </div>
+        )}
 
-        <p className="hidden text-right text-xs leading-tight text-muted-foreground md:block">
+        {/* With no title published yet (a page still loading its own header content), holds the rest of the bar against the right edge the same as before. */}
+        {!title && <div className="flex-1" />}
+
+        {actions && <div className="hidden shrink-0 items-center gap-2 sm:flex">{actions}</div>}
+
+        <p className="hidden shrink-0 text-right text-xs leading-tight text-muted-foreground md:block">
           <span className="block font-medium text-foreground/80">
             {formatDateLong(todayISO())}
           </span>
@@ -146,11 +152,11 @@ export function Header({ onOpenNav }: { onOpenNav: () => void }) {
         <DropdownMenu.Root open={accountMenuOpen} onOpenChange={setAccountMenuOpen}>
           <DropdownMenu.Trigger asChild>
             <button
-              className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Account menu"
             >
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary-700 text-xs font-semibold text-white">
-                BI
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary-700 text-xs font-semibold text-white ring-2 ring-white">
+                {initialsOf(identity.name)}
               </span>
               <span className="hidden text-left sm:block">
                 <span className="block text-xs font-medium leading-tight">{identity.name}</span>
@@ -158,6 +164,7 @@ export function Header({ onOpenNav }: { onOpenNav: () => void }) {
                   {identity.subtitle}
                 </span>
               </span>
+              <ChevronDown className="hidden h-3.5 w-3.5 shrink-0 text-muted-foreground sm:block" aria-hidden />
             </button>
           </DropdownMenu.Trigger>
 
@@ -233,6 +240,15 @@ export function Header({ onOpenNav }: { onOpenNav: () => void }) {
   )
 }
 
+/** "Office Admin" → "OA". Falls back to the first letter for a single-word name. */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return 'BI'
+  const first = parts[0]![0] ?? ''
+  const last = parts.length > 1 ? (parts[parts.length - 1]![0] ?? '') : ''
+  return (first + last).toUpperCase()
+}
+
 function NotificationBell({
   alerts,
 }: {
@@ -241,14 +257,24 @@ function NotificationBell({
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
-          <Bell />
+        {/*
+          A plain button rather than the house `Button`: at icon size that one
+          is 26px square, and the count badge — which only appears once there
+          is something to count — covered the bell itself. 36px leaves room for
+          the badge to sit on the corner instead of on top of the glyph.
+        */}
+        <button
+          type="button"
+          className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full text-foreground/70 transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={alerts.length > 0 ? `Notifications (${alerts.length})` : 'Notifications'}
+        >
+          <Bell className="h-4 w-4" aria-hidden />
           {alerts.length > 0 && (
-            <span className="absolute right-1.5 top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary-700 px-1 text-[0.5625rem] font-bold text-white">
+            <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary-700 px-1 text-[0.5625rem] font-bold text-white ring-2 ring-background">
               {alerts.length}
             </span>
           )}
-        </Button>
+        </button>
       </DropdownMenu.Trigger>
 
       <DropdownMenu.Portal>

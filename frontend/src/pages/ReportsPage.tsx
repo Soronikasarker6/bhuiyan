@@ -16,7 +16,7 @@ import {
   Wallet,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { PageHeader, Section } from '@/components/PageHeader'
+import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,6 +34,7 @@ import { ExportMenu } from '@/components/ExportMenu'
 import { cn } from '@/utils/cn'
 import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
+import { usePageHeader } from '@/hooks/usePageHeader'
 import type { PaymentStatus } from '@/types'
 import {
   accountBalances,
@@ -916,18 +917,22 @@ export default function ReportsPage() {
   const spendBreakdown = useMemo(() => categoryBreakdown(data.transactions, 'out', { from, to }).slice(0, 8), [data.transactions, from, to])
   const monthNet = useMemo(() => monthMovement(data.transactions, to.slice(0, 7)), [data.transactions, to])
 
-  if (loading) return <PageSkeleton />
-
   const nothingRecorded =
     data.rawMaterialImports.length === 0 &&
     data.productionEntries.length === 0 &&
     data.sales.length === 0 &&
     data.transactions.length === 0
 
+  usePageHeader({
+    title: 'Reports',
+    description: nothingRecorded ? undefined : 'Pick a date range and filters, then print a document or export a spreadsheet.',
+  })
+
+  if (loading) return <PageSkeleton />
+
   if (nothingRecorded) {
     return (
       <div>
-        <PageHeader title="Reports" />
         <Section>
           <EmptyState
             icon={FileText}
@@ -944,7 +949,6 @@ export default function ReportsPage() {
 
   return (
     <div>
-      <PageHeader title="Reports" description="Pick a date range and filters, then print a document or export a spreadsheet." />
 
       <Section title="Date range and filters" className="mb-4">
         <div className="max-w-sm">

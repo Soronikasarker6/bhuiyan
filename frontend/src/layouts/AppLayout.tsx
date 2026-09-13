@@ -4,6 +4,7 @@ import { MessageStrip } from '@ui5/webcomponents-react/MessageStrip'
 import { MobileSidebar, Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { useAppData } from '@/hooks/useAppData'
+import { PageHeaderProvider } from '@/hooks/usePageHeader'
 import { groupContaining } from '@/router/navigation'
 import { cn } from '@/utils/cn'
 
@@ -70,43 +71,45 @@ export function AppLayout() {
     data.seeded && data.productionEntries.some((entry) => entry.id.startsWith('prod-'))
 
   return (
-    <div className="min-h-screen">
-      <Sidebar
-        collapsed={collapsed}
-        onToggleCollapsed={() => setCollapsed((v) => !v)}
-        openGroups={openGroups}
-        onOpenGroupsChange={setOpenGroups}
-      />
-      <MobileSidebar
-        open={navOpen}
-        onClose={() => setNavOpen(false)}
-        openGroups={openGroups}
-        onOpenGroupsChange={setOpenGroups}
-      />
+    <PageHeaderProvider>
+      <div className="min-h-screen">
+        <Sidebar
+          collapsed={collapsed}
+          onToggleCollapsed={() => setCollapsed((v) => !v)}
+          openGroups={openGroups}
+          onOpenGroupsChange={setOpenGroups}
+        />
+        <MobileSidebar
+          open={navOpen}
+          onClose={() => setNavOpen(false)}
+          openGroups={openGroups}
+          onOpenGroupsChange={setOpenGroups}
+        />
 
-      <div
-        className={cn(
-          'transition-[padding-left] duration-200 ease-in-out',
-          collapsed ? 'lg:pl-[76px]' : 'lg:pl-[264px]',
-        )}
-      >
-        <Header onOpenNav={() => setNavOpen(true)} />
-
-        {showingSample && (
-          <MessageStrip design="Critical" hideCloseButton className="no-print">
-            <strong className="font-medium">Sample data.</strong> These are demonstration figures. Clear
-            them from <strong className="font-medium">Settings → Data</strong> before entering real
-            records.
-          </MessageStrip>
-        )}
-
-        <main
-          key={location.pathname}
-          className="mx-auto max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6"
+        <div
+          className={cn(
+            'transition-[padding-left] duration-200 ease-in-out',
+            collapsed ? 'lg:pl-[76px]' : 'lg:pl-[264px]',
+          )}
         >
-          <Outlet />
-        </main>
+          <Header onOpenNav={() => setNavOpen(true)} />
+
+          {showingSample && (
+            <MessageStrip design="Critical" hideCloseButton className="no-print">
+              <strong className="font-medium">Sample data.</strong> These are demonstration figures. Clear
+              them from <strong className="font-medium">Settings → Data</strong> before entering real
+              records.
+            </MessageStrip>
+          )}
+
+          <main
+            key={location.pathname}
+            className="mx-auto max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6"
+          >
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
+    </PageHeaderProvider>
   )
 }

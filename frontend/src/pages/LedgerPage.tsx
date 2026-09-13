@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDownLeft, ArrowUpRight, Landmark, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
-import { PageHeader, Section } from '@/components/PageHeader'
+import { Section } from '@/components/PageHeader'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Money } from '@/components/Money'
 import { EmptyState } from '@/components/EmptyState'
@@ -14,6 +14,7 @@ import { LedgerTable } from '@/features/ledger/LedgerTable'
 import { BalanceSummary } from '@/features/dashboard/BalanceSummary'
 import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
+import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import type { Transaction } from '@/types'
@@ -231,12 +232,21 @@ export default function LedgerPage() {
     toast.success('Register exported', { description: 'Saved as CSV.' })
   }, [buildRegisterPayload])
 
+  usePageHeader({
+    title: 'Cash & Bank Ledger',
+    description: data.accounts.length > 0
+      ? 'Every receipt, payment and transfer. Balances are calculated from the entries — never stored separately.'
+      : undefined,
+    actions: data.accounts.length > 0 && (
+      <ExportMenu onCsv={exportRegisterCsv} onPdf={printRegister} disabled={data.transactions.length === 0} />
+    ),
+  })
+
   if (loading) return <PageSkeleton />
 
   if (data.accounts.length === 0) {
     return (
       <div>
-        <PageHeader title="Cash & Bank Ledger" />
         <Section>
           <EmptyState
             icon={Landmark}
@@ -256,12 +266,6 @@ export default function LedgerPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Cash & Bank Ledger"
-        description="Every receipt, payment and transfer. Balances are calculated from the entries — never stored separately."
-        actions={<ExportMenu onCsv={exportRegisterCsv} onPdf={printRegister} disabled={data.transactions.length === 0} />}
-      />
-
       <StatGrid className="mb-4">
         <StatCard
           label="Cash in hand"

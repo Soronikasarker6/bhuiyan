@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Factory, Package, Scale, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
-import { PageHeader, Section } from '@/components/PageHeader'
+import { Section } from '@/components/PageHeader'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Money, Num } from '@/components/Money'
 import { EmptyState } from '@/components/EmptyState'
@@ -20,6 +20,7 @@ import { RawMaterialStockSummary } from '@/features/imports/RawMaterialStockSumm
 import { ShipmentTable } from '@/features/imports/ShipmentTable'
 import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
+import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import type { RawMaterialImport, ShipmentCycleRow, WastageEntry } from '@/types'
@@ -327,12 +328,21 @@ export default function ImportPage() {
     toast.success('Register exported', { description: 'Saved as CSV.' })
   }, [buildRegisterPayload])
 
+  usePageHeader({
+    title: 'Raw Material Import',
+    description: data.products.length > 0
+      ? 'Limestone received from a ship, weighed gross and tare — net weight is worked out for you.'
+      : undefined,
+    actions: data.products.length > 0 && (
+      <ExportMenu onCsv={exportRegisterCsv} onPdf={printRegister} disabled={rows.length === 0} />
+    ),
+  })
+
   if (loading) return <PageSkeleton />
 
   if (data.products.length === 0) {
     return (
       <div>
-        <PageHeader title="Raw Material Import" />
         <Section>
           <EmptyState
             icon={Package}
@@ -352,12 +362,6 @@ export default function ImportPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Raw Material Import"
-        description="Limestone received from a ship, weighed gross and tare — net weight is worked out for you."
-        actions={<ExportMenu onCsv={exportRegisterCsv} onPdf={printRegister} disabled={rows.length === 0} />}
-      />
-
       <StatGrid columns={3} className="mb-4">
         <StatCard
           label="Today's import"

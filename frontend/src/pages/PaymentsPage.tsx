@@ -14,6 +14,7 @@ import { PaymentForm, type PaymentSubmit } from '@/features/payments/PaymentForm
 import { EditPaymentDialog } from '@/features/payments/EditPaymentDialog'
 import { CustomerLedgerTable } from '@/features/customerLedger/CustomerLedgerTable'
 import { useAppData, type PaymentUpdateInput } from '@/hooks/useAppData'
+import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import {
@@ -87,6 +88,11 @@ export default function PaymentsPage() {
     }
   }
 
+  usePageHeader({
+    title: 'Cash In',
+    description: data.customers.length > 0 ? 'Money received from a customer, against their overall balance.' : undefined,
+  })
+
   const saveEdit = async (values: PaymentUpdateInput) => {
     if (!editing) return
     try {
@@ -121,7 +127,6 @@ export default function PaymentsPage() {
   if (data.customers.length === 0) {
     return (
       <div>
-        <PageHeader title="Cash In" />
         <Section>
           <EmptyState icon={Users} size="lg" title="No customers set up" description="Add a customer before recording a Cash In." action={<Button asChild><Link to="/customers">Add a customer</Link></Button>} />
         </Section>
@@ -131,8 +136,6 @@ export default function PaymentsPage() {
 
   return (
     <div>
-      <PageHeader title="Cash In" description="Money received from a customer, against their overall balance." />
-
       <StatGrid columns={2} className="mb-4">
         <StatCard label="Total cash in collected" icon={Banknote} accent="success" value={<Money value={totalCollected} size="2xl" weight="bold" tone="positive" />} />
         <StatCard label="Still outstanding" icon={Banknote} accent={totalDue > 0 ? 'primary' : 'success'} value={<Money value={totalDue} size="2xl" weight="bold" tone={totalDue > 0 ? 'negative' : 'positive'} />} />

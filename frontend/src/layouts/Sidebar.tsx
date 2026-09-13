@@ -17,10 +17,11 @@ import {
 /**
  * The sidebar.
  *
- * Deep maroon, because this is the one piece of chrome that is always on
- * screen and it should read as the company's system rather than as a generic
- * admin template. Each item carries a one-line hint: staff who use this
- * occasionally should not have to remember what "Closing" means.
+ * A dark quarry face (`stone-rail`, in `styles/stone-shell.css`), because this
+ * is the one piece of chrome that is always on screen and it should read as
+ * the company's own system rather than as a generic admin template. Each item
+ * carries a one-line hint: staff who use this occasionally should not have to
+ * remember what "Closing" means.
  *
  * An item without its required permission is not just hidden — it's removed
  * from the list entirely, matching "what the user can see" from AppRouter's
@@ -177,6 +178,24 @@ export function SidebarNav({
   )
 }
 
+/**
+ * The house mark: three stacked stones, narrowing upward. Drawn rather than
+ * set as the letters "BI" because the rail now carries quarry imagery and a
+ * two-letter monogram in the middle of it reads as a placeholder.
+ */
+function StoneStack() {
+  return (
+    /* Offset left and right rather than stacked on one axis — three centred
+       ellipses narrowing upward read as a head and shoulders at this size. */
+    <svg viewBox="0 0 24 24" className="h-[1.15rem] w-[1.15rem]" aria-hidden focusable="false">
+      <ellipse cx="12" cy="19" rx="8.5" ry="2.7" fill="currentColor" opacity="0.95" />
+      <ellipse cx="10.4" cy="13.6" rx="6.2" ry="2.4" fill="currentColor" opacity="0.72" />
+      <ellipse cx="13.4" cy="8.4" rx="4.3" ry="2.1" fill="currentColor" opacity="0.5" />
+      <ellipse cx="11.2" cy="4.2" rx="2.4" ry="1.5" fill="currentColor" opacity="0.32" />
+    </svg>
+  )
+}
+
 function Wordmark({
   collapsed,
   onToggleCollapsed,
@@ -186,14 +205,14 @@ function Wordmark({
   onToggleCollapsed?: () => void
 }) {
   const badge = (
-    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-brass-500/40 bg-brass-500/15 font-display text-base text-brass-200">
-      BI
+    <span className="stone-mark grid h-9 w-9 shrink-0 place-items-center rounded-xl">
+      <StoneStack />
     </span>
   )
 
   if (!onToggleCollapsed) {
     return (
-      <div className="flex items-center gap-3 border-b border-sidebar-border px-5 py-4">
+      <div className="flex items-center gap-3 border-b border-white/[0.07] px-5 py-4">
         {badge}
         <span className="min-w-0">
           <span className="block truncate font-display text-[0.9375rem] leading-tight tracking-wide text-white">
@@ -213,7 +232,7 @@ function Wordmark({
       aria-expanded={!collapsed}
       title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       className={cn(
-        'group/wordmark relative flex w-full items-center gap-3 border-b border-sidebar-border px-5 py-4 text-left transition-colors',
+        'group/wordmark relative flex w-full items-center gap-3 border-b border-white/[0.07] px-5 py-4 text-left transition-colors',
         'hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass-400',
         collapsed && 'justify-center px-0',
       )}
@@ -244,12 +263,16 @@ function Wordmark({
 }
 
 function SidebarFooter({ collapsed }: { collapsed?: boolean }) {
-  if (collapsed) return <div className="border-t border-sidebar-border py-3" />
+  if (collapsed) return <div className="py-3" />
 
   return (
-    <div className="border-t border-sidebar-border px-5 py-3.5">
-      <p className="text-2xs font-medium uppercase tracking-wider text-sidebar-muted">BHUIYAN INDUSTRY</p>
-      <p className="mt-0.5 text-2xs text-sidebar-muted/60">Internal Management System</p>
+    <div className="px-5 pb-5 pt-4">
+      <p className="stone-motto font-display text-[0.9375rem] leading-snug text-white/90">
+        BHUIYAN INDUSTRY
+      </p>
+      <p className="mt-2.5 text-2xs tracking-wide text-sidebar-muted/70">
+        Internal Management System
+      </p>
     </div>
   )
 }
@@ -269,7 +292,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        'no-print fixed inset-y-0 left-0 z-30 hidden flex-col bg-sidebar transition-[width] duration-200 ease-in-out lg:flex',
+        'no-print stone-rail fixed inset-y-0 left-0 z-30 hidden flex-col transition-[width] duration-200 ease-in-out lg:flex',
         collapsed ? 'w-[76px]' : 'w-[264px]',
       )}
     >
@@ -310,7 +333,7 @@ export function MobileSidebar({
 
       <div
         className={cn(
-          'absolute inset-y-0 left-0 flex w-[280px] max-w-[85vw] flex-col bg-sidebar shadow-pop',
+          'stone-rail absolute inset-y-0 left-0 flex w-[280px] max-w-[85vw] flex-col shadow-pop',
           'transition-transform duration-200 ease-out',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
