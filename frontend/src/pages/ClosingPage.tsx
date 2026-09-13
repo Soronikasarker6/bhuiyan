@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Lock, LockOpen, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
-import { PageHeader, Section } from '@/components/PageHeader'
+import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,6 +28,7 @@ import { PageSkeleton } from '@/components/PageSkeleton'
 import { ExportMenu } from '@/components/ExportMenu'
 import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
+import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import type { LedgerClosing } from '@/types'
@@ -56,15 +57,15 @@ import { cn } from '@/utils/cn'
 export default function ClosingPage() {
   const { loading } = useAppData()
 
+  usePageHeader({
+    title: 'Monthly Closing',
+    description: "Freeze a month's cash & bank balances so a later back-dated entry cannot quietly change what was already reported.",
+  })
+
   if (loading) return <PageSkeleton />
 
   return (
     <div>
-      <PageHeader
-        title="Monthly Closing"
-        description="Freeze a month's cash & bank balances so a later back-dated entry cannot quietly change what was already reported."
-      />
-
       <LedgerClosingPanel />
     </div>
   )

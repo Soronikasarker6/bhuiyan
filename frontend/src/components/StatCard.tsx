@@ -19,10 +19,17 @@ export function StatCard({
   accent = 'neutral',
   /**
    * Opt-in card background, for the Dashboard's stone/slate mood board only
-   * (see `styles/dashboard-theme.css`) — omitted, this renders exactly as it
+   * (see `styles/quarry-theme.css`) — omitted, this renders exactly as it
    * always has, so every other page's `StatCard` is unaffected.
    */
   theme = 'default',
+  /**
+   * A small, quiet glyph in the opposite corner from the icon — the mood-board
+   * themes only. Purely decorative; always hidden from assistive technology.
+   */
+  cornerIcon: CornerIcon,
+  /** Absolutely-positioned decoration behind the card's content, e.g. a sparkline. */
+  decoration,
   className,
 }: {
   label: string
@@ -30,7 +37,9 @@ export function StatCard({
   icon?: LucideIcon
   footer?: ReactNode
   accent?: 'neutral' | 'primary' | 'success' | 'brass'
-  theme?: 'default' | 'stone' | 'slate'
+  theme?: 'default' | 'stone' | 'slate' | 'copper'
+  cornerIcon?: LucideIcon
+  decoration?: ReactNode
   className?: string
 }) {
   const accents = {
@@ -40,29 +49,87 @@ export function StatCard({
     brass: 'text-brass-700 bg-brass-50',
   }
 
-  const isDark = theme === 'slate'
+  const isDark = theme === 'slate' || theme === 'copper'
+  const isThemed = theme !== 'default'
   const surface =
-    theme === 'default' ? 'border-border bg-card' : theme === 'stone' ? 'dash-card-stone' : 'dash-card-slate'
+    theme === 'default'
+      ? 'border-border bg-card'
+      : theme === 'stone'
+        ? 'dash-card-stone'
+        : theme === 'copper'
+          ? 'dash-card-copper'
+          : 'dash-card-slate'
+
+  /*
+   * The mood-board themes lead with the icon and set the label beside it; the
+   * default card keeps the label-left/icon-right arrangement it has always
+   * had, because it is the one every other page renders.
+   */
+  const iconChip = Icon && (
+    <span
+      className={cn(
+        'grid shrink-0 place-items-center rounded-lg',
+        isThemed ? 'h-9 w-9 rounded-full' : 'h-7 w-7',
+        isDark ? 'bg-white/10 text-cream-50 ring-1 ring-white/15' : accents[accent],
+      )}
+    >
+      <Icon className={cn(isThemed ? 'h-4 w-4' : 'h-3.5 w-3.5')} aria-hidden />
+    </span>
+  )
+
+  const labelText = (
+    <p
+      className={cn(
+        'text-2xs font-semibold uppercase tracking-wider',
+        isDark ? 'text-white/70' : 'text-muted-foreground',
+      )}
+    >
+      {label}
+    </p>
+  )
 
   return (
-    <div className={cn('rounded-xl p-4 shadow-card transition-shadow hover:shadow-raised', surface, className)}>
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
-        {Icon && (
-          <span
-            className={cn(
-              'grid h-7 w-7 shrink-0 place-items-center rounded-lg',
-              isDark ? 'bg-white/10 text-cream-50' : accents[accent],
-            )}
-          >
-            <Icon className="h-3.5 w-3.5" aria-hidden />
-          </span>
-        )}
+    <div
+      className={cn(
+        'rounded-xl p-4 shadow-card transition-shadow hover:shadow-raised',
+        isThemed && 'relative overflow-hidden',
+        surface,
+        className,
+      )}
+    >
+      {decoration}
+
+      <div className="relative z-10">
+        <div className="flex items-center justify-between gap-3">
+          {isThemed ? (
+            <>
+              <div className="flex min-w-0 items-center gap-2.5">
+                {iconChip}
+                {labelText}
+              </div>
+              {CornerIcon && (
+                <span
+                  className={cn(
+                    'grid h-7 w-7 shrink-0 place-items-center rounded-lg',
+                    isDark ? 'bg-white/[0.07] text-white/60' : 'bg-white/70 text-muted-foreground',
+                  )}
+                >
+                  <CornerIcon className="h-3.5 w-3.5" aria-hidden />
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              {labelText}
+              {iconChip}
+            </>
+          )}
+        </div>
+
+        <div className={cn(isThemed ? 'mt-3' : 'mt-2.5')}>{value}</div>
+
+        {footer && <div className="mt-2 flex items-center gap-2">{footer}</div>}
       </div>
-
-      <div className="mt-2.5">{value}</div>
-
-      {footer && <div className="mt-2 flex items-center gap-2">{footer}</div>}
     </div>
   )
 }

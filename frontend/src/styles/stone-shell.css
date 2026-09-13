@@ -1,0 +1,57 @@
+/**
+ * The sidebar rail's surface.
+ *
+ * The rail is the one piece of chrome that is always on screen, so it carries
+ * the imagery: a photograph of a dark quarry face under a scrim of gradients
+ * that keeps the navigation readable over it.
+ *
+ * Imported globally by `styles/index.css` because both the desktop rail and
+ * the mobile drawer use it.
+ */
+
+/*
+ * A photograph of a cairn in dark woodland, under a heavy scrim. The nav sits
+ * on top of this, so the scrim is opaque through the middle where the labels
+ * and hints are, and only thins at the very bottom where nothing is written.
+ * Anything that changes the scrim has to be checked against the nav text.
+ */
+.stone-rail {
+  background-color: hsl(155 16% 10%);
+  background-image:
+    /* scrim: solid behind the nav, clearing toward the foot of the rail */
+    linear-gradient(
+      178deg,
+      hsl(156 18% 9% / 0.93) 0%,
+      hsl(157 18% 8% / 0.95) 34%,
+      hsl(157 18% 8% / 0.88) 62%,
+      hsl(158 20% 7% / 0.62) 100%
+    ),
+    /* holds the photograph in the app's green rather than its own brown */
+    linear-gradient(0deg, hsl(150 32% 14% / 0.5), hsl(150 32% 14% / 0.5)),
+    url('../assets/quarry-rail.jpg');
+  background-size: cover;
+  background-position: center bottom;
+}
+
+/* The stacked-stone mark beside the wordmark. */
+.stone-mark {
+  background: linear-gradient(150deg, hsl(40 20% 92%), hsl(38 14% 76%));
+  color: hsl(155 18% 16%);
+  box-shadow:
+    0 1px 0 hsl(0 0% 100% / 0.5) inset,
+    0 6px 14px -6px rgb(0 0 0 / 0.6);
+}
+
+/*
+ * The footer motto. Set in the display serif at a size that reads as a
+ * caption rather than as a heading, with a short rule under it — the one
+ * decorative flourish in the rail.
+ */
+.stone-motto::after {
+  content: '';
+  display: block;
+  width: 2.25rem;
+  height: 1px;
+  margin-top: 0.625rem;
+  background: hsl(40 20% 92% / 0.35);
+}

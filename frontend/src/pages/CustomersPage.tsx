@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Users, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
-import { PageHeader } from '@/components/PageHeader'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Money, Num } from '@/components/Money'
@@ -9,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { CustomerForm, type CustomerSubmit } from '@/features/customers/CustomerForm'
 import { CustomerTable } from '@/features/customers/CustomerTable'
 import { useAppData } from '@/hooks/useAppData'
+import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import type { Customer } from '@/types'
@@ -102,27 +102,25 @@ export default function CustomersPage() {
     toast.success(`${customer.name} removed`)
   }
 
+  usePageHeader({
+    title: 'Customers',
+    description: 'Every sale and ledger entry points back to one of these.',
+    actions: canCreate && (
+      <Button
+        onClick={() => {
+          setEditing(null)
+          setFormOpen(true)
+        }}
+      >
+        Add customer
+      </Button>
+    ),
+  })
+
   if (loading) return <PageSkeleton />
 
   return (
     <div>
-      <PageHeader
-        title="Customers"
-        description="Every sale and ledger entry points back to one of these."
-        actions={
-          canCreate && (
-            <Button
-              onClick={() => {
-                setEditing(null)
-                setFormOpen(true)
-              }}
-            >
-              Add customer
-            </Button>
-          )
-        }
-      />
-
       <StatGrid columns={3} className="mb-4">
         <StatCard label="Customers" icon={Users} accent="primary" value={<Num value={data.customers.length} size="2xl" className="font-bold" />} />
         <StatCard label="Total outstanding due" icon={Wallet} accent={grandTotals.totalDue > 0 ? 'primary' : 'success'} value={<Money value={grandTotals.totalDue} size="2xl" weight="bold" tone={grandTotals.totalDue > 0 ? 'negative' : 'positive'} />} />

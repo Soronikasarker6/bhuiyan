@@ -1,83 +1,128 @@
 /**
- * Dashboard-only decorative theme — a limestone-quarry mood board (a carved
- * stone plaque in the header, a wood-panel behind the sales chart, marble
- * veining under the registers, a tree-ring accent behind the stock table).
+ * Dashboard-only decorative theme — a limestone-quarry mood board.
  *
- * Scoped entirely to the classes below and imported only by
- * `pages/DashboardPage.tsx` — no other page's styling is touched. All colours
- * stay in the same warm-quarry palette as `tokens.css` (cream/brass/olive),
- * just recombined into a couple of textures this one page uses.
+ * The stat cards carry the imagery (pale veined marble for "today", dark wet
+ * rock for the running totals, a warmer rust-tinted rock for the money
+ * cards); every card that holds a table or a chart stays plain white,
+ * because texture behind a column of figures competes with the figures.
+ *
+ * All of it is layered CSS gradients — no image files to ship, nothing extra
+ * to download, and it stays sharp at any zoom. Scoped entirely to the
+ * classes below and imported only by `pages/DashboardPage.tsx` — no other
+ * page's styling is touched. Colours stay in the same warm-quarry palette as
+ * `tokens.css`.
  */
 
-/* The raised stone plaque behind the page's display-serif "Dashboard" title. */
-.dash-plaque {
-  background: linear-gradient(155deg, hsl(40 30% 99%) 0%, hsl(40 24% 93%) 45%, hsl(38 20% 86%) 100%);
-  border: 1px solid hsl(38 20% 82%);
-  box-shadow:
-    0 1px 0 hsl(0 0% 100% / 0.7) inset,
-    0 -8px 16px hsl(30 22% 68% / 0.16) inset,
-    0 10px 24px -10px rgb(46 32 19 / 0.28);
-}
-
-/* The dark "View reports" pill beside it. */
+/* The dark "View reports" pill in the page header. */
 .dash-pill-dark {
-  background: linear-gradient(160deg, hsl(220 9% 32%), hsl(222 12% 17%));
-  border: 1px solid hsl(220 8% 40%);
+  background: linear-gradient(160deg, hsl(150 8% 26%), hsl(155 12% 12%));
+  border: 1px solid hsl(150 8% 32%);
   color: hsl(40 20% 94%);
 }
 .dash-pill-dark:hover {
-  background: linear-gradient(160deg, hsl(220 9% 36%), hsl(222 12% 20%));
+  background: linear-gradient(160deg, hsl(150 8% 30%), hsl(155 12% 15%));
 }
 
-/* Stat-card themes, opted into via `StatCard`'s `theme` prop. */
+/*
+ * "Today" cards — pale veined marble. A soft white highlight sweeping in
+ * from the top-left like a raking light, faint warm-grey veining streaks
+ * crossing the card, on a warm cream base. Kept low contrast: these cards
+ * hold a large figure, and the figure has to win.
+ */
 .dash-card-stone {
-  background-image: linear-gradient(155deg, hsl(40 32% 97%) 0%, hsl(38 26% 90%) 100%);
-  border: 1px solid hsl(38 22% 83%);
+  position: relative;
+  overflow: hidden;
+  background-color: hsl(38 18% 90%);
+  background-image:
+    /* raking highlight, top-left */
+    radial-gradient(ellipse 75% 65% at 8% 4%, hsl(0 0% 100% / 0.85), transparent 70%),
+    /* faint veining, two crossing sets of hairline streaks */
+    repeating-linear-gradient(124deg, hsl(32 14% 100% / 0.5) 0 1px, transparent 1px 34px),
+    repeating-linear-gradient(58deg, hsl(30 10% 40% / 0.06) 0 1px, transparent 1px 46px),
+    /* base slab, lighter upper-left to a dustier lower-right */
+    linear-gradient(128deg, hsl(38 22% 95%) 0%, hsl(37 16% 88%) 46%, hsl(34 13% 80%) 100%);
+  border: 1px solid hsl(35 14% 82%);
 }
 
+/*
+ * "Totals" cards — cool, wet slate rock. A silvery highlight raking in from
+ * the upper left, deepening to a charcoal-blue shadow at the bottom right,
+ * with faint mineral streaking so it reads as stone rather than as a flat
+ * dark card.
+ */
 .dash-card-slate {
-  background-image: linear-gradient(155deg, hsl(220 10% 34%) 0%, hsl(222 14% 19%) 100%);
-  border: 1px solid hsl(220 10% 29%);
+  position: relative;
+  overflow: hidden;
+  background-color: hsl(200 12% 22%);
+  background-image:
+    radial-gradient(ellipse 70% 60% at 10% 0%, hsl(200 20% 62% / 0.55), transparent 65%),
+    repeating-linear-gradient(112deg, hsl(200 15% 90% / 0.05) 0 1px, transparent 1px 30px),
+    linear-gradient(135deg, hsl(202 16% 42%) 0%, hsl(202 16% 26%) 42%, hsl(206 20% 12%) 100%);
+  border: 1px solid hsl(200 12% 30%);
+}
+
+/*
+ * "This month's money" cards — the same wet rock, tinted rust-brown/plum
+ * rather than blue-grey, so the two dark card groups read as related but
+ * distinct: totals are cool stone, money is warm stone.
+ */
+.dash-card-copper {
+  position: relative;
+  overflow: hidden;
+  background-color: hsl(18 22% 20%);
+  background-image:
+    radial-gradient(ellipse 70% 60% at 10% 0%, hsl(22 35% 55% / 0.55), transparent 65%),
+    repeating-linear-gradient(112deg, hsl(30 30% 92% / 0.05) 0 1px, transparent 1px 30px),
+    linear-gradient(135deg, hsl(16 28% 38% / 0.72) 0%, hsl(16 26% 24%) 42%, hsl(320 14% 12%) 100%);
+  border: 1px solid hsl(16 18% 28%);
 }
 
 /*
  * `Money`/`Num` set their own text colour via the shared tone classes below,
- * tuned for a light card everywhere else in the app. On the dark slate card
- * those same classes read too dark to pass contrast, so — scoped strictly to
- * `.dash-card-slate` — each is brightened to a lighter tint of the *same*
- * hue family (olive stays olive, green stays green), preserving what "due"
- * vs "paid" mean everywhere else while keeping this one card legible.
+ * tuned for a light card everywhere else in the app. On the dark cards those
+ * same classes read too dark to pass contrast, so — scoped strictly to the
+ * dark quarry cards — each is brightened to a lighter tint of the *same* hue
+ * family (olive stays olive, green stays green), preserving what "due" vs
+ * "paid" mean everywhere else while keeping these cards legible.
  */
-.dash-card-slate .text-foreground {
-  color: hsl(40 22% 95%) !important;
+.dash-card-slate .text-foreground,
+.dash-card-copper .text-foreground {
+  color: hsl(40 22% 96%) !important;
 }
-.dash-card-slate .text-muted-foreground {
-  color: hsl(40 12% 74%) !important;
+.dash-card-slate .text-muted-foreground,
+.dash-card-copper .text-muted-foreground {
+  color: hsl(40 10% 78%) !important;
 }
-.dash-card-slate .text-success-700 {
-  color: hsl(140 42% 70%) !important;
+.dash-card-slate .text-success-700,
+.dash-card-copper .text-success-700 {
+  color: hsl(140 45% 72%) !important;
 }
-.dash-card-slate .text-primary-700 {
-  color: hsl(88 32% 74%) !important;
-}
-
-/* A soft wood-grain wash behind the sales trend chart's card. */
-.dash-wood-panel {
-  background-color: hsl(32 30% 86%);
-  background-image:
-    repeating-linear-gradient(
-      90deg,
-      hsl(28 32% 80% / 0.9) 0px,
-      hsl(33 36% 85% / 0.9) 4px,
-      hsl(26 26% 76% / 0.9) 9px,
-      hsl(33 36% 85% / 0.9) 14px
-    ),
-    linear-gradient(180deg, hsl(36 30% 90% / 0.5), hsl(26 24% 76% / 0.35));
+.dash-card-slate .text-primary-700,
+.dash-card-copper .text-primary-700 {
+  color: hsl(28 70% 76%) !important;
 }
 
-/* A faint marble veining wash for the register/table cards. */
-.dash-marble {
-  background-image:
-    radial-gradient(ellipse 60% 40% at 12% 15%, hsl(38 22% 91% / 0.7), transparent 60%),
-    radial-gradient(ellipse 55% 45% at 90% 85%, hsl(38 22% 91% / 0.6), transparent 55%);
+/*
+ * The decorative ridge line tucked into the bottom of a dark money card. It
+ * carries no data — it is a texture, like the rock behind it — so it is a
+ * static path and is hidden from assistive technology by the caller. Tinted
+ * to sit quietly against the warm copper card rather than the cool slate one.
+ */
+.dash-spark {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 3.25rem;
+  width: 100%;
+  opacity: 0.45;
+  color: hsl(28 45% 70%);
+  pointer-events: none;
+}
+
+/* The small tinted chip that carries a card's or a section's icon. */
+.dash-chip {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 0.625rem;
 }

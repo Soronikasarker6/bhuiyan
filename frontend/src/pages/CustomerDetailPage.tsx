@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Clock, Hash, Pencil, Receipt, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
-import { PageHeader, Section } from '@/components/PageHeader'
+import { Section } from '@/components/PageHeader'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Money, Num } from '@/components/Money'
@@ -15,6 +15,7 @@ import { CustomerLedgerStatement } from '@/features/customerLedger/CustomerLedge
 import { ExportMenu } from '@/components/ExportMenu'
 import { usePrint } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
+import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import { buildSaleSummaries } from '@/utils/sales'
@@ -72,16 +73,18 @@ export default function CustomerDetailPage() {
     [sales, transactions, data.customers],
   )
 
-  if (loading) return <PageSkeleton />
-  if (!customer) return <Navigate to="/customers" replace />
-
+  // `customer` isn't confirmed to exist until the guard below, but a hook
+  // can't follow a conditional return — so every closure the header needs
+  // is built here, ahead of that guard, each guarded on its own.
   const exportStatementCsv = () => {
+    if (!customer) return
     const csv = customerLedgerStatementCsv(statementRows, totals)
     downloadTextFile(`${customer.name.replace(/\s+/g, '-').toLowerCase()}-ledger-${todayISO()}.csv`, csv, 'text/csv;charset=utf-8;')
     toast.success('Ledger exported', { description: `${customer.name}'s statement saved as CSV.` })
   }
 
   const exportStatementPdf = () => {
+    if (!customer) return
     const { totalAmount, totalCredit } = statementTotals(statementRows)
     print({
       title: 'Customer Ledger',
@@ -94,6 +97,7 @@ export default function CustomerDetailPage() {
   }
 
   const saveEdit = (values: CustomerSubmit) => {
+    if (!customer) return
     update(
       'customers',
       data.customers.map((c) =>
@@ -112,28 +116,32 @@ export default function CustomerDetailPage() {
     toast.success('Customer updated')
   }
 
+  usePageHeader({
+    title: customer?.name,
+    description:
+      customer && ([customer.company, customer.phone, customer.address].filter(Boolean).join(' · ') || 'No contact details on file'),
+    actions: customer && (
+      <div className="flex gap-2">
+        <ExportMenu onCsv={exportStatementCsv} onPdf={exportStatementPdf} disabled={statementRows.length === 0} />
+        {canEdit && (
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+            <Pencil />
+            Edit
+          </Button>
+        )}
+      </div>
+    ),
+  })
+
+  if (loading) return <PageSkeleton />
+  if (!customer) return <Navigate to="/customers" replace />
+
   return (
     <div>
       <Link to="/customers" className="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-3.5 w-3.5" />
         All customers
       </Link>
-
-      <PageHeader
-        title={customer.name}
-        description={[customer.company, customer.phone, customer.address].filter(Boolean).join(' · ') || 'No contact details on file'}
-        actions={
-          <div className="flex gap-2">
-            <ExportMenu onCsv={exportStatementCsv} onPdf={exportStatementPdf} disabled={statementRows.length === 0} />
-            {canEdit && (
-              <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-                <Pencil />
-                Edit
-              </Button>
-            )}
-          </div>
-        }
-      />
 
       <StatGrid columns={3} className="mb-4">
         <StatCard label="Total sales" icon={Receipt} accent="primary" value={<Money value={totals.totalSales} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{sales.length} invoices</span>} />

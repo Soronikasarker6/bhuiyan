@@ -5,6 +5,9 @@
 /* UI5 Web Components restyled onto the tokens above. */
 @import './ui5-theme.css';
 
+/* The shell's own surfaces — the sidebar rail and the top bar. */
+@import './stone-shell.css';
+
 /* Print gets its own plain-document layout, deliberately outside the theme. */
 @import './print.css';
 

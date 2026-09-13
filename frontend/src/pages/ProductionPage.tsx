@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Boxes, Factory, Package, Receipt, Scale, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { PageHeader, Section } from '@/components/PageHeader'
+import { Section } from '@/components/PageHeader'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Num } from '@/components/Money'
 import { EmptyState } from '@/components/EmptyState'
@@ -15,6 +15,7 @@ import { ProductionEntryForm, type ProductionSubmit } from '@/features/productio
 import { MeshStockSummary } from '@/features/production/MeshStockSummary'
 import { ProductionStockTable, type StockLedgerDisplayRow } from '@/features/production/ProductionStockTable'
 import { useAppData } from '@/hooks/useAppData'
+import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import type { ProductionEntry } from '@/types'
@@ -135,12 +136,18 @@ export default function ProductionPage() {
     [data.productionEntries, update],
   )
 
+  usePageHeader({
+    title: 'Production & Stock',
+    description: data.products.length > 0 && meshSizes.length > 0
+      ? "Today's bagging, mesh by mesh, and what's left in the yard."
+      : undefined,
+  })
+
   if (loading) return <PageSkeleton />
 
   if (data.products.length === 0) {
     return (
       <div>
-        <PageHeader title="Production & Stock" />
         <Section>
           <EmptyState
             icon={Package}
@@ -161,7 +168,6 @@ export default function ProductionPage() {
   if (meshSizes.length === 0) {
     return (
       <div>
-        <PageHeader title="Production & Stock" />
         <Section>
           <EmptyState
             icon={Scale}
@@ -181,8 +187,6 @@ export default function ProductionPage() {
 
   return (
     <div>
-      <PageHeader title="Production & Stock" description="Today's bagging, mesh by mesh, and what's left in the yard." />
-
       {/* A product picker, not real tabbed content — everything below is
           already keyed off `selectedProductId`, and there's exactly one
           panel, which just re-renders for whichever product is selected. */}
