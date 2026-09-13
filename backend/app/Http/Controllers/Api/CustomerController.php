@@ -109,4 +109,33 @@ class CustomerController extends Controller
 
         return response()->json($transaction, 201);
     }
+
+    public function updatePayment(Request $request, Customer $customer, CustomerTransaction $transaction)
+    {
+        abort_unless(
+            $transaction->customer_id === $customer->id && $transaction->type === 'payment' && ! $transaction->reference_sale_id,
+            404
+        );
+
+        $data = $request->validate([
+            'date' => ['required', 'date'],
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'method' => ['nullable', 'string', 'max:40'],
+            'account_id' => ['nullable', 'exists:accounts,id'],
+        ]);
+
+        return $this->ledger->updatePayment($transaction, $data);
+    }
+
+    public function destroyPayment(Customer $customer, CustomerTransaction $transaction)
+    {
+        abort_unless(
+            $transaction->customer_id === $customer->id && $transaction->type === 'payment' && ! $transaction->reference_sale_id,
+            404
+        );
+
+        $this->ledger->deletePayment($transaction);
+
+        return response()->json(null, 204);
+    }
 }

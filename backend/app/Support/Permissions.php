@@ -41,6 +41,8 @@ class Permissions
 
     public const CASH_IN_VIEW = 'CASH_IN_VIEW';
     public const CASH_IN_CREATE = 'CASH_IN_CREATE';
+    public const CASH_IN_EDIT = 'CASH_IN_EDIT';
+    public const CASH_IN_DELETE = 'CASH_IN_DELETE';
 
     public const LEDGER_VIEW = 'LEDGER_VIEW';
     public const LEDGER_CREATE = 'LEDGER_CREATE';

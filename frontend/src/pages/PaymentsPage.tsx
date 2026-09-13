@@ -1,16 +1,19 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Banknote, Users } from 'lucide-react'
 import { toast } from 'sonner'
+import type { CustomerLedgerRow } from '@/types'
 import { PageHeader, Section } from '@/components/PageHeader'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Money } from '@/components/Money'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { PaymentForm, type PaymentSubmit } from '@/features/payments/PaymentForm'
+import { EditPaymentDialog } from '@/features/payments/EditPaymentDialog'
 import { CustomerLedgerTable } from '@/features/customerLedger/CustomerLedgerTable'
-import { useAppData } from '@/hooks/useAppData'
+import { useAppData, type PaymentUpdateInput } from '@/hooks/useAppData'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import {
@@ -20,7 +23,9 @@ import {
   outstandingCustomers,
   transactionsForCustomer,
 } from '@/utils/customerLedger'
-import { formatCurrency } from '@/utils/format'
+import { formatCurrency, formatDate } from '@/utils/format'
+
+type PaymentRow = CustomerLedgerRow & { customerName?: string }
 
 /**
  * Cash In — a plain credit against a customer's overall balance (§4).
@@ -30,8 +35,13 @@ import { formatCurrency } from '@/utils/format'
  * grows Advance — there is nothing here that has to know which case it is.
  */
 export default function PaymentsPage() {
-  const { data, loading, recordPayment } = useAppData()
+  const { data, loading, recordPayment, updatePayment, deletePayment } = useAppData()
   const canCreate = usePermission(PERMISSIONS.CASH_IN_CREATE)
+  const canEdit = usePermission(PERMISSIONS.CASH_IN_EDIT)
+  const canDelete = usePermission(PERMISSIONS.CASH_IN_DELETE)
+
+  const [editing, setEditing] = useState<PaymentRow | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<PaymentRow | null>(null)
 
   const paymentRows = useMemo(
     () =>
@@ -77,6 +87,35 @@ export default function PaymentsPage() {
     }
   }
 
+  const saveEdit = async (values: PaymentUpdateInput) => {
+    if (!editing) return
+    try {
+      await updatePayment(editing.id, values)
+      toast.success('Payment updated', { description: formatCurrency(values.amount) })
+      setEditing(null)
+    } catch (error) {
+      toast.error('Could not update the payment', {
+        description: error instanceof Error ? error.message : undefined,
+      })
+    }
+  }
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return
+    try {
+      await deletePayment(pendingDelete.id)
+      toast.success('Payment deleted', {
+        description: "The amount is back on the customer's due.",
+      })
+    } catch (error) {
+      toast.error('Could not delete the payment', {
+        description: error instanceof Error ? error.message : undefined,
+      })
+    } finally {
+      setPendingDelete(null)
+    }
+  }
+
   if (loading) return <PageSkeleton />
 
   if (data.customers.length === 0) {
@@ -106,8 +145,46 @@ export default function PaymentsPage() {
       )}
 
       <Section title="Cash In history" description={`${paymentRows.length} payments recorded`} noPadding>
-        <CustomerLedgerTable rows={paymentRows} showCustomer />
+        <CustomerLedgerTable
+          rows={paymentRows}
+          showCustomer
+          onEdit={canEdit ? (row) => setEditing(row) : undefined}
+          onDelete={canDelete ? (row) => setPendingDelete(row) : undefined}
+        />
       </Section>
+
+      <EditPaymentDialog
+        row={editing}
+        accounts={data.accounts}
+        onOpenChange={(open) => !open && setEditing(null)}
+        onSubmit={saveEdit}
+      />
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title="Delete this payment?"
+        description="This removes the payment from the customer's ledger and puts the amount back on their due. If it was deposited into an account, that Cash & Bank entry is removed too."
+        confirmLabel="Delete payment"
+        onConfirm={confirmDelete}
+      >
+        {pendingDelete && (
+          <dl className="rounded-lg border border-border bg-secondary/50 px-3 py-2.5 text-xs">
+            <div className="flex justify-between gap-4 py-0.5">
+              <dt className="shrink-0 text-muted-foreground">Date</dt>
+              <dd className="truncate text-right font-medium">{formatDate(pendingDelete.date)}</dd>
+            </div>
+            <div className="flex justify-between gap-4 py-0.5">
+              <dt className="shrink-0 text-muted-foreground">Customer</dt>
+              <dd className="truncate text-right font-medium">{pendingDelete.customerName}</dd>
+            </div>
+            <div className="flex justify-between gap-4 py-0.5">
+              <dt className="shrink-0 text-muted-foreground">Amount</dt>
+              <dd className="truncate text-right font-medium">{formatCurrency(pendingDelete.credit)}</dd>
+            </div>
+          </dl>
+        )}
+      </ConfirmDialog>
     </div>
   )
 }

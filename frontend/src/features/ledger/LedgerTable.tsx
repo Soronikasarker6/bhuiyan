@@ -293,7 +293,7 @@ export function LedgerTable({
 
                   <TableCell numeric>
                     {row.direction === 'out' ? (
-                      <Money value={row.amount} size="sm" weight="medium" tone="negative" />
+                      <Money value={row.amount} size="sm" weight="medium" tone="negative" className="text-destructive" />
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
