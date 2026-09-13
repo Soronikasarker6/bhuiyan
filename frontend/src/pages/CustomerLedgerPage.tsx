@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { BookText, Receipt, Scale, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
-import { PageHeader, Section } from '@/components/PageHeader'
+import { Section } from '@/components/PageHeader'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Money } from '@/components/Money'
@@ -11,6 +11,7 @@ import { ExportMenu } from '@/components/ExportMenu'
 import { CustomerLedgerTable } from '@/features/customerLedger/CustomerLedgerTable'
 import { usePrint } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
+import { usePageHeader } from '@/hooks/usePageHeader'
 import type { CustomerTxnType } from '@/types'
 import {
   buildCustomerLedgerRows,
@@ -148,16 +149,16 @@ export default function CustomerLedgerPage() {
     })
   }
 
+  usePageHeader({
+    title: 'Customer Ledger',
+    description: 'Every sale and payment, across every customer — a running balance, like a bank statement.',
+    actions: <ExportMenu onCsv={exportStatementCsv} onPdf={exportStatementPdf} disabled={statementRows.length === 0} />,
+  })
+
   if (loading) return <PageSkeleton />
 
   return (
     <div>
-      <PageHeader
-        title="Customer Ledger"
-        description="Every sale and payment, across every customer — a running balance, like a bank statement."
-        actions={<ExportMenu onCsv={exportStatementCsv} onPdf={exportStatementPdf} disabled={statementRows.length === 0} />}
-      />
-
       <StatGrid columns={3} className="mb-4">
         <StatCard label="Total out (sales)" icon={Receipt} accent="primary" value={<Money value={totals.debit} size="2xl" weight="bold" tone="negative" />} />
         <StatCard label="Total in (payments)" icon={Wallet} accent="success" value={<Money value={totals.credit} size="2xl" weight="bold" tone="positive" />} />

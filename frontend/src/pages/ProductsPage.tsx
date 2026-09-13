@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import { Package, Scale } from 'lucide-react'
-import { PageHeader } from '@/components/PageHeader'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Num } from '@/components/Money'
@@ -8,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ProductManager } from '@/features/products/ProductManager'
 import { MeshSizeManager } from '@/features/products/MeshSizeManager'
 import { useAppData } from '@/hooks/useAppData'
+import { usePageHeader } from '@/hooks/usePageHeader'
 import { activeProducts, activeMeshSizes } from '@/utils/products'
 
 /**
@@ -46,15 +46,15 @@ export default function ProductsPage() {
     return counts
   }, [data.productionEntries, data.saleItems])
 
+  usePageHeader({
+    title: 'Products & Mesh Sizes',
+    description: 'Configurable lists — every entry form on the site reads from these. Nothing here needs a code change to grow.',
+  })
+
   if (loading) return <PageSkeleton />
 
   return (
     <div>
-      <PageHeader
-        title="Products & Mesh Sizes"
-        description="Configurable lists — every entry form on the site reads from these. Nothing here needs a code change to grow."
-      />
-
       <StatGrid columns={3} className="mb-4">
         <StatCard
           label="Active products"

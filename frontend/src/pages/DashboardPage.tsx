@@ -14,7 +14,7 @@ import {
   Users,
   Wallet,
 } from 'lucide-react'
-import { PageHeader, Section } from '@/components/PageHeader'
+import { Section } from '@/components/PageHeader'
 import { StatCard, StatCardSkeleton, StatGrid } from '@/components/StatCard'
 import { Money, Num } from '@/components/Money'
 import { EmptyState } from '@/components/EmptyState'
@@ -25,6 +25,7 @@ import { ChartSkeleton, TableSkeleton } from '@/components/PageSkeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { SalesTrendChart, SalesTrendLegend } from '@/features/dashboard/SalesTrendChart'
 import { useAppData } from '@/hooks/useAppData'
+import { usePageHeader } from '@/hooks/usePageHeader'
 import { buildImportRows, importTotals, todaysImports } from '@/utils/imports'
 import { allMeshStock, todaysProductionBags, totalProductionBags, totalStockTon } from '@/utils/productionStock'
 import { buildSaleSummaries, monthlySalesSeries } from '@/utils/sales'
@@ -225,10 +226,30 @@ export default function DashboardPage() {
   const nothingYet =
     !loading && data.products.length === 0 && data.rawMaterialImports.length === 0 && data.sales.length === 0
 
+  // Published to the app bar, not rendered in the page body — see
+  // `usePageHeader`. "View reports" only makes sense once there's something
+  // to report on, so it's the one thing that varies with `nothingYet`.
+  usePageHeader({
+    title: 'Dashboard',
+    description: loading
+      ? "Loading today's figures…"
+      : nothingYet
+        ? `Financial year ${year}`
+        : `Financial year ${year} — figures update as entries are recorded.`,
+    actions: !loading && !nothingYet && (
+      <Link
+        to="/reports"
+        className="dash-pill-dark inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-medium shadow-raised transition-transform hover:scale-[1.02]"
+      >
+        View reports
+        <ArrowRight className="h-3.5 w-3.5" />
+      </Link>
+    ),
+  })
+
   if (loading) {
     return (
       <div>
-        <PageHeader title="Dashboard" description="Loading today's figures…" />
         <div className="mb-5 space-y-4">
           <StatGrid columns={4}>
             <StatCardSkeleton />
@@ -253,7 +274,6 @@ export default function DashboardPage() {
   if (nothingYet) {
     return (
       <div>
-        <PageHeader title="Dashboard" description={`Financial year ${year}`} />
         <Section>
           <EmptyState
             icon={Package}
@@ -284,24 +304,6 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 sm:flex-1">
-          <p className="text-sm font-medium text-foreground/80">Dashboard</p>
-          <p className="mt-0.5 max-w-xs text-xs leading-relaxed text-muted-foreground">
-            Financial year {year} — figures update as entries are recorded.
-          </p>
-        </div>
-
-        <div className="flex shrink-0 items-center justify-center sm:flex-1 sm:justify-end">
-          <Link
-            to="/reports"
-            className="dash-pill-dark inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium shadow-raised transition-transform hover:scale-[1.02]"
-          >
-            View reports
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </div>
-      </div>
 
       <div className="mb-4 space-y-4">
         <StatGroup label="Today">
@@ -324,7 +326,7 @@ export default function DashboardPage() {
         <StatGroup label="This month's money">
           <StatGrid columns={2}>
             <StatCard
-              theme="slate"
+              theme="copper"
               label="Total customer due"
               icon={Wallet}
               accent={totalDue > 0 ? 'primary' : 'success'}
@@ -332,7 +334,7 @@ export default function DashboardPage() {
               value={<Money value={totalDue} size="2xl" weight="bold" tone={totalDue > 0 ? 'negative' : 'positive'} />}
             />
             <StatCard
-              theme="slate"
+              theme="copper"
               label="Net profit"
               icon={TrendingUp}
               accent={thisMonthProfit.netProfit < 0 ? 'primary' : 'success'}

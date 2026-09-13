@@ -16,7 +16,7 @@ import {
   Wallet,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { PageHeader, Section } from '@/components/PageHeader'
+import { Section } from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/misc'
@@ -33,6 +33,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { useAppData } from '@/hooks/useAppData'
+import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import type { Account, AccountKind, AppUser, Category, Direction, Role, UnitOfMeasure } from '@/types'
@@ -67,15 +68,15 @@ export default function SettingsPage() {
   const canViewRoles = !__OFFLINE__ && usePermission(PERMISSIONS.ROLES_VIEW)
   const [activeTab, setActiveTab] = useState('accounts')
 
+  usePageHeader({
+    title: 'Settings',
+    description: 'Cash & bank accounts, categories, units of measure, users, roles, and data — configuration that never alters entries you have already recorded. Products and mesh sizes have their own page.',
+  })
+
   if (loading) return <PageSkeleton />
 
   return (
     <div>
-      <PageHeader
-        title="Settings"
-        description="Cash & bank accounts, categories, units of measure, users, roles, and data — configuration that never alters entries you have already recorded. Products and mesh sizes have their own page."
-      />
-
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-4 flex-wrap">
           <TabsTrigger value="accounts">Accounts</TabsTrigger>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Receipt, Scale, TrendingUp, Wallet } from 'lucide-react'
-import { PageHeader, Section } from '@/components/PageHeader'
+import { Section } from '@/components/PageHeader'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Money } from '@/components/Money'
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAppData } from '@/hooks/useAppData'
+import { usePageHeader } from '@/hooks/usePageHeader'
 import { yearlyProfit, yearlyProfitTotals } from '@/utils/profit'
 import { MONTHS } from '@/utils/format'
 
@@ -45,15 +46,15 @@ export default function ProfitPage() {
   const yearTotals = useMemo(() => yearlyProfitTotals(months), [months])
   const selected = months[monthIndex] ?? months[0]!
 
+  usePageHeader({
+    title: 'Profit & Loss',
+    description: 'Sales, cost of goods sold and net profit — computed from real records, month by month.',
+  })
+
   if (loading) return <PageSkeleton />
 
   return (
     <div>
-      <PageHeader
-        title="Profit & Loss"
-        description="Sales, cost of goods sold and net profit — computed from real records, month by month."
-      />
-
       <Section title="Month" className="mb-4">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[9rem]">

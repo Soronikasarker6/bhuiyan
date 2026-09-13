@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Receipt, Scale, Users, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
-import { PageHeader, Section } from '@/components/PageHeader'
+import { Section } from '@/components/PageHeader'
 import { StatCard, StatGrid } from '@/components/StatCard'
 import { Money, Num } from '@/components/Money'
 import { EmptyState } from '@/components/EmptyState'
@@ -14,6 +14,7 @@ import { SaleForm, type SaleSubmit } from '@/features/sales/SaleForm'
 import { SalesTable } from '@/features/sales/SalesTable'
 import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
+import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import type { SaleSummary } from '@/types'
@@ -214,12 +215,16 @@ export default function SalesPage() {
     [buildInvoicePayload],
   )
 
+  usePageHeader({
+    title: 'Sales',
+    description: data.customers.length > 0 ? 'Who bought what, at what rate, and on which truck.' : undefined,
+  })
+
   if (loading) return <PageSkeleton />
 
   if (data.customers.length === 0) {
     return (
       <div>
-        <PageHeader title="Sales" />
         <Section>
           <EmptyState
             icon={Users}
@@ -239,8 +244,6 @@ export default function SalesPage() {
 
   return (
     <div>
-      <PageHeader title="Sales" description="Who bought what, at what rate, and on which truck." />
-
       <StatGrid columns={5} className="mb-4">
         <StatCard label="Total sales" icon={Receipt} accent="brass" value={<Money value={totalAmount} size="2xl" weight="bold" />} footer={<span className="text-2xs text-muted-foreground">{filteredSales.length} invoices</span>} />
         <StatCard

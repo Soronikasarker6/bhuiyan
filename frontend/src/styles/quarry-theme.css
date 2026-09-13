@@ -1,15 +1,16 @@
 /**
  * Dashboard-only decorative theme — a limestone-quarry mood board.
  *
- * The stat cards carry the imagery (misty stone for "today", dark rock for
- * the running totals); every card that holds a table or a chart stays plain
- * white, because texture behind a column of figures competes with the
- * figures. All of it is layered CSS gradients — no image files to ship,
- * nothing extra to download, and it stays sharp at any zoom.
+ * The stat cards carry the imagery (pale veined marble for "today", dark wet
+ * rock for the running totals, a warmer rust-tinted rock for the money
+ * cards); every card that holds a table or a chart stays plain white,
+ * because texture behind a column of figures competes with the figures.
  *
- * Scoped entirely to the classes below and imported only by
- * `pages/DashboardPage.tsx` — no other page's styling is touched. Colours
- * stay in the same warm-quarry palette as `tokens.css`.
+ * All of it is layered CSS gradients — no image files to ship, nothing extra
+ * to download, and it stays sharp at any zoom. Scoped entirely to the
+ * classes below and imported only by `pages/DashboardPage.tsx` — no other
+ * page's styling is touched. Colours stay in the same warm-quarry palette as
+ * `tokens.css`.
  */
 
 /* The dark "View reports" pill in the page header. */
@@ -23,78 +24,89 @@
 }
 
 /*
- * "Today" cards — a pale, misty quarry face. Two soft mountain bands in the
- * lower-right corner, a cool haze wash over the top, on warm cream. Kept
- * very low contrast: these cards hold a large figure, and the figure has to
- * win.
- */
-/*
- * Every card layers a photograph *under* a scrim of gradients. The scrim is
- * not decoration — it is what keeps the figure readable, so it stays heavy
- * enough that the photo reads as texture at the edges and never as content
- * behind the number. Change the scrim and check contrast before shipping it.
+ * "Today" cards — pale veined marble. A soft white highlight sweeping in
+ * from the top-left like a raking light, faint warm-grey veining streaks
+ * crossing the card, on a warm cream base. Kept low contrast: these cards
+ * hold a large figure, and the figure has to win.
  */
 .dash-card-stone {
   position: relative;
   overflow: hidden;
-  background-color: hsl(40 30% 97%);
+  background-color: hsl(38 18% 90%);
   background-image:
-    /* scrim: almost opaque over the figure, thinning toward the lower right */
-    linear-gradient(118deg, hsl(42 34% 98% / 0.97) 34%, hsl(40 26% 95% / 0.84) 62%, hsl(38 20% 90% / 0.72) 100%),
-    radial-gradient(ellipse 85% 80% at 14% 0%, hsl(0 0% 100% / 0.96), transparent 76%),
-    url('../assets/quarry-stone.jpg');
-  background-size: cover;
-  background-position: center;
-  border: 1px solid hsl(38 20% 86%);
+    /* raking highlight, top-left */
+    radial-gradient(ellipse 75% 65% at 8% 4%, hsl(0 0% 100% / 0.85), transparent 70%),
+    /* faint veining, two crossing sets of hairline streaks */
+    repeating-linear-gradient(124deg, hsl(32 14% 100% / 0.5) 0 1px, transparent 1px 34px),
+    repeating-linear-gradient(58deg, hsl(30 10% 40% / 0.06) 0 1px, transparent 1px 46px),
+    /* base slab, lighter upper-left to a dustier lower-right */
+    linear-gradient(128deg, hsl(38 22% 95%) 0%, hsl(37 16% 88%) 46%, hsl(34 13% 80%) 100%);
+  border: 1px solid hsl(35 14% 82%);
 }
 
 /*
- * "Totals" and "This month's money" cards — wet dark rock. A stone-coloured
- * highlight raking in from the upper left, a deep shadowed mass bottom-right,
- * and a faint green cast so it reads as quarry rather than as a generic dark
- * card.
+ * "Totals" cards — cool, wet slate rock. A silvery highlight raking in from
+ * the upper left, deepening to a charcoal-blue shadow at the bottom right,
+ * with faint mineral streaking so it reads as stone rather than as a flat
+ * dark card.
  */
 .dash-card-slate {
   position: relative;
   overflow: hidden;
-  background-color: hsl(155 14% 13%);
+  background-color: hsl(200 12% 22%);
   background-image:
-    /* scrim: densest at the left, where the icon and the figure sit, and
-       thinning to the right so the rock is actually visible there */
-    linear-gradient(100deg, hsl(158 18% 9% / 0.95) 22%, hsl(155 14% 12% / 0.8) 56%, hsl(152 12% 18% / 0.52) 100%),
-    /* keeps the rock green rather than the photograph's own brown */
-    linear-gradient(0deg, hsl(150 34% 15% / 0.45), hsl(150 34% 15% / 0.45)),
-    url('../assets/quarry-rock.jpg');
-  background-size: cover;
-  background-position: center;
-  border: 1px solid hsl(150 10% 24%);
+    radial-gradient(ellipse 70% 60% at 10% 0%, hsl(200 20% 62% / 0.55), transparent 65%),
+    repeating-linear-gradient(112deg, hsl(200 15% 90% / 0.05) 0 1px, transparent 1px 30px),
+    linear-gradient(135deg, hsl(202 16% 42%) 0%, hsl(202 16% 26%) 42%, hsl(206 20% 12%) 100%);
+  border: 1px solid hsl(200 12% 30%);
+}
+
+/*
+ * "This month's money" cards — the same wet rock, tinted rust-brown/plum
+ * rather than blue-grey, so the two dark card groups read as related but
+ * distinct: totals are cool stone, money is warm stone.
+ */
+.dash-card-copper {
+  position: relative;
+  overflow: hidden;
+  background-color: hsl(18 22% 20%);
+  background-image:
+    radial-gradient(ellipse 70% 60% at 10% 0%, hsl(22 35% 55% / 0.55), transparent 65%),
+    repeating-linear-gradient(112deg, hsl(30 30% 92% / 0.05) 0 1px, transparent 1px 30px),
+    linear-gradient(135deg, hsl(16 28% 38% / 0.72) 0%, hsl(16 26% 24%) 42%, hsl(320 14% 12%) 100%);
+  border: 1px solid hsl(16 18% 28%);
 }
 
 /*
  * `Money`/`Num` set their own text colour via the shared tone classes below,
- * tuned for a light card everywhere else in the app. On the dark card those
- * same classes read too dark to pass contrast, so — scoped strictly to
- * `.dash-card-slate` — each is brightened to a lighter tint of the *same*
- * hue family (olive stays olive, green stays green), preserving what "due"
- * vs "paid" mean everywhere else while keeping this one card legible.
+ * tuned for a light card everywhere else in the app. On the dark cards those
+ * same classes read too dark to pass contrast, so — scoped strictly to the
+ * dark quarry cards — each is brightened to a lighter tint of the *same* hue
+ * family (olive stays olive, green stays green), preserving what "due" vs
+ * "paid" mean everywhere else while keeping these cards legible.
  */
-.dash-card-slate .text-foreground {
+.dash-card-slate .text-foreground,
+.dash-card-copper .text-foreground {
   color: hsl(40 22% 96%) !important;
 }
-.dash-card-slate .text-muted-foreground {
-  color: hsl(40 10% 76%) !important;
+.dash-card-slate .text-muted-foreground,
+.dash-card-copper .text-muted-foreground {
+  color: hsl(40 10% 78%) !important;
 }
-.dash-card-slate .text-success-700 {
+.dash-card-slate .text-success-700,
+.dash-card-copper .text-success-700 {
   color: hsl(140 45% 72%) !important;
 }
-.dash-card-slate .text-primary-700 {
-  color: hsl(88 34% 76%) !important;
+.dash-card-slate .text-primary-700,
+.dash-card-copper .text-primary-700 {
+  color: hsl(28 70% 76%) !important;
 }
 
 /*
- * The decorative sparkline tucked into the bottom of a dark money card. It
+ * The decorative ridge line tucked into the bottom of a dark money card. It
  * carries no data — it is a texture, like the rock behind it — so it is a
- * static path and is hidden from assistive technology by the caller.
+ * static path and is hidden from assistive technology by the caller. Tinted
+ * to sit quietly against the warm copper card rather than the cool slate one.
  */
 .dash-spark {
   position: absolute;
@@ -102,8 +114,8 @@
   bottom: 0;
   height: 3.25rem;
   width: 100%;
-  opacity: 0.5;
-  color: hsl(140 30% 66%);
+  opacity: 0.45;
+  color: hsl(28 45% 70%);
   pointer-events: none;
 }
 

@@ -37,7 +37,7 @@ export function StatCard({
   icon?: LucideIcon
   footer?: ReactNode
   accent?: 'neutral' | 'primary' | 'success' | 'brass'
-  theme?: 'default' | 'stone' | 'slate'
+  theme?: 'default' | 'stone' | 'slate' | 'copper'
   cornerIcon?: LucideIcon
   decoration?: ReactNode
   className?: string
@@ -49,10 +49,16 @@ export function StatCard({
     brass: 'text-brass-700 bg-brass-50',
   }
 
-  const isDark = theme === 'slate'
+  const isDark = theme === 'slate' || theme === 'copper'
   const isThemed = theme !== 'default'
   const surface =
-    theme === 'default' ? 'border-border bg-card' : theme === 'stone' ? 'dash-card-stone' : 'dash-card-slate'
+    theme === 'default'
+      ? 'border-border bg-card'
+      : theme === 'stone'
+        ? 'dash-card-stone'
+        : theme === 'copper'
+          ? 'dash-card-copper'
+          : 'dash-card-slate'
 
   /*
    * The mood-board themes lead with the icon and set the label beside it; the

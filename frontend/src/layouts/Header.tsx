@@ -17,6 +17,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { cn } from '@/utils/cn'
 import { useAppData } from '@/hooks/useAppData'
 import { useAuth } from '@/hooks/useAuth'
+import { usePageHeaderContent } from '@/hooks/usePageHeader'
 import { formatDateLong, todayISO } from '@/utils/format'
 import { allMeshStock } from '@/utils/productionStock'
 
@@ -44,14 +45,18 @@ function useOnlineIdentity() {
 /**
  * The header.
  *
- * Carries the things that are true of the whole application rather than of one
- * screen: what today is, anything that needs attention, and who is signed in.
- * All of it sits hard right; each page states its own name through
- * `PageHeader`, so the bar has nothing to put on the left.
+ * The one piece of chrome every page shares, so it carries both what's true
+ * of the whole application (today's date, anything that needs attention, who
+ * is signed in — hard right) and, on the left, whatever the *current* page
+ * published as its own name and actions via `usePageHeader` — a "View
+ * reports" link, an export menu, a month picker, each page's own choice.
+ * Nothing here knows what any page is called; it only ever renders the last
+ * thing handed to it.
  */
 export function Header({ onOpenNav }: { onOpenNav: () => void }) {
   const { data, persistent } = useAppData()
   const identity = useAccountIdentity()
+  const { title, description, actions } = usePageHeaderContent()
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [confirmLogOut, setConfirmLogOut] = useState(false)
 
@@ -117,10 +122,23 @@ export function Header({ onOpenNav }: { onOpenNav: () => void }) {
           <Menu />
         </Button>
 
-        {/* Holds the rest of the bar against the right edge. */}
-        <div className="flex-1" />
+        {title && (
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium leading-tight text-foreground/80">{title}</p>
+            {description && (
+              <p className="mt-0.5 hidden max-w-md truncate text-xs leading-tight text-muted-foreground sm:block">
+                {description}
+              </p>
+            )}
+          </div>
+        )}
 
-        <p className="hidden text-right text-xs leading-tight text-muted-foreground md:block">
+        {/* With no title published yet (a page still loading its own header content), holds the rest of the bar against the right edge the same as before. */}
+        {!title && <div className="flex-1" />}
+
+        {actions && <div className="hidden shrink-0 items-center gap-2 sm:flex">{actions}</div>}
+
+        <p className="hidden shrink-0 text-right text-xs leading-tight text-muted-foreground md:block">
           <span className="block font-medium text-foreground/80">
             {formatDateLong(todayISO())}
           </span>
