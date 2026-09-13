@@ -170,7 +170,7 @@ cosmetic default page styled.
 
 ---
 
-## Just open it, no backend
+## Just open it
 
 `frontend/release/BHUIYAN-INDUSTRY.html` — double-click it. A self-contained,
 offline build that stores data in the browser instead of calling the API. See
