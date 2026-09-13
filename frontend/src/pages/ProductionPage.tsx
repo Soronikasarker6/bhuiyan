@@ -30,7 +30,7 @@ import {
   totalStockBags,
   totalStockTon,
 } from '@/utils/productionStock'
-import { rawMaterialStock, cycleStatusForDate } from '@/utils/rawMaterial'
+import { currentRawStockTon, cycleStatusForDate } from '@/utils/rawMaterial'
 import { formatDate, formatNumber, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
 
@@ -89,20 +89,19 @@ export default function ProductionPage() {
     [selectedProductId, data.productionEntries],
   )
 
-  // §10 — bagging consumes raw material, so a new entry is checked against
-  // the same shipment-wise stock the Raw Material Import page shows, never a
-  // second, independently-tracked figure.
+  // §2/§10 — bagging is what consumes raw material, so a new entry is checked
+  // against the very same Current Raw Stock the Raw Material page shows, never
+  // a second, independently-tracked figure.
   const availableRawMaterialTon = useCallback(
     (productId: string) =>
-      rawMaterialStock(
+      currentRawStockTon(
         productId,
-        data.products,
         data.rawMaterialImports,
         data.wastageEntries,
         data.productionEntries,
         (meshId) => bagKgOf(data.meshSizes, meshId),
-      ).availableTon,
-    [data.products, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes],
+      ),
+    [data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes],
   )
 
   const rawMaterialCycleClosed = useCallback(

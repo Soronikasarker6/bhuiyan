@@ -76,9 +76,14 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('permission:'.P::CUSTOMER_LEDGER_VIEW);
     Route::post('customers/{customer}/payments', [CustomerController::class, 'payments'])
         ->middleware('permission:'.P::CASH_IN_CREATE);
+    Route::put('customers/{customer}/payments/{transaction}', [CustomerController::class, 'updatePayment'])
+        ->middleware('permission:'.P::CASH_IN_EDIT);
+    Route::delete('customers/{customer}/payments/{transaction}', [CustomerController::class, 'destroyPayment'])
+        ->middleware('permission:'.P::CASH_IN_DELETE);
 
     Route::middleware('permission:'.P::RAW_MATERIAL_VIEW)->group(function () {
         Route::get('raw-materials', [RawMaterialController::class, 'index']);
+        Route::get('raw-materials/report', [RawMaterialController::class, 'report']);
         Route::get('raw-materials/{product}/stock', [RawMaterialController::class, 'stock']);
         Route::get('shipment-cycles', [ShipmentCycleController::class, 'index']);
     });

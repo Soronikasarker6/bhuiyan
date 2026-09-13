@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\BusinessRuleException;
 use App\Models\Account;
 use App\Models\Category;
+use App\Models\CustomerTransaction;
 use App\Models\LedgerClosing;
 use App\Models\LedgerClosingBalance;
 use App\Models\Transaction;
@@ -23,7 +24,7 @@ class LedgerService
     /** @return Collection<int, array> rows for one account (or all), newest-first, with running balance */
     public function ledgerRows(?int $accountId = null): Collection
     {
-        $query = Transaction::query()->with(['account', 'category']);
+        $query = Transaction::query()->with(['account', 'category', 'customer']);
         if ($accountId) {
             $query->where('account_id', $accountId);
         }
@@ -36,6 +37,7 @@ class LedgerService
 
                 return array_merge($t->toArray(), [
                     'account_name' => $t->account?->name,
+                    'customer_name' => $t->customer?->name,
                     'balance' => $running[$t->account_id],
                 ]);
             });
@@ -124,15 +126,32 @@ class LedgerService
         });
     }
 
+    /**
+     * Removes a ledger entry and whatever else was part of the same event:
+     * both legs of a transfer, or — for the cash half of a customer payment —
+     * the receivables row it was written with, so deleting the receipt puts the
+     * customer's due back rather than leaving them credited for money that is
+     * no longer recorded anywhere. (The customer_transactions row owns the
+     * pairing, so deleting it cascades back to this cash row.)
+     */
     public function deleteTransaction(int $id): void
     {
         DB::transaction(function () use ($id) {
             $transaction = Transaction::findOrFail($id);
+
             if ($transaction->transfer_id) {
                 Transaction::where('transfer_id', $transaction->transfer_id)->delete();
-            } else {
-                $transaction->delete();
+
+                return;
             }
+
+            if ($transaction->customer_transaction_id) {
+                CustomerTransaction::whereKey($transaction->customer_transaction_id)->delete();
+
+                return;
+            }
+
+            $transaction->delete();
         });
     }
 

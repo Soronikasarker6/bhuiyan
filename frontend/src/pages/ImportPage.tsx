@@ -8,6 +8,7 @@ import { Money, Num } from '@/components/Money'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { ExportMenu } from '@/components/ExportMenu'
@@ -25,7 +26,13 @@ import { PERMISSIONS } from '@/constants/permissions'
 import type { RawMaterialImport, ShipmentCycleRow, WastageEntry } from '@/types'
 import { activeProducts, bagKgOf } from '@/utils/products'
 import { buildImportRows, importTotals, todaysImports } from '@/utils/imports'
-import { allRawMaterialStock, allShipmentCycles, buildWastageRows, cycleStatusForDate } from '@/utils/rawMaterial'
+import {
+  allRawMaterialStock,
+  allRawStockSummaries,
+  allShipmentCycles,
+  buildWastageRows,
+  cycleStatusForDate,
+} from '@/utils/rawMaterial'
 import { downloadTextFile } from '@/utils/download'
 import { formatDate, formatNumber, formatTons, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
@@ -48,16 +55,25 @@ export default function ImportPage() {
   const canCreate = usePermission(PERMISSIONS.RAW_MATERIAL_CREATE)
   const [productFilter, setProductFilter] = useState(ALL)
   const [activeTab, setActiveTab] = useState('imports')
+  // §6 — an optional reporting window over the register and the stock figures.
+  // Empty by default, so the page opens on the all-time position.
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
 
   const products = useMemo(() => activeProducts(data.products), [data.products])
+
+  const inWindow = useCallback(
+    (date: string) => (!from || date >= from) && (!to || date <= to),
+    [from, to],
+  )
 
   const allRows = useMemo(
     () => buildImportRows(data.rawMaterialImports, data.products),
     [data.rawMaterialImports, data.products],
   )
   const rows = useMemo(
-    () => allRows.filter((r) => productFilter === ALL || r.productId === productFilter),
-    [allRows, productFilter],
+    () => allRows.filter((r) => (productFilter === ALL || r.productId === productFilter) && inWindow(r.date)),
+    [allRows, productFilter, inWindow],
   )
 
   const totals = useMemo(() => importTotals(data.rawMaterialImports), [data.rawMaterialImports])
@@ -66,7 +82,25 @@ export default function ImportPage() {
     [data.rawMaterialImports],
   )
 
+  // §1/§5 — Total Imported − Production − Wastage = Current Raw Stock, per
+  // limestone type, honouring the type and date-range filters above.
   const rawStock = useMemo(
+    () =>
+      allRawStockSummaries(
+        products.filter((p) => productFilter === ALL || p.id === productFilter),
+        data.rawMaterialImports,
+        data.wastageEntries,
+        data.productionEntries,
+        (meshId) => bagKgOf(data.meshSizes, meshId),
+        from || undefined,
+        to || undefined,
+      ),
+    [products, productFilter, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes, from, to],
+  )
+
+  // The live, all-time position — what the entry forms must validate against,
+  // regardless of whatever window the report above is currently showing.
+  const liveStock = useMemo(
     () =>
       allRawMaterialStock(
         data.products,
@@ -91,8 +125,8 @@ export default function ImportPage() {
     [data.products, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes],
   )
   const shipmentRows = useMemo(
-    () => allCycles.filter((c) => productFilter === ALL || c.productId === productFilter),
-    [allCycles, productFilter],
+    () => allCycles.filter((c) => (productFilter === ALL || c.productId === productFilter) && inWindow(c.date)),
+    [allCycles, productFilter, inWindow],
   )
 
   const closeShipment = useCallback(
@@ -160,9 +194,9 @@ export default function ImportPage() {
   const wastageRows = useMemo(
     () =>
       buildWastageRows(data.wastageEntries, data.products).filter(
-        (r) => productFilter === ALL || r.productId === productFilter,
+        (r) => (productFilter === ALL || r.productId === productFilter) && inWindow(r.date),
       ),
-    [data.wastageEntries, data.products, productFilter],
+    [data.wastageEntries, data.products, productFilter, inWindow],
   )
 
   const addEntry = useCallback(
@@ -208,11 +242,12 @@ export default function ImportPage() {
     [data.rawMaterialImports, update],
   )
 
-  // §10 — a wastage entry cannot take a material's current cycle negative,
-  // and cannot be dated inside a cycle that has already been closed.
+  // §10 — a wastage entry cannot take a material's current raw stock negative,
+  // and cannot be dated inside a cycle that has already been closed. Checked
+  // against the live all-time position, never the filtered report window.
   const wastageAvailableTon = useCallback(
-    (productId: string) => rawStock.find((s) => s.productId === productId)?.availableTon ?? 0,
-    [rawStock],
+    (productId: string) => liveStock.find((s) => s.productId === productId)?.currentRawStockTon ?? 0,
+    [liveStock],
   )
   const wastageCycleClosed = useCallback(
     (productId: string, date: string) => cycleStatusForDate(productId, date, data.rawMaterialImports) === 'closed',
@@ -354,10 +389,46 @@ export default function ImportPage() {
           Never combined into a single blended figure. */}
       <Section
         title="Raw Material Stock"
-        description="Opening, received, used and closing — per limestone type, one shipment cycle at a time."
+        description="Total imported, less what went into production and what was lost — per limestone type."
         className="mb-4"
+        actions={
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Period
+            </span>
+            <DateRangePicker
+              id="rawstock-range"
+              aria-label="Raw material reporting period"
+              from={from}
+              to={to}
+              max={todayISO()}
+              onChange={(nextFrom, nextTo) => {
+                setFrom(nextFrom)
+                setTo(nextTo)
+              }}
+              className="w-full sm:w-64"
+            />
+            {(from || to) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setFrom('')
+                  setTo('')
+                }}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+        }
       >
         <RawMaterialStockSummary rows={rawStock} />
+        <p className="mt-2.5 text-2xs text-muted-foreground">
+          {from || to
+            ? 'Movements within the selected period, opening the window at whatever was already on hand.'
+            : 'Everything ever received, less everything that has left the yard — what is physically there right now.'}
+        </p>
       </Section>
 
       {rawStock.some((s) => s.averageCostPerTon) && (
@@ -367,7 +438,9 @@ export default function ImportPage() {
               <div key={s.productId} className="rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5">
                 <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">{s.productName}</p>
                 <Money value={s.averageCostPerTon ?? 0} size="lg" weight="bold" className="mt-1" />
-                <span className="ml-1 text-2xs text-muted-foreground">/ Ton avg. · {formatTons(s.availableTon)} available</span>
+                <span className="ml-1 text-2xs text-muted-foreground">
+                  / Ton avg. · {formatTons(s.currentRawStockTon)} Ton in stock
+                </span>
               </div>
             ))}
           </div>

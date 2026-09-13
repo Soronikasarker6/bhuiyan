@@ -104,7 +104,7 @@ export function MeshSizeManager({
                   <Input
                     type="number"
                     min={0}
-                    step="1"
+                    step="0.001"
                     value={mesh.bagKg}
                     onChange={(e) => updateBagKg(mesh, e.target.value)}
                     disabled={!canEdit}
@@ -152,7 +152,7 @@ export function MeshSizeManager({
           <Input
             type="number"
             min={0}
-            step="1"
+            step="0.001"
             value={bagKg}
             onChange={(e) => setBagKg(e.target.value)}
             placeholder="Bag weight (kg)"

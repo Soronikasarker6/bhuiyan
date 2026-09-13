@@ -33,6 +33,8 @@ export const PERMISSIONS = {
 
   CASH_IN_VIEW: 'CASH_IN_VIEW',
   CASH_IN_CREATE: 'CASH_IN_CREATE',
+  CASH_IN_EDIT: 'CASH_IN_EDIT',
+  CASH_IN_DELETE: 'CASH_IN_DELETE',
 
   LEDGER_VIEW: 'LEDGER_VIEW',
   LEDGER_CREATE: 'LEDGER_CREATE',
@@ -95,7 +97,15 @@ export const PERMISSION_GROUPS: Array<{ label: string; permissions: Permission[]
       PERMISSIONS.CUSTOMER_LEDGER_VIEW,
     ],
   },
-  { label: 'Cash In', permissions: [PERMISSIONS.CASH_IN_VIEW, PERMISSIONS.CASH_IN_CREATE] },
+  {
+    label: 'Cash In',
+    permissions: [
+      PERMISSIONS.CASH_IN_VIEW,
+      PERMISSIONS.CASH_IN_CREATE,
+      PERMISSIONS.CASH_IN_EDIT,
+      PERMISSIONS.CASH_IN_DELETE,
+    ],
+  },
   {
     label: 'Cash & Bank Ledger',
     permissions: [PERMISSIONS.LEDGER_VIEW, PERMISSIONS.LEDGER_CREATE, PERMISSIONS.LEDGER_DELETE],

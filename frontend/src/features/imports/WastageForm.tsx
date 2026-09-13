@@ -73,7 +73,7 @@ export function WastageForm({
   onSubmit,
 }: {
   products: Product[]
-  /** Current available tons for a product's *current* shipment cycle. */
+  /** The material's Current Raw Stock in tons — imported, less production and wastage. */
   availableTon: (productId: string) => number
   /** Whether a date, for a product, falls inside an already-closed shipment cycle. */
   cycleClosed: (productId: string, date: string) => boolean
@@ -139,7 +139,7 @@ export function WastageForm({
 
         <div className="mt-4">
           <Field label="Quantity wasted (kg)" error={errors.quantityKg?.message} htmlFor="wst-qty">
-            <Input id="wst-qty" type="number" min={0} step="1" inputMode="numeric" {...register('quantityKg')} />
+            <Input id="wst-qty" type="number" min={0} step="0.001" inputMode="decimal" {...register('quantityKg')} />
           </Field>
         </div>
 

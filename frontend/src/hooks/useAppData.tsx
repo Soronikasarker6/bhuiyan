@@ -71,6 +71,14 @@ export interface PaymentInput {
   accountId?: ID
 }
 
+/** Everything about a payment that can change after the fact — never the customer it belongs to. */
+export interface PaymentUpdateInput {
+  date: string
+  amount: number
+  method?: string
+  accountId?: ID
+}
+
 interface AppDataValue {
   data: AppData
   loading: boolean
@@ -85,6 +93,9 @@ interface AppDataValue {
   createSale: (input: SaleInput) => Promise<{ invoiceNo: string }>
   deleteSale: (saleId: ID) => Promise<void>
   recordPayment: (input: PaymentInput) => Promise<{ reference: string }>
+  /** Edit a Cash In already recorded — never the customer it belongs to, only when/how much/how. */
+  updatePayment: (customerTransactionId: ID, input: PaymentUpdateInput) => Promise<void>
+  deletePayment: (customerTransactionId: ID) => Promise<void>
 }
 
 const AppDataContext = createContext<AppDataValue | null>(null)
@@ -330,6 +341,11 @@ function useLocalAppData(): AppDataValue {
             direction: 'in',
             category: 'Customer Payment',
             amount: input.amount,
+            // Same pairing the API build writes: this cash row *is* the
+            // customer's payment, so the register can name them and the two
+            // rows can be removed together rather than one being orphaned.
+            customerId: input.customerId,
+            customerTransactionId: row.id,
             createdAt: stamp,
           },
           ...current.transactions,
@@ -338,6 +354,66 @@ function useLocalAppData(): AppDataValue {
 
       updateMany(patch)
       return { reference }
+    },
+    [updateMany],
+  )
+
+  const updatePayment = useCallback(
+    async (transactionId: ID, input: PaymentUpdateInput) => {
+      const current = dataRef.current
+      const existing = current.customerTransactions.find((t) => t.id === transactionId)
+      if (!existing) return
+
+      const customerTransactions = current.customerTransactions.map((t) =>
+        t.id === transactionId
+          ? { ...t, date: input.date, credit: input.amount, method: input.method, linkedAccountId: input.accountId }
+          : t,
+      )
+
+      // The linked Cash & Bank row, if any, is the other leg of this same
+      // payment — added, updated or removed to match, never left stale or
+      // orphaned, exactly as `recordPayment` writes it in the first place.
+      const existingCash = current.transactions.find((t) => t.customerTransactionId === transactionId)
+      let transactions = current.transactions
+
+      if (input.accountId) {
+        transactions = existingCash
+          ? current.transactions.map((t) =>
+              t.id === existingCash.id
+                ? { ...t, date: input.date, amount: input.amount, accountId: input.accountId! }
+                : t,
+            )
+          : [
+              {
+                id: uid(),
+                date: input.date,
+                details: `Cash In (${existing.reference})`,
+                accountId: input.accountId,
+                direction: 'in' as const,
+                category: 'Customer Payment',
+                amount: input.amount,
+                customerId: existing.customerId,
+                customerTransactionId: transactionId,
+                createdAt: now(),
+              },
+              ...current.transactions,
+            ]
+      } else if (existingCash) {
+        transactions = current.transactions.filter((t) => t.id !== existingCash.id)
+      }
+
+      updateMany({ customerTransactions, transactions })
+    },
+    [updateMany],
+  )
+
+  const deletePayment = useCallback(
+    async (transactionId: ID) => {
+      const current = dataRef.current
+      updateMany({
+        customerTransactions: current.customerTransactions.filter((t) => t.id !== transactionId),
+        transactions: current.transactions.filter((t) => t.customerTransactionId !== transactionId),
+      })
     },
     [updateMany],
   )
@@ -355,8 +431,22 @@ function useLocalAppData(): AppDataValue {
       createSale,
       deleteSale,
       recordPayment,
+      updatePayment,
+      deletePayment,
     }),
-    [data, loading, update, updateMany, reset, clearTransactionalData, createSale, deleteSale, recordPayment],
+    [
+      data,
+      loading,
+      update,
+      updateMany,
+      reset,
+      clearTransactionalData,
+      createSale,
+      deleteSale,
+      recordPayment,
+      updatePayment,
+      deletePayment,
+    ],
   )
 }
 
@@ -500,6 +590,36 @@ function useApiAppData(): AppDataValue {
     [refresh],
   )
 
+  const updatePayment = useCallback(
+    async (transactionId: ID, input: PaymentUpdateInput) => {
+      const existing = dataRef.current.customerTransactions.find((t) => t.id === transactionId)
+      if (!existing) return
+
+      try {
+        await customerService.updatePayment(existing.customerId, transactionId, input)
+        await refresh()
+      } catch (error) {
+        throw new Error(errorMessage(error) ?? 'Could not update the payment.')
+      }
+    },
+    [refresh],
+  )
+
+  const deletePayment = useCallback(
+    async (transactionId: ID) => {
+      const existing = dataRef.current.customerTransactions.find((t) => t.id === transactionId)
+      if (!existing) return
+
+      try {
+        await customerService.removePayment(existing.customerId, transactionId)
+        await refresh()
+      } catch (error) {
+        throw new Error(errorMessage(error) ?? 'Could not delete the payment.')
+      }
+    },
+    [refresh],
+  )
+
   return useMemo<AppDataValue>(
     () => ({
       data,
@@ -513,8 +633,22 @@ function useApiAppData(): AppDataValue {
       createSale,
       deleteSale,
       recordPayment,
+      updatePayment,
+      deletePayment,
     }),
-    [data, loading, update, updateMany, reset, clearTransactionalData, createSale, deleteSale, recordPayment],
+    [
+      data,
+      loading,
+      update,
+      updateMany,
+      reset,
+      clearTransactionalData,
+      createSale,
+      deleteSale,
+      recordPayment,
+      updatePayment,
+      deletePayment,
+    ],
   )
 }
 

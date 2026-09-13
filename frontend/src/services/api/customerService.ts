@@ -67,4 +67,17 @@ export const customerService = {
       }),
     )
   },
+  async updatePayment(customerId: string, transactionId: string, data: PaymentInput): Promise<CustomerTransaction> {
+    return mapEntity<CustomerTransaction>(
+      await http.put(`/customers/${customerId}/payments/${transactionId}`, {
+        date: data.date,
+        amount: data.amount,
+        method: data.method,
+        account_id: data.accountId,
+      }),
+    )
+  },
+  async removePayment(customerId: string, transactionId: string): Promise<void> {
+    await http.delete(`/customers/${customerId}/payments/${transactionId}`)
+  },
 }
