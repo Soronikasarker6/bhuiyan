@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/utils/cn'
 
 /**
@@ -51,6 +52,7 @@ export function Section({
   title,
   description,
   actions,
+  icon: Icon,
   children,
   className,
   bodyClassName,
@@ -59,6 +61,11 @@ export function Section({
   title?: ReactNode
   description?: ReactNode
   actions?: ReactNode
+  /**
+   * An optional tinted chip to the left of the title. Omitted — as every page
+   * outside the Dashboard omits it — the header renders exactly as before.
+   */
+  icon?: LucideIcon
   children: ReactNode
   className?: string
   bodyClassName?: string
@@ -70,15 +77,22 @@ export function Section({
     >
       {(title || actions) && (
         <header className="flex flex-col gap-2 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <div className="min-w-0">
-            {title && (
-              <h2 className="text-[0.9375rem] font-semibold leading-tight tracking-tight">
-                {title}
-              </h2>
+          <div className="flex min-w-0 items-center gap-2.5">
+            {Icon && (
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-secondary text-foreground/70">
+                <Icon className="h-4 w-4" aria-hidden />
+              </span>
             )}
-            {description && (
-              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</p>
-            )}
+            <div className="min-w-0">
+              {title && (
+                <h2 className="text-[0.9375rem] font-semibold leading-tight tracking-tight">
+                  {title}
+                </h2>
+              )}
+              {description && (
+                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</p>
+              )}
+            </div>
           </div>
           {actions && (
             <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
