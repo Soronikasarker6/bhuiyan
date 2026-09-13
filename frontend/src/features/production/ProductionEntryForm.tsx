@@ -14,6 +14,7 @@ import { bagKgOf } from '@/utils/products'
 import { bagsToKg } from '@/utils/productionStock'
 import { kgToTons } from '@/utils/imports'
 import { formatNumber, formatTons, todayISO } from '@/utils/format'
+import { cn } from '@/utils/cn'
 
 /**
  * Record today's bagging for one product and mesh size.
@@ -22,10 +23,12 @@ import { formatNumber, formatTons, todayISO } from '@/utils/format'
  * ledger is always read from actual sales, never typed alongside
  * production, which is what keeps the two from silently disagreeing.
  *
- * Bagging is also what consumes raw material (`utils/rawMaterial.ts`), so
- * §10's two shipment-cycle rules are checked here the same way `SaleForm`
- * checks bag stock: this can never take a material's *current* cycle
- * negative, and it can never land inside a cycle that has already closed.
+ * Bagging is also what consumes raw material (`utils/rawMaterial.ts`), so the
+ * same tonnage leaves that material's Current Raw Stock as arrives in this
+ * mesh's finished stock — shown on the form rather than left to be discovered
+ * elsewhere after saving. Two rules are checked here the same way `SaleForm`
+ * checks bag stock: this can never take a material's raw stock negative, and
+ * it can never land inside a shipment cycle that has already closed.
  */
 
 function buildSchema(
@@ -81,7 +84,7 @@ export function ProductionEntryForm({
 }: {
   products: Product[]
   meshSizes: MeshSize[]
-  /** Current available raw material tons for a product's *current* shipment cycle. */
+  /** The material's Current Raw Stock in tons — imported, less production and wastage. */
   availableTon: (productId: string) => number
   /** Whether a date, for a product, falls inside an already-closed shipment cycle. */
   cycleClosed: (productId: string, date: string) => boolean
@@ -123,6 +126,10 @@ export function ProductionEntryForm({
   const bags = Number(watch('bags')) || 0
   const bagKg = bagKgOf(meshSizes, meshId)
   const kg = bagsToKg(bags, bagKg)
+
+  const tonsRequested = kgToTons(kg)
+  const rawStockNow = productId ? availableTon(productId) : 0
+  const rawStockAfter = rawStockNow - tonsRequested
 
   const submit = handleSubmit((values) => {
     onSubmit(values as ProductionSubmit)
@@ -195,6 +202,36 @@ export function ProductionEntryForm({
             <span className="block font-mono tabular text-2xs text-success-700">{formatTons(kgToTons(kg))} Ton</span>
           </span>
         </div>
+
+        {/* §2/§3 — the same tonnage leaves raw stock and arrives in this mesh's
+            finished stock, so the form shows the raw side moving rather than
+            leaving it to be discovered on another page after saving. */}
+        {productId && (
+          <div className="mt-3 rounded-lg border border-border bg-secondary/40 px-4 py-3" aria-live="polite">
+            <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {productName(productId)} raw stock
+            </p>
+            <div className="mt-1.5 flex items-baseline justify-between gap-3 text-[0.8125rem]">
+              <span className="text-muted-foreground">Available now</span>
+              <span className="font-mono tabular font-semibold text-foreground">
+                {formatTons(rawStockNow)} Ton
+              </span>
+            </div>
+            {tonsRequested > 0 && (
+              <div className="mt-1 flex items-baseline justify-between gap-3 border-t border-border pt-1.5 text-[0.8125rem]">
+                <span className="text-muted-foreground">After this entry</span>
+                <span
+                  className={cn(
+                    'font-mono tabular font-bold',
+                    rawStockAfter < 0 ? 'text-destructive' : 'text-foreground',
+                  )}
+                >
+                  {formatTons(rawStockAfter)} Ton
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-4">
           <Field label="Notes (optional)" htmlFor="prodstk-notes">

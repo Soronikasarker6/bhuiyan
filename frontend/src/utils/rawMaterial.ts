@@ -5,6 +5,7 @@ import type {
   ProductionEntry,
   RawMaterialImport,
   RawMaterialStock,
+  RawStockSummary,
   ShipmentCycleRow,
   ShipmentStatus,
   WastageEntry,
@@ -66,22 +67,142 @@ export function averageCostPerTon(productId: ID, imports: RawMaterialImport[]): 
   return totalTon > 0 ? weightedCost / totalTon : undefined
 }
 
-function importedTonOf(productId: ID, imports: RawMaterialImport[]): number {
+/** Whether an entry's date falls inside an optional, inclusive `from`..`to` window. */
+function inDateWindow(date: ISODate, from?: ISODate, to?: ISODate): boolean {
+  if (from && date < from) return false
+  if (to && date > to) return false
+  return true
+}
+
+function importedTonOf(productId: ID, imports: RawMaterialImport[], from?: ISODate, to?: ISODate): number {
   return imports
-    .filter((i) => i.productId === productId)
+    .filter((i) => i.productId === productId && inDateWindow(i.date, from, to))
     .reduce((sum, i) => sum + kgToTons(netWeightKg(i.grossWeightKg, i.tareWeightKg)), 0)
 }
 
-function wastageTonOf(productId: ID, wastage: WastageEntry[]): number {
+function wastageTonOf(productId: ID, wastage: WastageEntry[], from?: ISODate, to?: ISODate): number {
   return wastage
-    .filter((w) => w.productId === productId)
+    .filter((w) => w.productId === productId && inDateWindow(w.date, from, to))
     .reduce((sum, w) => sum + kgToTons(Number(w.quantityKg) || 0), 0)
 }
 
-function producedTonOf(productId: ID, productionEntries: ProductionEntry[], bagKgOf: (meshId: ID) => number): number {
+function producedTonOf(
+  productId: ID,
+  productionEntries: ProductionEntry[],
+  bagKgOf: (meshId: ID) => number,
+  from?: ISODate,
+  to?: ISODate,
+): number {
   return productionEntries
-    .filter((e) => e.productId === productId)
+    .filter((e) => e.productId === productId && inDateWindow(e.date, from, to))
     .reduce((sum, e) => sum + kgToTons((Number(e.bags) || 0) * bagKgOf(e.meshId)), 0)
+}
+
+// ---------------------------------------------------------------- current raw stock (§1, §5, §6)
+
+/**
+ * How many tons of this raw material are physically in the yard right now:
+ *
+ *     Total Imported − Production Consumption − Wastage
+ *
+ * Each ton appears in exactly one of those three logs, so nothing is
+ * double-counted. A production entry consumes exactly the tonnage it bags
+ * (`bags × bagKg`) and nothing on top of it — process loss is never folded in,
+ * it is only ever recorded as a `WastageEntry` of its own. Production and
+ * wastage are therefore two disjoint ways material leaves the yard, and
+ * subtracting both subtracts each ton once.
+ *
+ * This is the same arithmetic `buildShipmentCycles` telescopes to, since each
+ * cycle opens at the previous one's closing balance and every consumption entry
+ * falls inside exactly one window. The two can only drift once a shipment has
+ * been *closed*, because a closed cycle reports its frozen snapshot rather than
+ * what the logs now say — and where they differ, this is the figure that
+ * describes the physical yard, which is why it is what the stock cards show.
+ *
+ * Mirrors `InventoryService::currentRawStock()` on the backend exactly; the
+ * backend is the source of truth and this recomputes the same number from the
+ * same rows so the screen never has to wait on a round trip.
+ *
+ * `asOf` bounds every input to entries dated on or before that day.
+ */
+export function currentRawStockTon(
+  productId: ID,
+  imports: RawMaterialImport[],
+  wastage: WastageEntry[],
+  productionEntries: ProductionEntry[],
+  bagKgOf: (meshId: ID) => number,
+  asOf?: ISODate,
+): number {
+  return (
+    importedTonOf(productId, imports, undefined, asOf) -
+    producedTonOf(productId, productionEntries, bagKgOf, undefined, asOf) -
+    wastageTonOf(productId, wastage, undefined, asOf)
+  )
+}
+
+/** The day before `date`, as an ISO string — the cut-off an opening balance is taken at. */
+function dayBefore(date: ISODate): ISODate {
+  const d = new Date(`${date}T00:00:00`)
+  d.setDate(d.getDate() - 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/**
+ * One limestone type's current raw stock, broken into the figures the stock
+ * card shows, optionally over a date window (§6).
+ *
+ * With no window the four numbers are all-time and read straight down:
+ * imported − production − wastage = current raw stock. With a `from` the three
+ * movement figures cover the window only, and `openingTon` carries in whatever
+ * was already on hand the day before it, so the column still adds up instead of
+ * appearing to lose the earlier stock.
+ */
+export function rawStockSummary(
+  productId: ID,
+  products: Product[],
+  imports: RawMaterialImport[],
+  wastage: WastageEntry[],
+  productionEntries: ProductionEntry[],
+  bagKgOf: (meshId: ID) => number,
+  from?: ISODate,
+  to?: ISODate,
+): RawStockSummary {
+  const openingTon = from
+    ? currentRawStockTon(productId, imports, wastage, productionEntries, bagKgOf, dayBefore(from))
+    : 0
+
+  const importedTon = importedTonOf(productId, imports, from, to)
+  const productionTon = producedTonOf(productId, productionEntries, bagKgOf, from, to)
+  const wastageTon = wastageTonOf(productId, wastage, from, to)
+
+  return {
+    productId,
+    productName: productNameOf(products, productId),
+    openingTon,
+    importedTon,
+    productionTon,
+    wastageTon,
+    currentRawStockTon: openingTon + importedTon - productionTon - wastageTon,
+    averageCostPerTon: averageCostPerTon(productId, imports),
+    // Counted over the same window as the movements above, so the card never
+    // captions period figures with an all-time shipment count.
+    shipmentCount: imports.filter((i) => i.productId === productId && inDateWindow(i.date, from, to)).length,
+  }
+}
+
+/** One `rawStockSummary` per limestone type — the Raw Material Stock cards. */
+export function allRawStockSummaries(
+  products: Product[],
+  imports: RawMaterialImport[],
+  wastage: WastageEntry[],
+  productionEntries: ProductionEntry[],
+  bagKgOf: (meshId: ID) => number,
+  from?: ISODate,
+  to?: ISODate,
+): RawStockSummary[] {
+  return products.map((p) =>
+    rawStockSummary(p.id, products, imports, wastage, productionEntries, bagKgOf, from, to),
+  )
 }
 
 export function rawMaterialStock(
@@ -113,6 +234,7 @@ export function rawMaterialStock(
     importedTon,
     wastageTon,
     producedTon,
+    currentRawStockTon: importedTon - producedTon - wastageTon,
     availableTon: closingTon,
     openingTon,
     receivedTon,

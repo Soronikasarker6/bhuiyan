@@ -62,15 +62,22 @@ class CustomerLedgerService
      * Record a customer payment (a.k.a. "Cash In"). No cap against the due amount —
      * an overpayment simply becomes a negative balance (advance), matching the
      * frontend. Optionally also posts a linked row into the Cash & Bank ledger.
+     *
+     * This is the *only* way a customer payment is written, whether it was
+     * entered on the Cash In screen or as a Cash In on the Cash & Bank Ledger:
+     * one call, one receivables row, at most one cash row, the two pointing at
+     * each other. Routing both screens through here is what stops the same
+     * payment being recorded twice — once against the customer and again as an
+     * unrelated cash receipt.
      */
     public function recordPayment(array $payload): CustomerTransaction
     {
         return DB::transaction(function () use ($payload) {
-            Customer::findOrFail($payload['customer_id']);
+            $customer = Customer::findOrFail($payload['customer_id']);
             $reference = $this->nextReference('payment');
 
             $transaction = CustomerTransaction::create([
-                'customer_id' => $payload['customer_id'],
+                'customer_id' => $customer->id,
                 'date' => $payload['date'],
                 'type' => 'payment',
                 'reference' => $reference,
@@ -84,11 +91,13 @@ class CustomerLedgerService
             if (! empty($payload['account_id'])) {
                 Transaction::create([
                     'date' => $payload['date'],
-                    'details' => "Payment from customer ({$reference})",
+                    'details' => $payload['details'] ?? "Payment from {$customer->name} ({$reference})",
                     'account_id' => $payload['account_id'],
                     'direction' => 'in',
                     'category_name' => 'Customer Payment',
                     'amount' => $payload['amount'],
+                    'customer_id' => $customer->id,
+                    'customer_transaction_id' => $transaction->id,
                 ]);
             }
 

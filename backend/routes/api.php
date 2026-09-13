@@ -79,6 +79,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::middleware('permission:'.P::RAW_MATERIAL_VIEW)->group(function () {
         Route::get('raw-materials', [RawMaterialController::class, 'index']);
+        Route::get('raw-materials/report', [RawMaterialController::class, 'report']);
         Route::get('raw-materials/{product}/stock', [RawMaterialController::class, 'stock']);
         Route::get('shipment-cycles', [ShipmentCycleController::class, 'index']);
     });

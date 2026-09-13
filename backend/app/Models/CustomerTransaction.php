@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * One row of the receivables ledger. Balance is never stored — it's the running
@@ -41,5 +42,11 @@ class CustomerTransaction extends Model
     public function linkedAccount(): BelongsTo
     {
         return $this->belongsTo(Account::class, 'linked_account_id');
+    }
+
+    /** The Cash & Bank row this payment was posted into, when one was written. */
+    public function cashTransaction(): HasOne
+    {
+        return $this->hasOne(Transaction::class);
     }
 }

@@ -9,7 +9,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { ExportMenu } from '@/components/ExportMenu'
-import { TransactionForm, type TransactionSubmit } from '@/features/ledger/TransactionForm'
+import { TransactionForm, NO_CUSTOMER, type TransactionSubmit } from '@/features/ledger/TransactionForm'
 import { LedgerTable } from '@/features/ledger/LedgerTable'
 import { BalanceSummary } from '@/features/dashboard/BalanceSummary'
 import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
@@ -24,6 +24,7 @@ import {
   summariseRows,
   totalBalances,
 } from '@/utils/ledger'
+import { customerBalance, transactionsForCustomer } from '@/utils/customerLedger'
 import { downloadTextFile } from '@/utils/download'
 import { formatCurrency, formatDate, monthKeyOf, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
@@ -35,7 +36,7 @@ import { now, uid } from '@/utils/id'
  * they are the sum of the entries, so the two can never disagree.
  */
 export default function LedgerPage() {
-  const { data, loading, update } = useAppData()
+  const { data, loading, update, recordPayment } = useAppData()
   const { print } = usePrint()
   const canCreate = usePermission(PERMISSIONS.LEDGER_CREATE)
 
@@ -56,11 +57,53 @@ export default function LedgerPage() {
     }
   }, [data.transactions])
 
+  /**
+   * A customer's running receivables balance — positive is Due, negative is
+   * Advance. Read straight from the customer ledger, the same way the Cash In
+   * screen reads it, so the due shown next to the Customer dropdown is the
+   * same number that screen shows.
+   */
+  const balanceOfCustomer = useCallback(
+    (customerId: string) => customerBalance(transactionsForCustomer(data.customerTransactions, customerId)),
+    [data.customerTransactions],
+  )
+
   // ---------------------------------------------------------------- actions
 
   const addTransaction = useCallback(
-    (values: TransactionSubmit) => {
+    async (values: TransactionSubmit) => {
       const stamp = now()
+
+      // §9 — a Cash In with a customer attached is a customer payment, so it
+      // goes through the one `recordPayment` path the Cash In screen already
+      // uses. That writes the receivables credit and this account's money-in
+      // row together, linked; recording them separately here is exactly the
+      // duplicate the brief rules out.
+      if (values.mode === 'in' && values.customerId && values.customerId !== NO_CUSTOMER) {
+        const customer = data.customers.find((c) => c.id === values.customerId)
+        const balanceBefore = balanceOfCustomer(values.customerId)
+
+        try {
+          const { reference } = await recordPayment({
+            customerId: values.customerId,
+            date: values.date,
+            amount: values.amount,
+            accountId: values.accountId!,
+          })
+
+          const overpayment = Math.max(0, values.amount - Math.max(0, balanceBefore))
+          toast.success(`${reference} recorded`, {
+            description: overpayment > 0
+              ? `${formatCurrency(values.amount - overpayment)} applied to ${customer?.name ?? 'the customer'}'s due · ${formatCurrency(overpayment)} added to Advance`
+              : `${formatCurrency(values.amount)} from ${customer?.name ?? 'customer'} · their due is now ${formatCurrency(Math.max(0, balanceBefore - values.amount))}`,
+          })
+        } catch (error) {
+          toast.error('Could not record the payment', {
+            description: error instanceof Error ? error.message : undefined,
+          })
+        }
+        return
+      }
 
       // A transfer is written as two legs in a single update. There is no
       // code path that can create one without the other.
@@ -112,11 +155,14 @@ export default function LedgerPage() {
         description: `${formatCurrency(values.amount)} · ${values.category}`,
       })
     },
-    [data.accounts, data.transactions, update],
+    [data.accounts, data.customers, data.transactions, update, recordPayment, balanceOfCustomer],
   )
 
   const deleteTransactions = useCallback(
     (ids: string[]) => {
+      const wasCustomerPayment = ids.length === 1
+        && data.transactions.some((t) => t.id === ids[0] && t.customerId)
+
       update(
         'transactions',
         data.transactions.filter((transaction) => !ids.includes(transaction.id)),
@@ -126,7 +172,9 @@ export default function LedgerPage() {
         description:
           ids.length > 1
             ? 'Both legs were removed so the accounts stay in balance.'
-            : 'Balances have been recalculated.',
+            : wasCustomerPayment
+              ? 'The payment was removed from the customer ledger too, and the amount is back on their due.'
+              : 'Balances have been recalculated.',
       })
     },
     [data.transactions, update],
@@ -268,6 +316,8 @@ export default function LedgerPage() {
             <TransactionForm
               accounts={data.accounts}
               categories={data.categories}
+              customers={data.customers}
+              balanceOf={balanceOfCustomer}
               transactions={data.transactions}
               onSubmit={addTransaction}
             />
@@ -282,6 +332,7 @@ export default function LedgerPage() {
           transactions={data.transactions}
           accounts={data.accounts}
           categories={data.categories}
+          customers={data.customers}
           onDelete={deleteTransactions}
         />
       </div>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ArrowRightLeft, Link2, Receipt, Search, Trash2, X } from 'lucide-react'
-import type { Account, Category, LedgerRow, Transaction } from '@/types'
+import type { Account, Category, Customer, LedgerRow, Transaction } from '@/types'
 import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
@@ -25,6 +25,7 @@ import {
 import { Money } from '@/components/Money'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { buildLedgerRows, idsToRemoveWith, summariseRows, type LedgerFilters } from '@/utils/ledger'
+import { customerNameOf } from '@/utils/customerLedger'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import { formatCurrency, formatDate } from '@/utils/format'
@@ -43,12 +44,15 @@ export function LedgerTable({
   transactions,
   accounts,
   categories,
+  customers = [],
   onDelete,
   toolbar,
 }: {
   transactions: Transaction[]
   accounts: Account[]
   categories: Category[]
+  /** Only needed to name the customer on a payment row — optional everywhere else. */
+  customers?: Customer[]
   onDelete: (ids: string[]) => void
   toolbar?: React.ReactNode
 }) {
@@ -270,6 +274,13 @@ export function LedgerTable({
                       {row.transferId && <ArrowRightLeft className="h-2.5 w-2.5" aria-hidden />}
                       {row.category}
                     </Badge>
+                    {/* Which customer a receipt came from — the one thing the
+                        category alone can't say about a customer payment. */}
+                    {row.customerId && (
+                      <span className="mt-0.5 block truncate text-2xs text-muted-foreground">
+                        {customerNameOf(customers, row.customerId)}
+                      </span>
+                    )}
                   </TableCell>
 
                   <TableCell numeric>
@@ -358,7 +369,9 @@ export function LedgerTable({
         description={
           linkedCount > 1
             ? 'This is one leg of a transfer. Both legs will be deleted together — removing only one would leave money that had left an account without arriving anywhere.'
-            : 'This cannot be undone. The running balance for the account will be recalculated.'
+            : pending?.customerId
+              ? `This receipt is ${customerNameOf(customers, pending.customerId)}'s payment. Deleting it removes the payment from their ledger too, and puts the amount back on their due — keeping it here while the customer stayed credited would mean crediting money nothing records.`
+              : 'This cannot be undone. The running balance for the account will be recalculated.'
         }
         confirmLabel={linkedCount > 1 ? 'Delete both legs' : 'Delete entry'}
         onConfirm={() => {
@@ -371,6 +384,9 @@ export function LedgerTable({
             <SummaryRow label="Date" value={formatDate(pending.date)} />
             <SummaryRow label="Account" value={pending.accountName} />
             <SummaryRow label="Category" value={pending.category} />
+            {pending.customerId && (
+              <SummaryRow label="Customer" value={customerNameOf(customers, pending.customerId)} />
+            )}
             <SummaryRow
               label={pending.direction === 'in' ? 'Money in' : 'Money out'}
               value={formatCurrency(pending.amount)}

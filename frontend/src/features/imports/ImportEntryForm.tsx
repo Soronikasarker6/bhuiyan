@@ -189,8 +189,8 @@ export function ImportEntryForm({
               id="imp-gross"
               type="number"
               min={0}
-              step="1"
-              inputMode="numeric"
+              step="0.001"
+              inputMode="decimal"
               placeholder="28480"              {...register('grossWeightKg')}
             />
           </Field>
@@ -200,8 +200,8 @@ export function ImportEntryForm({
               id="imp-tare"
               type="number"
               min={0}
-              step="1"
-              inputMode="numeric"
+              step="0.001"
+              inputMode="decimal"
               placeholder="7820"              {...register('tareWeightKg')}
             />
           </Field>

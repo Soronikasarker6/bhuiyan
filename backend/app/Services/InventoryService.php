@@ -119,6 +119,139 @@ class InventoryService
         return $latest ? $latest['closing_ton'] : 0.0;
     }
 
+    // ------------------------------------------------------------------
+    // Current raw stock — the physical figure
+    // ------------------------------------------------------------------
+
+    /**
+     * How many tons of this raw material are physically in the yard right now:
+     *
+     *     Total Imported − Production Consumption − Wastage
+     *
+     * The three inputs are three separate logs and each ton appears in exactly
+     * one of them, so nothing here is double-counted. In particular a production
+     * entry consumes exactly the tonnage it bags (bags × bag_kg) and nothing
+     * more: process loss is never folded into it, it is only ever recorded as a
+     * WastageEntry of its own. So production and wastage are two disjoint ways
+     * raw material leaves the yard, and subtracting both is subtracting each
+     * ton once — see the "A vs. B" distinction in the plan's §4.
+     *
+     * This is the same arithmetic the shipment-cycle chain telescopes to, since
+     * each cycle opens at the previous one's closing balance and every
+     * consumption entry falls inside exactly one cycle window. The two can only
+     * drift once a shipment has been *closed*, because a closed cycle reports a
+     * frozen snapshot rather than what its logs now say. When that happens this
+     * figure — not the frozen chain — is the one that describes the yard, which
+     * is why it is what the stock cards show and what consumeStock() guards.
+     *
+     * `$asOf` bounds every input to entries dated on or before that date, giving
+     * the stock as it stood at the end of that day.
+     */
+    public function currentRawStock(int $productId, ?string $asOf = null): float
+    {
+        return $this->round(
+            $this->importedTon($productId, null, $asOf)
+            - $this->productionTon($productId, null, $asOf)
+            - $this->wastageTon($productId, null, $asOf)
+        );
+    }
+
+    /**
+     * Current raw stock for one material, broken into the figures the stock card
+     * shows, optionally over a date window.
+     *
+     * With no window the four numbers are all-time and read straight down:
+     * imported − production − wastage = current raw stock. With a `$from` the
+     * three movement figures cover the window only, and `opening_ton` carries in
+     * whatever was already on hand the day before it, so the column still adds
+     * up rather than appearing to lose the earlier stock.
+     *
+     * @return array{
+     *   product_id: int, product_name: string, opening_ton: float, imported_ton: float,
+     *   production_ton: float, wastage_ton: float, current_raw_stock_ton: float,
+     *   shipment_count: int, from: ?string, to: ?string, average_cost_per_ton: ?float,
+     * }
+     */
+    public function rawStockSummary(int $productId, ?string $from = null, ?string $to = null): array
+    {
+        $product = Product::findOrFail($productId);
+
+        $opening = $from
+            ? $this->currentRawStock($productId, Carbon::parse($from)->subDay()->toDateString())
+            : 0.0;
+
+        $imported = $this->importedTon($productId, $from, $to);
+        $production = $this->productionTon($productId, $from, $to);
+        $wastage = $this->wastageTon($productId, $from, $to);
+
+        return [
+            'product_id' => $product->id,
+            'product_name' => $product->name,
+            'opening_ton' => $this->round($opening),
+            'imported_ton' => $this->round($imported),
+            'production_ton' => $this->round($production),
+            'wastage_ton' => $this->round($wastage),
+            'current_raw_stock_ton' => $this->round($opening + $imported - $production - $wastage),
+            // Counted over the same window as the movements above, so a period
+            // view never captions its figures with an all-time shipment count.
+            'shipment_count' => $this->betweenDates(
+                RawMaterialImport::where('product_id', $productId), $from, $to
+            )->count(),
+            'from' => $from,
+            'to' => $to,
+            'average_cost_per_ton' => $this->averageCostPerTon($productId),
+        ];
+    }
+
+    /** @return Collection<int, array> one rawStockSummary row per material, or just one material's. */
+    public function allRawStockSummaries(?int $productId = null, ?string $from = null, ?string $to = null): Collection
+    {
+        $productIds = $productId
+            ? collect([$productId])
+            : Product::orderBy('name')->pluck('id');
+
+        return $productIds->map(fn ($id) => $this->rawStockSummary((int) $id, $from, $to))->values();
+    }
+
+    /** Net tons received, optionally bounded by shipment date. */
+    private function importedTon(int $productId, ?string $from = null, ?string $to = null): float
+    {
+        return (float) $this->betweenDates(RawMaterialImport::where('product_id', $productId), $from, $to)
+            ->get()
+            ->sum(fn (RawMaterialImport $i) => $i->netWeightTon());
+    }
+
+    /**
+     * Tons of raw material consumed by bagging, optionally bounded by entry date.
+     * One production entry consumes bags × bag_kg — the tonnage it turns into
+     * finished stock — and never anything on top of that.
+     */
+    private function productionTon(int $productId, ?string $from = null, ?string $to = null): float
+    {
+        return (float) $this->betweenDates(ProductionEntry::with('mesh')->where('product_id', $productId), $from, $to)
+            ->get()
+            ->sum(fn (ProductionEntry $p) => ((float) $p->bags * (float) $p->mesh->bag_kg) / 1000);
+    }
+
+    /** Tons lost as wastage — raw material that left the yard *without* being bagged. */
+    private function wastageTon(int $productId, ?string $from = null, ?string $to = null): float
+    {
+        return (float) $this->betweenDates(WastageEntry::where('product_id', $productId), $from, $to)
+            ->sum('quantity_kg') / 1000;
+    }
+
+    private function betweenDates($query, ?string $from, ?string $to)
+    {
+        if ($from) {
+            $query->where('date', '>=', $from);
+        }
+        if ($to) {
+            $query->where('date', '<=', $to);
+        }
+
+        return $query;
+    }
+
     /** Which shipment cycle a date falls into for a product, and whether it's closed. */
     public function cycleStatusForDate(int $productId, string $date): ?string
     {
@@ -147,14 +280,21 @@ class InventoryService
     }
 
     /**
-     * The RawMaterialStock summary: all-time imported/wastage/produced totals plus
-     * the current shipment cycle's opening/received/consumed/closing.
+     * The RawMaterialStock summary: the headline current raw stock and the
+     * all-time imported/production/wastage totals it comes from, plus the
+     * current shipment cycle's opening/received/consumed/closing.
+     *
+     * `current_raw_stock_ton` is what the business asks for — how many tons are
+     * physically on hand right now (see currentRawStock()). `available_ton` and
+     * the `*_ton` cycle figures describe the current *shipment cycle* and are
+     * what the Shipment History screen reports; they agree with the headline
+     * except across a frozen closed shipment.
      *
      * @return array{
      *   product_id: int, product_name: string, imported_ton: float, wastage_ton: float,
-     *   produced_ton: float, available_ton: float, opening_ton: float, received_ton: float,
-     *   consumed_ton: float, closing_ton: float, shipment_count: int,
-     *   open_shipment_count: int, average_cost_per_ton: ?float,
+     *   produced_ton: float, current_raw_stock_ton: float, available_ton: float,
+     *   opening_ton: float, received_ton: float, consumed_ton: float, closing_ton: float,
+     *   shipment_count: int, open_shipment_count: int, average_cost_per_ton: ?float,
      * }
      */
     public function getCurrentStock(int $productId): array
@@ -162,11 +302,9 @@ class InventoryService
         $product = Product::findOrFail($productId);
         $cycles = $this->shipmentCycles($productId);
 
-        $importedTon = RawMaterialImport::where('product_id', $productId)->get()
-            ->sum(fn (RawMaterialImport $i) => $i->netWeightTon());
-        $wastageTon = WastageEntry::where('product_id', $productId)->sum('quantity_kg') / 1000;
-        $producedTon = ProductionEntry::with('mesh')->where('product_id', $productId)->get()
-            ->sum(fn (ProductionEntry $p) => ((float) $p->bags * (float) $p->mesh->bag_kg) / 1000);
+        $importedTon = $this->importedTon($productId);
+        $wastageTon = $this->wastageTon($productId);
+        $producedTon = $this->productionTon($productId);
 
         $latest = $cycles->last();
         if ($latest) {
@@ -187,6 +325,7 @@ class InventoryService
             'imported_ton' => $this->round($importedTon),
             'wastage_ton' => $this->round($wastageTon),
             'produced_ton' => $this->round($producedTon),
+            'current_raw_stock_ton' => $this->round($importedTon - $producedTon - $wastageTon),
             'available_ton' => $this->round($closing),
             'opening_ton' => $this->round($opening),
             'received_ton' => $this->round($received),
@@ -258,7 +397,13 @@ class InventoryService
     /**
      * Record a wastage or production entry that consumes raw-material stock.
      * Rejects entries dated inside an already-closed shipment cycle, or that
-     * would drive the current shipment cycle's closing balance negative.
+     * would drive the material's current raw stock negative.
+     *
+     * The guard is currentRawStock() — the tonnage physically in the yard —
+     * rather than the shipment cycle's closing balance, because no amount of
+     * shipment bookkeeping lets more limestone leave than actually arrived. The
+     * two figures are the same number while every shipment is open; where a
+     * frozen closed cycle makes them differ, the physical one is the real limit.
      */
     public function consumeStock(int $productId, string $sourceType, string $date, float $tons, callable $create): mixed
     {
@@ -271,11 +416,11 @@ class InventoryService
                 );
             }
 
-            $available = $this->calculateAvailableStock($productId);
+            $available = $this->currentRawStock($productId);
             if ($tons > $available) {
                 $product = Product::find($productId);
                 throw new InsufficientStockException(
-                    "This would take {$product?->name} stock negative. Only ".round($available, 3)." Ton is currently available."
+                    "This would take {$product?->name} raw stock negative. Only ".round($available, 3)." Ton is currently available."
                 );
             }
 

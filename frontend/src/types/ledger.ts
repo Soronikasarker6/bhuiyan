@@ -36,6 +36,14 @@ export interface Transaction {
   transferId?: ID
   /** Set only on the row a sale's "paid at sale" amount posted — mirrors CustomerTransaction.referenceSaleId. */
   referenceSaleId?: ID
+  /**
+   * Set on a money-in row that is a customer payment (§9). The payment is one
+   * event with two ledger consequences — cash up here, due down there — so the
+   * two rows are written together and deleted together;
+   * `customerTransactionId` is the receivables row this one is paired with.
+   */
+  customerId?: ID
+  customerTransactionId?: ID
   createdAt: string
 }
 

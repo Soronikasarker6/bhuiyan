@@ -87,11 +87,32 @@ class ReportController extends Controller
         ]);
     }
 
-    public function inventory()
+    /**
+     * Raw material on hand per limestone type. `current_raw_stock_ton` is the
+     * headline (imported − production − wastage); the shipment-cycle figures
+     * ride along for anyone reconciling against Shipment History.
+     */
+    public function inventory(Request $request)
     {
-        $rows = $this->inventory->allRawMaterialStock();
+        $data = $request->validate([
+            'product_id' => ['nullable', 'exists:products,id'],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date', 'after_or_equal:from'],
+        ]);
 
-        return $this->payload('Raw Material Inventory', $rows, ['available_ton' => $rows->sum('available_ton')]);
+        if (! empty($data['product_id']) || ! empty($data['from']) || ! empty($data['to'])) {
+            $rows = $this->inventory->allRawStockSummaries(
+                isset($data['product_id']) ? (int) $data['product_id'] : null,
+                $data['from'] ?? null,
+                $data['to'] ?? null,
+            );
+        } else {
+            $rows = $this->inventory->allRawMaterialStock();
+        }
+
+        return $this->payload('Raw Material Inventory', $rows, [
+            'current_raw_stock_ton' => $rows->sum('current_raw_stock_ton'),
+        ]);
     }
 
     public function shipments(Request $request)

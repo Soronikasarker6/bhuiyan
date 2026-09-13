@@ -330,6 +330,11 @@ function useLocalAppData(): AppDataValue {
             direction: 'in',
             category: 'Customer Payment',
             amount: input.amount,
+            // Same pairing the API build writes: this cash row *is* the
+            // customer's payment, so the register can name them and the two
+            // rows can be removed together rather than one being orphaned.
+            customerId: input.customerId,
+            customerTransactionId: row.id,
             createdAt: stamp,
           },
           ...current.transactions,
