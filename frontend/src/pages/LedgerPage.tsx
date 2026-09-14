@@ -18,6 +18,7 @@ import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import type { Transaction } from '@/types'
+import { cn } from '@/utils/cn'
 import {
   accountBalances,
   buildLedgerRows,
@@ -314,32 +315,39 @@ export default function LedgerPage() {
         />
       </StatGrid>
 
-      <div className="grid gap-4 xl:grid-cols-[27rem_minmax(0,1fr)]">
-        <div className="space-y-4">
-          {canCreate && (
-            <TransactionForm
-              accounts={data.accounts}
-              categories={data.categories}
-              customers={data.customers}
-              balanceOf={balanceOfCustomer}
-              transactions={data.transactions}
-              onSubmit={addTransaction}
-            />
-          )}
+      {/*
+       * Entry form and balances side by side — two things read at the same
+       * time while recording an entry (what to enter, what it does to the
+       * balance) — with the register given the full width below rather than
+       * squeezed into whatever was left over beside them. Only a grid when
+       * there are two things to put in it: with entry hidden (no
+       * `canCreate`), balances alone stays one column instead of stranding
+       * itself in half the row.
+       */}
+      <div className={cn('mb-4 grid gap-4', canCreate && 'lg:grid-cols-2')}>
+        {canCreate && (
+          <TransactionForm
+            accounts={data.accounts}
+            categories={data.categories}
+            customers={data.customers}
+            balanceOf={balanceOfCustomer}
+            transactions={data.transactions}
+            onSubmit={addTransaction}
+          />
+        )}
 
-          <Section title="Account balances" description="Calculated from every entry">
-            <BalanceSummary balances={balances} totals={totals} />
-          </Section>
-        </div>
-
-        <LedgerTable
-          transactions={data.transactions}
-          accounts={data.accounts}
-          categories={data.categories}
-          customers={data.customers}
-          onDelete={deleteTransactions}
-        />
+        <Section title="Account balances" description="Calculated from every entry">
+          <BalanceSummary balances={balances} totals={totals} />
+        </Section>
       </div>
+
+      <LedgerTable
+        transactions={data.transactions}
+        accounts={data.accounts}
+        categories={data.categories}
+        customers={data.customers}
+        onDelete={deleteTransactions}
+      />
     </div>
   )
 }
