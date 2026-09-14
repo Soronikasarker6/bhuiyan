@@ -99,9 +99,10 @@
  * `Money`/`Num` set their own text colour via the shared tone classes below,
  * tuned for a light card everywhere else in the app. On the dark cards those
  * same classes read too dark to pass contrast, so — scoped strictly to the
- * dark quarry cards — each is brightened to a lighter tint of the *same* hue
- * family (olive stays olive, green stays green), preserving what "due" vs
- * "paid" mean everywhere else while keeping these cards legible.
+ * dark quarry cards — each is brightened to a lighter tint of the same hue
+ * family, keeping what "due" vs "paid" mean everywhere else while staying
+ * legible here. The one deliberate departure is the money band's positive
+ * tone; see the note on `.dash-card-copper .text-success-700` below.
  */
 .dash-card-slate .text-foreground,
 .dash-card-copper .text-foreground {
@@ -111,9 +112,22 @@
 .dash-card-copper .text-muted-foreground {
   color: hsl(40 10% 78%) !important;
 }
-.dash-card-slate .text-success-700,
-.dash-card-copper .text-success-700 {
+.dash-card-slate .text-success-700 {
   color: hsl(140 45% 72%) !important;
+}
+
+/*
+ * The money cards are the exception: both figures in that band are set in the
+ * same warm tint, rather than the positive one turning green.
+ *
+ * A green nought beside an amber Total Customer Due read as two unrelated
+ * cards, and worse, the Net Profit card changed colour as it crossed zero —
+ * the figure appeared to mean something different from one month to the next
+ * when only its sign had moved. The sign itself already says which way it
+ * went, and the footer gives sales and cost underneath it.
+ */
+.dash-card-copper .text-success-700 {
+  color: hsl(28 70% 76%) !important;
 }
 .dash-card-slate .text-primary-700,
 .dash-card-copper .text-primary-700 {
