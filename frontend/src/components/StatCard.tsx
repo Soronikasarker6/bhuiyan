@@ -98,7 +98,11 @@ export function StatCard({
   return (
     <div
       className={cn(
-        'rounded-xl p-4 shadow-card transition-shadow hover:shadow-raised',
+        // `min-w-0`: a grid track sized `minmax(0, 1fr)` (every `StatGrid`
+        // column) already lets this card shrink below its content's natural
+        // width, but the card itself defaults to `min-width: auto` — without
+        // this it can still force the row wider than the grid intends.
+        'min-w-0 rounded-xl p-4 shadow-card transition-shadow hover:shadow-raised',
         isThemed && 'relative overflow-hidden',
         surface,
         className,
@@ -106,7 +110,7 @@ export function StatCard({
     >
       {decoration}
 
-      <div className="relative z-10">
+      <div className="relative z-10 min-w-0">
         <div className="flex items-center justify-between gap-3">
           {isThemed ? (
             <>
@@ -136,7 +140,18 @@ export function StatCard({
           )}
         </div>
 
-        <div className={cn(isThemed ? 'mt-3' : 'mt-2.5')}>{value}</div>
+        {/*
+         * `Money`/`Num` set `whitespace-nowrap` themselves — right for a
+         * table column, wrong here: a card narrow enough (five across, or a
+         * big number in a currency with heavy digit-grouping) can be
+         * narrower than the figure's own width, and a nowrap span just
+         * paints straight over the next card instead of respecting it. The
+         * fix is to let it wrap onto a second line rather than either
+         * hiding digits (truncating) or bleeding into a neighbour.
+         */}
+        <div className={cn(isThemed ? 'mt-3' : 'mt-2.5', 'min-w-0 [&_*]:whitespace-normal [&_*]:break-words')}>
+          {value}
+        </div>
 
         {footer && <div className="mt-2 flex items-center gap-2">{footer}</div>}
       </div>

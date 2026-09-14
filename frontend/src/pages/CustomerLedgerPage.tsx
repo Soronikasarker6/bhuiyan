@@ -19,6 +19,7 @@ import {
   CUSTOMER_LEDGER_STATEMENT_COLUMNS,
   customerLedgerStatementCsv,
   customerLedgerStatementPrintRows,
+  customerDisplayLabel,
   customerNameOf,
   dueOrAdvanceLabel,
   filterCustomerTransactions,
@@ -223,7 +224,7 @@ export default function CustomerLedgerPage() {
               <SelectItem value={ALL}>All customers</SelectItem>
               {data.customers.map((c) => (
                 <SelectItem key={c.id} value={c.id}>
-                  {c.name}
+                  {customerDisplayLabel(c)}
                 </SelectItem>
               ))}
             </SelectContent>

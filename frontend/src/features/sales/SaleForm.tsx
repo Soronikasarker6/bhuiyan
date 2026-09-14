@@ -15,6 +15,7 @@ import { Money } from '@/components/Money'
 import { bagKgOf, meshSizeNameOf } from '@/utils/products'
 import { billableWeightTon, saleItemAmount, saleItemWeightTon } from '@/utils/sales'
 import { defaultCashAccountId } from '@/utils/ledger'
+import { customerDisplayLabel } from '@/utils/customerLedger'
 import { formatCurrency, formatNumber, formatTons, todayISO } from '@/utils/format'
 
 /**
@@ -248,7 +249,7 @@ export function SaleForm({
               <SelectContent>
                 {customers.map((customer) => (
                   <SelectItem key={customer.id} value={customer.id}>
-                    {customer.name}
+                    {customerDisplayLabel(customer)}
                   </SelectItem>
                 ))}
               </SelectContent>

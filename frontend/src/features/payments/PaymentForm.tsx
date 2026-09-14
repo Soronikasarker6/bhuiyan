@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DatePicker } from '@/components/ui/date-picker'
 import { Money } from '@/components/Money'
 import { formatCurrency, todayISO } from '@/utils/format'
+import { customerDisplayLabel } from '@/utils/customerLedger'
 import { PAYMENT_METHODS } from '@/constants/paymentMethods'
 
 const NONE = '__none__'
@@ -105,7 +106,7 @@ export function PaymentForm({
               <SelectContent>
                 {customers.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
-                    {c.name}
+                    {customerDisplayLabel(c)}
                   </SelectItem>
                 ))}
               </SelectContent>
