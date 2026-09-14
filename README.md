@@ -11,7 +11,7 @@ backend/    Laravel 12 + MySQL — REST API, auth, roles/permissions, business r
 frontend/   React 18 + TypeScript + Vite — the UI, talks to backend/ over HTTP
 ```
 
-Each has its own README with the details that belong to it —
+Each has its own README with the details that belong to it —-
 [backend/README.md](backend/README.md) is the stock Laravel readme (framework
 links only); [frontend/README.md](frontend/README.md) documents the app
 itself, its two build modes, and its five core business rules. **This file**
