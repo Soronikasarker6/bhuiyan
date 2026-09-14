@@ -56,8 +56,8 @@ function NavItemLink({
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400',
           collapsed && 'justify-center px-0 py-2.5',
           isActive
-            ? 'bg-sidebar-accent text-white shadow-sm'
-            : 'text-sidebar-foreground/85 hover:bg-white/[0.06] hover:text-white',
+            ? 'stone-nav-active text-sidebar-accent-foreground'
+            : 'text-sidebar-foreground/85 hover:bg-white/50 hover:text-sidebar-foreground',
         )
       }
     >
@@ -67,7 +67,7 @@ function NavItemLink({
             className={cn(
               'h-[1.05rem] w-[1.05rem] shrink-0 transition-colors',
               !collapsed && 'mt-0.5',
-              isActive ? 'text-brass-300' : 'text-sidebar-muted group-hover:text-brass-200',
+              isActive ? 'text-primary-700' : 'text-sidebar-muted group-hover:text-primary-700',
             )}
             aria-hidden
           />
@@ -77,7 +77,7 @@ function NavItemLink({
               <span
                 className={cn(
                   'mt-0.5 block truncate text-2xs leading-tight',
-                  isActive ? 'text-white/60' : 'text-sidebar-muted/70',
+                  isActive ? 'text-sidebar-muted' : 'text-sidebar-muted/80',
                 )}
               >
                 {item.hint}
@@ -159,8 +159,8 @@ export function SidebarNav({
             >
               <AccordionTrigger
                 className={cn(
-                  'rounded-lg px-3 py-1.5 text-2xs font-semibold uppercase tracking-wider hover:bg-white/[0.06]',
-                  isGroupActive ? 'text-brass-300' : 'text-sidebar-muted/70',
+                  'rounded-lg px-3 py-1.5 text-2xs font-semibold uppercase tracking-wider hover:bg-white/50',
+                  isGroupActive ? 'text-primary-700' : 'text-sidebar-muted/80',
                 )}
               >
                 {segment.name}
@@ -212,13 +212,13 @@ function Wordmark({
 
   if (!onToggleCollapsed) {
     return (
-      <div className="flex items-center gap-3 border-b border-white/[0.07] px-5 py-4">
+      <div className="flex items-center gap-3 border-b border-sidebar-border/70 px-5 py-4">
         {badge}
         <span className="min-w-0">
-          <span className="block truncate font-display text-[0.9375rem] leading-tight tracking-wide text-white">
+          <span className="block truncate font-display text-[0.9375rem] leading-tight tracking-wide text-sidebar-foreground">
             BHUIYAN INDUSTRY
           </span>
-          <span className="block text-2xs uppercase tracking-[0.14em] text-brass-300/80">Accounts &amp; Production</span>
+          <span className="block text-2xs uppercase tracking-[0.14em] text-primary-700/80">Accounts &amp; Production</span>
         </span>
       </div>
     )
@@ -232,18 +232,18 @@ function Wordmark({
       aria-expanded={!collapsed}
       title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       className={cn(
-        'group/wordmark relative flex w-full items-center gap-3 border-b border-white/[0.07] px-5 py-4 text-left transition-colors',
-        'hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass-400',
+        'group/wordmark relative flex w-full items-center gap-3 border-b border-sidebar-border/70 px-5 py-4 text-left transition-colors',
+        'hover:bg-white/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass-400',
         collapsed && 'justify-center px-0',
       )}
     >
       {badge}
       {!collapsed && (
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-display text-[0.9375rem] leading-tight tracking-wide text-white">
+          <span className="block truncate font-display text-[0.9375rem] leading-tight tracking-wide text-sidebar-foreground">
             BHUIYAN INDUSTRY
           </span>
-          <span className="block text-2xs uppercase tracking-[0.14em] text-brass-300/80">Accounts &amp; Production</span>
+          <span className="block text-2xs uppercase tracking-[0.14em] text-primary-700/80">Accounts &amp; Production</span>
         </span>
       )}
       {!collapsed && (
@@ -267,7 +267,7 @@ function SidebarFooter({ collapsed }: { collapsed?: boolean }) {
 
   return (
     <div className="px-5 pb-5 pt-4">
-      <p className="stone-motto font-display text-[0.9375rem] leading-snug text-white/90">
+      <p className="stone-motto font-display text-[0.9375rem] leading-snug text-sidebar-foreground/90">
         BHUIYAN INDUSTRY
       </p>
       <p className="mt-2.5 text-2xs tracking-wide text-sidebar-muted/70">
@@ -347,7 +347,7 @@ export function MobileSidebar({
             variant="ghost"
             size="icon-sm"
             onClick={onClose}
-            className="absolute right-3 top-4 text-sidebar-muted hover:bg-white/10 hover:text-white"
+            className="absolute right-3 top-4 text-sidebar-muted hover:bg-white/60 hover:text-sidebar-foreground"
             aria-label="Close navigation"
           >
             <X />

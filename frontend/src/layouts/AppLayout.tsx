@@ -72,7 +72,10 @@ export function AppLayout() {
 
   return (
     <PageHeaderProvider>
-      <div className="min-h-screen">
+      {/* `stone-field` is the limestone slab the whole interface sits on —
+          see `styles/stone-shell.css`. It is applied here, once, rather than
+          per page, so every screen shares the one continuous surface. */}
+      <div className="stone-field min-h-screen">
         <Sidebar
           collapsed={collapsed}
           onToggleCollapsed={() => setCollapsed((v) => !v)}

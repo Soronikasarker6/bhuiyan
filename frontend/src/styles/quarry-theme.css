@@ -1,16 +1,19 @@
 /**
- * Dashboard-only decorative theme — a limestone-quarry mood board.
+ * Dashboard-only decorative theme — the stat cards.
  *
- * The stat cards carry the imagery (pale veined marble for "today", dark wet
- * rock for the running totals, a warmer rust-tinted rock for the money
- * cards); every card that holds a table or a chart stays plain white,
- * because texture behind a column of figures competes with the figures.
+ * These sit on the limestone field the whole app is laid on (`stone-field`,
+ * in `styles/stone-shell.css`), so they are panes of tinted glass rather than
+ * opaque tiles: each is translucent and blurs what is behind it, which lets
+ * the veining run on underneath and keeps the window reading as one slab
+ * instead of as a tray of separate boxes.
  *
- * All of it is layered CSS gradients — no image files to ship, nothing extra
- * to download, and it stays sharp at any zoom. Scoped entirely to the
- * classes below and imported only by `pages/DashboardPage.tsx` — no other
- * page's styling is touched. Colours stay in the same warm-quarry palette as
- * `tokens.css`.
+ * Three tints, one per band of the dashboard — pale for "today", smoked grey
+ * for the running totals, warm bronze for the money cards — so the three
+ * bands are told apart by weight rather than by three unrelated colours.
+ *
+ * Every card that holds a table or a chart stays plain white: texture behind a
+ * column of figures competes with the figures. Scoped entirely to the classes
+ * below and imported only by `pages/DashboardPage.tsx`.
  */
 
 /* The dark "View reports" pill in the page header. */
@@ -24,57 +27,72 @@
 }
 
 /*
- * "Today" cards — pale veined marble. A soft white highlight sweeping in
- * from the top-left like a raking light, faint warm-grey veining streaks
- * crossing the card, on a warm cream base. Kept low contrast: these cards
- * hold a large figure, and the figure has to win.
+ * Common to all three: a blurred, translucent pane with a light top edge, so
+ * each card reads as glass catching the light rather than as a flat fill.
+ * `backdrop-filter` carries the effect; where a browser lacks it the tint
+ * alone still gives a perfectly legible card, just a flatter one.
  */
-.dash-card-stone {
-  position: relative;
-  overflow: hidden;
-  background-color: hsl(38 18% 90%);
-  background-image:
-    /* raking highlight, top-left */
-    radial-gradient(ellipse 75% 65% at 8% 4%, hsl(0 0% 100% / 0.85), transparent 70%),
-    /* faint veining, two crossing sets of hairline streaks */
-    repeating-linear-gradient(124deg, hsl(32 14% 100% / 0.5) 0 1px, transparent 1px 34px),
-    repeating-linear-gradient(58deg, hsl(30 10% 40% / 0.06) 0 1px, transparent 1px 46px),
-    /* base slab, lighter upper-left to a dustier lower-right */
-    linear-gradient(128deg, hsl(38 22% 95%) 0%, hsl(37 16% 88%) 46%, hsl(34 13% 80%) 100%);
-  border: 1px solid hsl(35 14% 82%);
-}
-
-/*
- * "Totals" cards — cool, wet slate rock. A silvery highlight raking in from
- * the upper left, deepening to a charcoal-blue shadow at the bottom right,
- * with faint mineral streaking so it reads as stone rather than as a flat
- * dark card.
- */
-.dash-card-slate {
-  position: relative;
-  overflow: hidden;
-  background-color: hsl(200 12% 22%);
-  background-image:
-    radial-gradient(ellipse 70% 60% at 10% 0%, hsl(200 20% 62% / 0.55), transparent 65%),
-    repeating-linear-gradient(112deg, hsl(200 15% 90% / 0.05) 0 1px, transparent 1px 30px),
-    linear-gradient(135deg, hsl(202 16% 42%) 0%, hsl(202 16% 26%) 42%, hsl(206 20% 12%) 100%);
-  border: 1px solid hsl(200 12% 30%);
-}
-
-/*
- * "This month's money" cards — the same wet rock, tinted rust-brown/plum
- * rather than blue-grey, so the two dark card groups read as related but
- * distinct: totals are cool stone, money is warm stone.
- */
+.dash-card-stone,
+.dash-card-slate,
 .dash-card-copper {
   position: relative;
   overflow: hidden;
-  background-color: hsl(18 22% 20%);
-  background-image:
-    radial-gradient(ellipse 70% 60% at 10% 0%, hsl(22 35% 55% / 0.55), transparent 65%),
-    repeating-linear-gradient(112deg, hsl(30 30% 92% / 0.05) 0 1px, transparent 1px 30px),
-    linear-gradient(135deg, hsl(16 28% 38% / 0.72) 0%, hsl(16 26% 24%) 42%, hsl(320 14% 12%) 100%);
-  border: 1px solid hsl(16 18% 28%);
+  backdrop-filter: blur(9px) saturate(1.15);
+  -webkit-backdrop-filter: blur(9px) saturate(1.15);
+}
+
+/*
+ * "Today" cards — the lightest pane, barely more than a brightening of the
+ * stone behind it. These hold a large figure, and the figure has to win.
+ */
+.dash-card-stone {
+  background-image: linear-gradient(
+    145deg,
+    hsl(42 40% 99% / 0.82) 0%,
+    hsl(38 26% 95% / 0.7) 48%,
+    hsl(32 18% 88% / 0.62) 100%
+  );
+  border: 1px solid hsl(40 30% 100% / 0.75);
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.85),
+    0 1px 2px hsl(30 14% 40% / 0.08),
+    0 8px 20px -14px hsl(30 16% 30% / 0.5);
+}
+
+/*
+ * "Totals" cards — smoked glass. Dark enough that the figures on them flip to
+ * light type (see the tone overrides below), while still letting the veining
+ * show through, which is what keeps them in the same material as the rest.
+ */
+.dash-card-slate {
+  background-image: linear-gradient(
+    145deg,
+    hsl(36 7% 39% / 0.8) 0%,
+    hsl(33 8% 31% / 0.85) 46%,
+    hsl(30 10% 22% / 0.89) 100%
+  );
+  border: 1px solid hsl(36 10% 58% / 0.4);
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.14),
+    0 10px 24px -16px hsl(30 14% 16% / 0.8);
+}
+
+/*
+ * "This month's money" cards — the same smoked glass warmed towards bronze, so
+ * the two dark bands read as related but distinct: totals are cool stone,
+ * money is warm stone.
+ */
+.dash-card-copper {
+  background-image: linear-gradient(
+    145deg,
+    hsl(28 18% 36% / 0.82) 0%,
+    hsl(24 18% 27% / 0.86) 46%,
+    hsl(20 20% 17% / 0.9) 100%
+  );
+  border: 1px solid hsl(30 24% 58% / 0.38);
+  box-shadow:
+    inset 0 1px 0 hsl(40 40% 100% / 0.16),
+    0 10px 24px -16px hsl(24 24% 12% / 0.8);
 }
 
 /*

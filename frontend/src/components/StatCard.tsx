@@ -81,8 +81,15 @@ export function StatCard({
     <p
       className={cn(
         'text-2xs font-semibold uppercase tracking-wider',
+        // Four cards across a laptop leaves each label roughly 120px, which a
+        // label like "Raw Material Import" does not fit. Keeping it on one
+        // line and letting it truncate is the right trade: the icon and the
+        // figure already identify the card, and the full text stays available
+        // on hover and to screen readers via `title`.
+        isThemed && 'min-w-0 truncate',
         isDark ? 'text-white/70' : 'text-muted-foreground',
       )}
+      title={isThemed && typeof label === 'string' ? label : undefined}
     >
       {label}
     </p>
@@ -103,14 +110,17 @@ export function StatCard({
         <div className="flex items-center justify-between gap-3">
           {isThemed ? (
             <>
-              <div className="flex min-w-0 items-center gap-2.5">
+              <div className="flex min-w-0 flex-1 items-center gap-2.5">
                 {iconChip}
                 {labelText}
               </div>
               {CornerIcon && (
                 <span
                   className={cn(
-                    'grid h-7 w-7 shrink-0 place-items-center rounded-lg',
+                    // Hidden below `xl`: at four cards across there is no room
+                    // for it beside the label, and it is purely decorative —
+                    // dropping it is better than letting it crowd the text.
+                    'hidden h-7 w-7 shrink-0 place-items-center rounded-lg xl:grid',
                     isDark ? 'bg-white/[0.07] text-white/60' : 'bg-white/70 text-muted-foreground',
                   )}
                 >
@@ -160,7 +170,10 @@ export function StatGrid({
   const cols = {
     2: 'sm:grid-cols-2',
     3: 'sm:grid-cols-2 lg:grid-cols-3',
-    4: 'sm:grid-cols-2 xl:grid-cols-4',
+    // Four across from `lg`, not `xl`: the dashboard's "today" and "totals"
+    // bands are meant to be read as one row at a glance, and waiting until
+    // 1280px leaves a 2×2 block on the most common laptop width.
+    4: 'sm:grid-cols-2 lg:grid-cols-4',
     5: 'sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5',
   }
 
