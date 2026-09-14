@@ -79,11 +79,14 @@
  * `background-image` on the rail, and that is the point: sized to `contain`, a
  * background layer has a hard top edge where the image starts, which cuts a
  * visible seam straight across the rail. A mask fades the image in instead, so
- * it emerges out of the marble with no edge at all.
+ * it emerges out of the marble with no edge at all. The mask's transparent run
+ * has to extend past the point where the image begins, or that edge shows
+ * through the fade anyway.
  *
- * The mask peaks around three quarters down and eases off again at the very
- * bottom, which keeps the strongest part of the picture in the empty space
- * below the last nav group while leaving the footer wordmark on clean stone.
+ * The layer itself is at full strength; the mask alone decides where the
+ * picture is allowed to show. It stays clear of the nav list at the top, comes
+ * up to full through the empty space below the last group, and eases off again
+ * over the last tenth so the footer wordmark sits back on clean stone.
  */
 .stone-rail::after {
   content: '';
@@ -99,9 +102,9 @@
     transparent 30%,
     rgb(0 0 0 / 0.45) 52%,
     rgb(0 0 0 / 0.8) 68%,
-    rgb(0 0 0 / 0.92) 74%,
-    rgb(0 0 0 / 0.55) 90%,
-    rgb(0 0 0 / 0.22) 100%
+    rgb(0 0 0 / 1) 74%,
+    rgb(0 0 0 / 0.6) 90%,
+    rgb(0 0 0 / 0.24) 100%
   );
   mask-image: linear-gradient(
     180deg,
@@ -109,19 +112,17 @@
     transparent 30%,
     rgb(0 0 0 / 0.45) 52%,
     rgb(0 0 0 / 0.8) 68%,
-    rgb(0 0 0 / 0.92) 74%,
-    rgb(0 0 0 / 0.55) 90%,
-    rgb(0 0 0 / 0.22) 100%
+    rgb(0 0 0 / 1) 74%,
+    rgb(0 0 0 / 0.6) 90%,
+    rgb(0 0 0 / 0.24) 100%
   );
   /*
-   * Warmed out of the original's cool grey into the limestone palette, and
-   * left at its own weight rather than lifted: brightening it washed the
-   * stone out to a milky white and lost the modelling that makes it read as
-   * rock at all. Contrast slightly up for the same reason — the picture
-   * should look like stone in the surface, not like a faded print over it.
+   * Warmed out of the original's cool grey into the limestone palette. Left at
+   * its own exposure rather than brightened: lifting it washed the stone out to
+   * a milky white and lost the modelling that makes it read as rock at all.
    */
   filter: sepia(0.42) saturate(0.95) contrast(1.1);
-  opacity: 0.4;
+  opacity: 1;
   pointer-events: none;
 }
 
