@@ -97,24 +97,31 @@
     180deg,
     transparent 0%,
     transparent 30%,
-    rgb(0 0 0 / 0.34) 52%,
-    rgb(0 0 0 / 0.62) 68%,
-    rgb(0 0 0 / 0.7) 84%,
-    rgb(0 0 0 / 0.45) 100%
+    rgb(0 0 0 / 0.45) 52%,
+    rgb(0 0 0 / 0.8) 68%,
+    rgb(0 0 0 / 0.92) 74%,
+    rgb(0 0 0 / 0.55) 90%,
+    rgb(0 0 0 / 0.22) 100%
   );
   mask-image: linear-gradient(
     180deg,
     transparent 0%,
     transparent 30%,
-    rgb(0 0 0 / 0.34) 52%,
-    rgb(0 0 0 / 0.62) 68%,
-    rgb(0 0 0 / 0.7) 84%,
-    rgb(0 0 0 / 0.45) 100%
+    rgb(0 0 0 / 0.45) 52%,
+    rgb(0 0 0 / 0.8) 68%,
+    rgb(0 0 0 / 0.92) 74%,
+    rgb(0 0 0 / 0.55) 90%,
+    rgb(0 0 0 / 0.22) 100%
   );
-  /* The original is a cool grey; warmed and desaturated to sit in the same
-     limestone palette as everything around it. */
-  filter: sepia(0.3) saturate(0.75) brightness(1.06);
-  opacity: 0.6;
+  /*
+   * Warmed out of the original's cool grey into the limestone palette, and
+   * left at its own weight rather than lifted: brightening it washed the
+   * stone out to a milky white and lost the modelling that makes it read as
+   * rock at all. Contrast slightly up for the same reason — the picture
+   * should look like stone in the surface, not like a faded print over it.
+   */
+  filter: sepia(0.42) saturate(0.95) contrast(1.1);
+  opacity: 0.85;
   pointer-events: none;
 }
 
