@@ -17,11 +17,12 @@ import {
 /**
  * The sidebar.
  *
- * Pale limestone carrying a balanced cairn (`stone-rail`, in
+ * Dark quarried stone carrying a balanced cairn (`stone-rail`, in
  * `styles/stone-shell.css`), because this is the one piece of chrome that is
  * always on screen and it should read as the company's own system rather than
- * as a generic admin template. Text on it is set darker than body copy
- * elsewhere for that reason — see `--sidebar-foreground` in `tokens.css`.
+ * as a generic admin template. Text on it is near-white rather than a dimmed
+ * grey, because the rail carries a photograph behind its lower half — see
+ * `--sidebar-foreground` in `tokens.css`.
  *
  * Each item carries a one-line hint: staff who use this occasionally should
  * not have to remember what "Closing" means.
@@ -60,7 +61,7 @@ function NavItemLink({
           collapsed && 'justify-center px-0 py-2.5',
           isActive
             ? 'stone-nav-active text-sidebar-accent-foreground'
-            : 'text-sidebar-foreground hover:bg-white/50 hover:text-sidebar-foreground',
+            : 'text-sidebar-foreground hover:bg-white/[0.08] hover:text-sidebar-foreground',
         )
       }
     >
@@ -70,7 +71,7 @@ function NavItemLink({
             className={cn(
               'h-[1.05rem] w-[1.05rem] shrink-0 transition-colors',
               !collapsed && 'mt-0.5',
-              isActive ? 'text-primary-700' : 'text-sidebar-muted group-hover:text-primary-700',
+              isActive ? 'text-brass-300' : 'text-sidebar-muted group-hover:text-brass-200',
             )}
             aria-hidden
           />
@@ -159,8 +160,8 @@ export function SidebarNav({
             >
               <AccordionTrigger
                 className={cn(
-                  'rounded-lg px-3 py-1.5 text-2xs font-semibold uppercase tracking-wider hover:bg-white/50',
-                  isGroupActive ? 'text-primary-700' : 'text-sidebar-muted',
+                  'rounded-lg px-3 py-1.5 text-2xs font-semibold uppercase tracking-wider hover:bg-white/[0.08]',
+                  isGroupActive ? 'text-brass-300' : 'text-sidebar-muted',
                 )}
               >
                 {segment.name}
@@ -205,20 +206,20 @@ function Wordmark({
   onToggleCollapsed?: () => void
 }) {
   const badge = (
-    <span className="stone-mark grid h-9 w-9 shrink-0 place-items-center rounded-xl">
+    <span className="stone-mark grid h-8 w-8 shrink-0 place-items-center rounded-lg">
       <StoneStack />
     </span>
   )
 
   if (!onToggleCollapsed) {
     return (
-      <div className="flex items-center gap-3 border-b border-sidebar-border/70 px-5 py-4">
+      <div className="flex h-14 items-center gap-2.5 border-b border-sidebar-border/70 px-4">
         {badge}
         <span className="min-w-0">
           <span className="block truncate font-display text-[0.9375rem] leading-tight tracking-wide text-sidebar-foreground">
             BHUIYAN INDUSTRY
           </span>
-          <span className="block text-2xs uppercase tracking-[0.14em] text-primary-700/80">Accounts &amp; Production</span>
+          <span className="block truncate text-2xs uppercase tracking-[0.02em] text-brass-300/90">Accounts &amp; Production</span>
         </span>
       </div>
     )
@@ -232,8 +233,8 @@ function Wordmark({
       aria-expanded={!collapsed}
       title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       className={cn(
-        'group/wordmark relative flex w-full items-center gap-3 border-b border-sidebar-border/70 px-5 py-4 text-left transition-colors',
-        'hover:bg-white/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass-400',
+        'group/wordmark relative flex h-14 w-full shrink-0 items-center gap-2.5 border-b border-sidebar-border/70 px-4 text-left transition-colors',
+        'hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass-400',
         collapsed && 'justify-center px-0',
       )}
     >
@@ -243,7 +244,7 @@ function Wordmark({
           <span className="block truncate font-display text-[0.9375rem] leading-tight tracking-wide text-sidebar-foreground">
             BHUIYAN INDUSTRY
           </span>
-          <span className="block text-2xs uppercase tracking-[0.14em] text-primary-700/80">Accounts &amp; Production</span>
+          <span className="block truncate text-2xs uppercase tracking-[0.02em] text-brass-300/90">Accounts &amp; Production</span>
         </span>
       )}
       {!collapsed && (
@@ -347,7 +348,7 @@ export function MobileSidebar({
             variant="ghost"
             size="icon-sm"
             onClick={onClose}
-            className="absolute right-3 top-4 text-sidebar-muted hover:bg-white/60 hover:text-sidebar-foreground"
+            className="absolute right-3 top-4 text-sidebar-muted hover:bg-white/[0.12] hover:text-sidebar-foreground"
             aria-label="Close navigation"
           >
             <X />
