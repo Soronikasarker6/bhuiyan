@@ -8,6 +8,26 @@
       name="description"
       content="BHUIYAN INDUSTRY — internal accounts and production management system."
     />
+    <!--
+      The house mark — the same stacked stones the sidebar draws (`StoneStack`
+      in src/layouts/Sidebar.tsx), so the browser tab is identifiable at a
+      glance among a row of them.
+
+      Written inline as a data URI rather than shipped as public/favicon.svg on
+      purpose: `build:single` folds the whole app into one double-clickable
+      file, and a favicon referenced by path would be a loose asset alongside
+      it — missing the moment that file is emailed or copied on its own. A data
+      URI travels inside the document and costs no request anywhere.
+
+      Simplified from the drawn mark: the stones are more opaque and slightly
+      larger here, because the subtle opacity fade that reads well at 36px in
+      the rail turns to mud at the 16px a tab actually renders.
+    -->
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%232e3725'/%3E%3Cg fill='%23f4eee2'%3E%3Cellipse cx='12' cy='18.9' rx='8' ry='2.5'/%3E%3Cellipse cx='10.4' cy='13.8' rx='5.9' ry='2.3' opacity='.88'/%3E%3Cellipse cx='13.4' cy='8.8' rx='4.1' ry='2' opacity='.76'/%3E%3Cellipse cx='11.2' cy='4.6' rx='2.3' ry='1.4' opacity='.64'/%3E%3C/g%3E%3C/svg%3E"
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
