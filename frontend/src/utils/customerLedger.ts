@@ -42,17 +42,96 @@ export function transactionsForCustomer(
   return transactions.filter((t) => t.customerId === customerId)
 }
 
-/** Every transaction for one customer, newest first, with its running balance. */
-export function buildCustomerLedgerRows(transactions: CustomerTransaction[]): CustomerLedgerRow[] {
-  const ordered = [...transactions].sort(chronological)
-  let running = 0
+/**
+ * Each transaction's running balance *for its own customer*, keyed by id.
+ *
+ * The accumulation is per customer, never across the whole list. A balance is
+ * a fact about one account: running one total through a list that holds
+ * several customers produces a figure that belongs to nobody, and every
+ * screen that lists transactions company-wide — Cash In, the customer ledger
+ * with no customer selected, the ledger report — passes exactly such a list.
+ */
+export function balanceByTransaction(transactions: CustomerTransaction[]): Map<ID, number> {
+  const byCustomer = new Map<ID, CustomerTransaction[]>()
+  for (const t of transactions) {
+    const list = byCustomer.get(t.customerId)
+    if (list) list.push(t)
+    else byCustomer.set(t.customerId, [t])
+  }
 
-  const rows = ordered.map((t) => {
-    running += t.debit - t.credit
-    return { ...t, balance: running }
-  })
+  const balances = new Map<ID, number>()
+  for (const list of byCustomer.values()) {
+    let running = 0
+    for (const t of list.sort(chronological)) {
+      running += t.debit - t.credit
+      balances.set(t.id, running)
+    }
+  }
 
-  return rows.reverse()
+  return balances
+}
+
+/**
+ * Each customer's balance immediately *before* `from` — the position a
+ * date-filtered statement has to open on.
+ *
+ * Without `from` there is no prior period and every opening balance is zero.
+ * Comparison is a plain string compare, which is exact for the `YYYY-MM-DD`
+ * dates used throughout, and strict: a transaction dated `from` itself falls
+ * inside the range, not before it.
+ */
+export function openingBalances(
+  transactions: CustomerTransaction[],
+  from?: string,
+): Map<ID, number> {
+  const opening = new Map<ID, number>()
+  if (!from) return opening
+
+  for (const t of transactions) {
+    if (t.date >= from) continue
+    opening.set(t.customerId, (opening.get(t.customerId) ?? 0) + t.debit - t.credit)
+  }
+
+  return opening
+}
+
+/**
+ * The opening balance for one customer, or — with `customerId` omitted — the
+ * total across every customer, which is the company's receivable position at
+ * the moment the range starts.
+ */
+export function openingBalanceTotal(
+  transactions: CustomerTransaction[],
+  from?: string,
+  customerId?: ID,
+): number {
+  const opening = openingBalances(transactions, from)
+  if (customerId) return opening.get(customerId) ?? 0
+  return [...opening.values()].reduce((sum, value) => sum + value, 0)
+}
+
+/**
+ * Transactions newest first, each carrying its customer's running balance.
+ *
+ * `ledger` is what the balance is computed from, and defaults to the rows
+ * being rendered. Every filtered view must pass the *complete* ledger here,
+ * because a filter chooses what is displayed — it does not rewrite history.
+ * Narrow the balance to the same rows and two things break: Cash In lists
+ * payments only, so the balance never sees a sale and can only descend; and
+ * a date range restarts every customer from zero, dropping the balance they
+ * carried into the range. Passing the whole ledger makes each row's balance
+ * absolute — opening position included — no matter how the view is filtered.
+ */
+export function buildCustomerLedgerRows(
+  transactions: CustomerTransaction[],
+  ledger: CustomerTransaction[] = transactions,
+): CustomerLedgerRow[] {
+  const balances = balanceByTransaction(ledger)
+
+  return [...transactions]
+    .sort(chronological)
+    .map((t) => ({ ...t, balance: balances.get(t.id) ?? 0 }))
+    .reverse()
 }
 
 /**

@@ -44,9 +44,18 @@ export default function PaymentsPage() {
   const [editing, setEditing] = useState<PaymentRow | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PaymentRow | null>(null)
 
+  /*
+   * Payments only in the table, but the balance on each row is computed from
+   * the customer's *whole* ledger — so it reads as that customer's position
+   * the moment the money landed, sales included, rather than as a running
+   * total of receipts.
+   */
   const paymentRows = useMemo(
     () =>
-      buildCustomerLedgerRows(data.customerTransactions.filter((t) => t.type === 'payment')).map((row) => ({
+      buildCustomerLedgerRows(
+        data.customerTransactions.filter((t) => t.type === 'payment'),
+        data.customerTransactions,
+      ).map((row) => ({
         ...row,
         customerName: customerNameOf(data.customers, row.customerId),
       })),
