@@ -17,11 +17,14 @@ import {
 /**
  * The sidebar.
  *
- * A dark quarry face (`stone-rail`, in `styles/stone-shell.css`), because this
- * is the one piece of chrome that is always on screen and it should read as
- * the company's own system rather than as a generic admin template. Each item
- * carries a one-line hint: staff who use this occasionally should not have to
- * remember what "Closing" means.
+ * Pale limestone carrying a balanced cairn (`stone-rail`, in
+ * `styles/stone-shell.css`), because this is the one piece of chrome that is
+ * always on screen and it should read as the company's own system rather than
+ * as a generic admin template. Text on it is set darker than body copy
+ * elsewhere for that reason — see `--sidebar-foreground` in `tokens.css`.
+ *
+ * Each item carries a one-line hint: staff who use this occasionally should
+ * not have to remember what "Closing" means.
  *
  * An item without its required permission is not just hidden — it's removed
  * from the list entirely, matching "what the user can see" from AppRouter's
@@ -57,7 +60,7 @@ function NavItemLink({
           collapsed && 'justify-center px-0 py-2.5',
           isActive
             ? 'stone-nav-active text-sidebar-accent-foreground'
-            : 'text-sidebar-foreground/85 hover:bg-white/50 hover:text-sidebar-foreground',
+            : 'text-sidebar-foreground hover:bg-white/50 hover:text-sidebar-foreground',
         )
       }
     >
@@ -74,12 +77,9 @@ function NavItemLink({
           {!collapsed && (
             <span className="min-w-0">
               <span className="block text-[0.8125rem] font-medium leading-tight">{item.label}</span>
-              <span
-                className={cn(
-                  'mt-0.5 block truncate text-2xs leading-tight',
-                  isActive ? 'text-sidebar-muted' : 'text-sidebar-muted/80',
-                )}
-              >
+              {/* The hint reads the same whether or not the item is active —
+                  it sits on stone either way, so it never gets faded back. */}
+              <span className="mt-0.5 block truncate text-2xs leading-tight text-sidebar-muted">
                 {item.hint}
               </span>
             </span>
@@ -160,7 +160,7 @@ export function SidebarNav({
               <AccordionTrigger
                 className={cn(
                   'rounded-lg px-3 py-1.5 text-2xs font-semibold uppercase tracking-wider hover:bg-white/50',
-                  isGroupActive ? 'text-primary-700' : 'text-sidebar-muted/80',
+                  isGroupActive ? 'text-primary-700' : 'text-sidebar-muted',
                 )}
               >
                 {segment.name}
@@ -267,10 +267,10 @@ function SidebarFooter({ collapsed }: { collapsed?: boolean }) {
 
   return (
     <div className="px-5 pb-5 pt-4">
-      <p className="stone-motto font-display text-[0.9375rem] leading-snug text-sidebar-foreground/90">
+      <p className="stone-motto font-display text-[0.9375rem] leading-snug text-sidebar-foreground">
         BHUIYAN INDUSTRY
       </p>
-      <p className="mt-2.5 text-2xs tracking-wide text-sidebar-muted/70">
+      <p className="mt-2.5 text-2xs tracking-wide text-sidebar-muted">
         Internal Management System
       </p>
     </div>
