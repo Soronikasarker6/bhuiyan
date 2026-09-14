@@ -8,6 +8,8 @@ import {
   customerBalance,
   customerTotals,
   nextReference,
+  openingBalances,
+  openingBalanceTotal,
 } from '@/utils/customerLedger'
 
 /**
@@ -52,6 +54,131 @@ describe('running balance', () => {
     expect(totals.totalPaid).toBe(40_000)
     expect(totals.totalDue).toBe(60_000)
     expect(totals.availableAdvance).toBe(0)
+  })
+})
+
+describe('a running balance belongs to one customer', () => {
+  const sale = (id: string, customerId: string, date: string, amount: number): CustomerTransaction => ({
+    id,
+    customerId,
+    date,
+    type: 'sale',
+    reference: `INV-${id}`,
+    description: `Sale — ${id}`,
+    debit: amount,
+    credit: 0,
+    createdAt: `${date}T00:00:00.000Z`,
+  })
+
+  it('never carries one customer’s figures into another’s row', () => {
+    const transactions: CustomerTransaction[] = [
+      sale('s1', 'abc', '2026-08-01', 75_000),
+      buildPayment({ id: 'p1', customerId: 'abc', date: '2026-08-15', reference: 'PAY-001', amount: 25_000, createdAt: '2026-08-15T00:00:00.000Z' }),
+      buildPayment({ id: 'p2', customerId: 'meghna', date: '2026-08-18', reference: 'PAY-002', amount: 20_000, createdAt: '2026-08-18T00:00:00.000Z' }),
+      buildPayment({ id: 'p3', customerId: 'abc', date: '2026-08-28', reference: 'PAY-003', amount: 20_000, createdAt: '2026-08-28T00:00:00.000Z' }),
+    ]
+
+    const balanceOf = (id: string) => buildCustomerLedgerRows(transactions).find((r) => r.id === id)!.balance
+
+    // ABC: 75,000 owed, less 25,000 then a further 20,000 — still 30,000 due.
+    expect(balanceOf('s1')).toBe(75_000)
+    expect(balanceOf('p1')).toBe(50_000)
+    expect(balanceOf('p3')).toBe(30_000)
+
+    // Meghna has bought nothing, so their payment is theirs alone — 20,000 in
+    // advance, entirely unaffected by ABC's 25,000 three days earlier.
+    expect(balanceOf('p2')).toBe(-20_000)
+  })
+
+  it('Cash In shows the customer’s real position, not a running total of receipts', () => {
+    const transactions: CustomerTransaction[] = [
+      sale('s1', 'abc', '2026-08-01', 75_000),
+      buildPayment({ id: 'p1', customerId: 'abc', date: '2026-08-15', reference: 'PAY-001', amount: 25_000, createdAt: '2026-08-15T00:00:00.000Z' }),
+      buildPayment({ id: 'p3', customerId: 'abc', date: '2026-08-28', reference: 'PAY-003', amount: 20_000, createdAt: '2026-08-28T00:00:00.000Z' }),
+    ]
+
+    // The Cash In table renders payments only, but balances come from the
+    // whole ledger — so a customer who still owes never reads as "Advance".
+    const payments = transactions.filter((t) => t.type === 'payment')
+    const rows = buildCustomerLedgerRows(payments, transactions)
+
+    expect(rows.map((r) => r.id)).toEqual(['p3', 'p1'])
+    expect(rows.every((r) => r.balance > 0)).toBe(true)
+    expect(rows.find((r) => r.id === 'p3')!.balance).toBe(30_000)
+  })
+})
+
+describe('a date filter chooses rows, it does not erase history', () => {
+  const sale = (id: string, customerId: string, date: string, amount: number): CustomerTransaction => ({
+    id,
+    customerId,
+    date,
+    type: 'sale',
+    reference: `INV-${id}`,
+    description: `Sale — ${id}`,
+    debit: amount,
+    credit: 0,
+    createdAt: `${date}T00:00:00.000Z`,
+  })
+
+  /** The worked example: 20,000 opening, a 30,000 sale, a 10,000 payment. */
+  const ledger: CustomerTransaction[] = [
+    buildOpeningBalance({ id: 'o1', customerId: 'c1', date: '2026-08-01', reference: 'OPN-001', amount: 20_000, createdAt: '2026-08-01T00:00:00.000Z' }),
+    sale('s1', 'c1', '2026-08-05', 30_000),
+    buildPayment({ id: 'p1', customerId: 'c1', date: '2026-08-10', reference: 'PAY-001', amount: 10_000, createdAt: '2026-08-10T00:00:00.000Z' }),
+  ]
+
+  it('carries the balance from before the range into the first row shown', () => {
+    // Filtered to 05 Aug → 10 Aug: the opening entry is not displayed, but the
+    // 20,000 it represents is still underneath both rows that are.
+    const inRange = ledger.filter((t) => t.date >= '2026-08-05' && t.date <= '2026-08-10')
+    const rows = buildCustomerLedgerRows(inRange, ledger)
+
+    expect(rows.map((r) => r.id)).toEqual(['p1', 's1'])
+    expect(rows.find((r) => r.id === 's1')!.balance).toBe(50_000) // 20,000 + 30,000
+    expect(rows.find((r) => r.id === 'p1')!.balance).toBe(40_000) // less 10,000
+  })
+
+  it('opening + movement in range = closing', () => {
+    const from = '2026-08-05'
+    const inRange = ledger.filter((t) => t.date >= from)
+
+    const opening = openingBalanceTotal(ledger, from, 'c1')
+    const movement = inRange.reduce((sum, t) => sum + t.debit - t.credit, 0)
+
+    expect(opening).toBe(20_000)
+    expect(opening + movement).toBe(40_000)
+    expect(opening + movement).toBe(customerBalance(ledger))
+  })
+
+  it('counts a transaction dated on the first day as inside the range, not before it', () => {
+    expect(openingBalanceTotal(ledger, '2026-08-01', 'c1')).toBe(0)
+    expect(openingBalanceTotal(ledger, '2026-08-02', 'c1')).toBe(20_000)
+  })
+
+  it('has no opening balance when no range is set', () => {
+    expect(openingBalanceTotal(ledger, undefined, 'c1')).toBe(0)
+    expect(openingBalanceTotal(ledger, '', 'c1')).toBe(0)
+  })
+
+  it('never lets one customer’s history open another customer’s statement', () => {
+    const mixed: CustomerTransaction[] = [
+      ...ledger,
+      sale('s2', 'c2', '2026-08-02', 70_000),
+      buildPayment({ id: 'p2', customerId: 'c2', date: '2026-08-09', reference: 'PAY-002', amount: 5_000, createdAt: '2026-08-09T00:00:00.000Z' }),
+    ]
+    const from = '2026-08-05'
+
+    const openings = openingBalances(mixed, from)
+    expect(openings.get('c1')).toBe(20_000)
+    expect(openings.get('c2')).toBe(70_000)
+
+    // Company-wide opening is the sum of the two, never one running total.
+    expect(openingBalanceTotal(mixed, from)).toBe(90_000)
+
+    const rows = buildCustomerLedgerRows(mixed.filter((t) => t.date >= from), mixed)
+    expect(rows.find((r) => r.id === 'p1')!.balance).toBe(40_000) // c1 only
+    expect(rows.find((r) => r.id === 'p2')!.balance).toBe(65_000) // c2 only
   })
 })
 

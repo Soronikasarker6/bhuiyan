@@ -229,7 +229,10 @@ export default function ReportsPage() {
     const withAdvance = customerSummaries.filter((c) => c.totals.availableAdvance > 0).sort((a, b) => b.totals.availableAdvance - a.totals.availableAdvance)
     const creditSales = salesInRange.filter((s) => s.status !== 'paid')
     const paymentsInRange = customerTxnsInRange.filter((t) => t.type === 'payment')
-    const ledgerRows = buildCustomerLedgerRows(customerTxnsInRange).map((row) => ({ ...row, customerName: customerNameOf(data.customers, row.customerId) }))
+    // Balances come from the full ledger, never from the in-range slice, so a
+    // printed statement opens on the balance the customer carried into the
+    // range instead of restarting them at zero.
+    const ledgerRows = buildCustomerLedgerRows(customerTxnsInRange, data.customerTransactions).map((row) => ({ ...row, customerName: customerNameOf(data.customers, row.customerId) }))
 
     return [
       // ---------------------------------------------------------- production

@@ -17,16 +17,16 @@ import {
   buildCustomerLedgerRows,
   buildCustomerLedgerStatementRows,
   CUSTOMER_LEDGER_STATEMENT_COLUMNS,
-  customerBalance,
   customerLedgerStatementCsv,
   customerLedgerStatementPrintRows,
   customerNameOf,
   dueOrAdvanceLabel,
   filterCustomerTransactions,
+  openingBalanceTotal,
 } from '@/utils/customerLedger'
 import { buildSaleSummaries, filterSaleSummaries } from '@/utils/sales'
 import { downloadTextFile } from '@/utils/download'
-import { formatCurrency, todayISO } from '@/utils/format'
+import { formatCurrency, formatDate, todayISO } from '@/utils/format'
 
 const ALL = '__all__'
 
@@ -63,17 +63,47 @@ export default function CustomerLedgerPage() {
     [data.customerTransactions, customerId, type, from, to],
   )
 
+  // The filter picks the rows; the balance still comes from the whole ledger,
+  // so a row dated inside a range carries everything that happened before it.
   const rows = useMemo(
-    () => buildCustomerLedgerRows(filtered).map((row) => ({ ...row, customerName: customerNameOf(data.customers, row.customerId) })),
-    [filtered, data.customers],
+    () =>
+      buildCustomerLedgerRows(filtered, data.customerTransactions).map((row) => ({
+        ...row,
+        customerName: customerNameOf(data.customers, row.customerId),
+      })),
+    [filtered, data.customerTransactions, data.customers],
   )
 
-  const totals = useMemo(
-    () => filtered.reduce((sum, t) => ({ debit: sum.debit + t.debit, credit: sum.credit + t.credit }), { debit: 0, credit: 0 }),
-    [filtered],
+  /*
+   * The account summary — Opening + Sales − Payments = Closing.
+   *
+   * Scoped by customer and date but deliberately *not* by the type dropdown:
+   * that dropdown narrows which rows you are reading, while these four
+   * figures describe the account itself, and they have to reconcile with each
+   * other. Filtering them to "payments only" would leave a Closing balance
+   * that no longer follows from the Opening one above it.
+   */
+  const scoped = useMemo(
+    () =>
+      filterCustomerTransactions(data.customerTransactions, {
+        customerId: customerId === ALL ? undefined : customerId,
+        from: from || undefined,
+        to: to || undefined,
+      }),
+    [data.customerTransactions, customerId, from, to],
   )
 
-  const netBalance = useMemo(() => customerBalance(data.customerTransactions), [data.customerTransactions])
+  const movement = useMemo(
+    () => scoped.reduce((sum, t) => ({ debit: sum.debit + t.debit, credit: sum.credit + t.credit }), { debit: 0, credit: 0 }),
+    [scoped],
+  )
+
+  const opening = useMemo(
+    () => openingBalanceTotal(data.customerTransactions, from || undefined, customerId === ALL ? undefined : customerId),
+    [data.customerTransactions, from, customerId],
+  )
+
+  const closing = opening + movement.debit - movement.credit
 
   // ---------------------------------------------------------------- export
   //
@@ -122,12 +152,17 @@ export default function CustomerLedgerPage() {
     [exportSales, exportPayments, data.customers],
   )
 
+  /*
+   * The statement closes on the customer's real position, so the balance the
+   * range opened with is carried into it — a statement for August that
+   * ignores July's unpaid invoices states a due the customer does not owe.
+   */
   const statementDue = useMemo(() => {
     const totalAmount = exportSales.reduce((sum, s) => sum + s.totalAmount, 0)
     const totalCredit = exportPayments.reduce((sum, t) => sum + t.credit, 0)
-    const balance = totalAmount - totalCredit
+    const balance = opening + totalAmount - totalCredit
     return { totalDue: Math.max(0, balance), availableAdvance: Math.max(0, -balance) }
-  }, [exportSales, exportPayments])
+  }, [exportSales, exportPayments, opening])
 
   const exportStatementCsv = () => {
     const csv = customerLedgerStatementCsv(statementRows, statementDue)
@@ -159,10 +194,23 @@ export default function CustomerLedgerPage() {
 
   return (
     <div>
-      <StatGrid columns={3} className="mb-4">
-        <StatCard label="Total out (sales)" icon={Receipt} accent="primary" value={<Money value={totals.debit} size="2xl" weight="bold" tone="negative" />} />
-        <StatCard label="Total in (payments)" icon={Wallet} accent="success" value={<Money value={totals.credit} size="2xl" weight="bold" tone="positive" />} />
-        <StatCard label="Net position, all customers" icon={Scale} accent={netBalance > 0 ? 'primary' : 'success'} value={<Money value={netBalance} size="2xl" weight="bold" />} />
+      <StatGrid columns={from ? 4 : 3} className="mb-4">
+        {from && (
+          <StatCard
+            label={`Opening balance · before ${formatDate(from)}`}
+            icon={Scale}
+            accent={opening > 0 ? 'primary' : 'success'}
+            value={<Money value={opening} size="2xl" weight="bold" />}
+          />
+        )}
+        <StatCard label="Total out (sales)" icon={Receipt} accent="primary" value={<Money value={movement.debit} size="2xl" weight="bold" tone="negative" />} />
+        <StatCard label="Total in (payments)" icon={Wallet} accent="success" value={<Money value={movement.credit} size="2xl" weight="bold" tone="positive" />} />
+        <StatCard
+          label={customerId === ALL ? 'Closing balance · all customers' : 'Closing balance'}
+          icon={Scale}
+          accent={closing > 0 ? 'primary' : 'success'}
+          value={<Money value={closing} size="2xl" weight="bold" />}
+        />
       </StatGrid>
 
       <Section title="Filters" className="mb-4">

@@ -107,6 +107,7 @@ export default {
           foreground: 'hsl(var(--sidebar-foreground))',
           muted: 'hsl(var(--sidebar-muted))',
           accent: 'hsl(var(--sidebar-accent))',
+          'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
           border: 'hsl(var(--sidebar-border))',
         },
       },

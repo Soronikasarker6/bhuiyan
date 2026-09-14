@@ -49,11 +49,24 @@
     --input: 38 16% 84%;
     --ring: 88 16% 30%;
 
-    --sidebar: 30 10% 15%;
-    --sidebar-foreground: 40 20% 92%;
-    --sidebar-muted: 38 10% 65%;
-    --sidebar-accent: 88 16% 26%;
-    --sidebar-border: 30 8% 24%;
+    /* The navigation rail reads as pale polished stone, not as a dark chrome
+       panel: it shares the content area's limestone surface (see
+       `styles/stone-shell.css`) so the whole window looks cut from one slab.
+       Text on it is therefore the same charcoal used everywhere else, and the
+       active item is a raised white tile rather than a dark fill. */
+    /* The navigation rail is dark quarried stone, in the same deep olive the
+       tooltips use, so the chrome reads as one material and the content area
+       beside it stays the light limestone people actually read on.
+
+       Text on it is deliberately near-white rather than a dimmed grey: the
+       rail carries a photograph behind its lower half, and anything less than
+       this loses against the lit parts of the stone. */
+    --sidebar: 88 20% 18%;
+    --sidebar-foreground: 42 34% 96%;
+    --sidebar-muted: 40 16% 78%;
+    --sidebar-accent: 88 16% 29%;
+    --sidebar-accent-foreground: 42 40% 98%;
+    --sidebar-border: 88 12% 30%;
 
     --radius: 0.625rem;
   }

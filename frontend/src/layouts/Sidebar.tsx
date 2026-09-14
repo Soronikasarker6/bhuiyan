@@ -17,11 +17,15 @@ import {
 /**
  * The sidebar.
  *
- * A dark quarry face (`stone-rail`, in `styles/stone-shell.css`), because this
- * is the one piece of chrome that is always on screen and it should read as
- * the company's own system rather than as a generic admin template. Each item
- * carries a one-line hint: staff who use this occasionally should not have to
- * remember what "Closing" means.
+ * Dark quarried stone carrying a balanced cairn (`stone-rail`, in
+ * `styles/stone-shell.css`), because this is the one piece of chrome that is
+ * always on screen and it should read as the company's own system rather than
+ * as a generic admin template. Text on it is near-white rather than a dimmed
+ * grey, because the rail carries a photograph behind its lower half — see
+ * `--sidebar-foreground` in `tokens.css`.
+ *
+ * Each item carries a one-line hint: staff who use this occasionally should
+ * not have to remember what "Closing" means.
  *
  * An item without its required permission is not just hidden — it's removed
  * from the list entirely, matching "what the user can see" from AppRouter's
@@ -56,8 +60,8 @@ function NavItemLink({
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400',
           collapsed && 'justify-center px-0 py-2.5',
           isActive
-            ? 'bg-sidebar-accent text-white shadow-sm'
-            : 'text-sidebar-foreground/85 hover:bg-white/[0.06] hover:text-white',
+            ? 'stone-nav-active text-sidebar-accent-foreground'
+            : 'text-sidebar-foreground hover:bg-white/[0.08] hover:text-sidebar-foreground',
         )
       }
     >
@@ -74,12 +78,9 @@ function NavItemLink({
           {!collapsed && (
             <span className="min-w-0">
               <span className="block text-[0.8125rem] font-medium leading-tight">{item.label}</span>
-              <span
-                className={cn(
-                  'mt-0.5 block truncate text-2xs leading-tight',
-                  isActive ? 'text-white/60' : 'text-sidebar-muted/70',
-                )}
-              >
+              {/* The hint reads the same whether or not the item is active —
+                  it sits on stone either way, so it never gets faded back. */}
+              <span className="mt-0.5 block truncate text-2xs leading-tight text-sidebar-muted">
                 {item.hint}
               </span>
             </span>
@@ -159,8 +160,8 @@ export function SidebarNav({
             >
               <AccordionTrigger
                 className={cn(
-                  'rounded-lg px-3 py-1.5 text-2xs font-semibold uppercase tracking-wider hover:bg-white/[0.06]',
-                  isGroupActive ? 'text-brass-300' : 'text-sidebar-muted/70',
+                  'rounded-lg px-3 py-1.5 text-2xs font-semibold uppercase tracking-wider hover:bg-white/[0.08]',
+                  isGroupActive ? 'text-brass-300' : 'text-sidebar-muted',
                 )}
               >
                 {segment.name}
@@ -205,20 +206,20 @@ function Wordmark({
   onToggleCollapsed?: () => void
 }) {
   const badge = (
-    <span className="stone-mark grid h-9 w-9 shrink-0 place-items-center rounded-xl">
+    <span className="stone-mark grid h-8 w-8 shrink-0 place-items-center rounded-lg">
       <StoneStack />
     </span>
   )
 
   if (!onToggleCollapsed) {
     return (
-      <div className="flex items-center gap-3 border-b border-white/[0.07] px-5 py-4">
+      <div className="flex h-14 items-center gap-2.5 border-b border-sidebar-border/70 px-4">
         {badge}
         <span className="min-w-0">
-          <span className="block truncate font-display text-[0.9375rem] leading-tight tracking-wide text-white">
+          <span className="block truncate font-display text-[0.9375rem] leading-tight tracking-wide text-sidebar-foreground">
             BHUIYAN INDUSTRY
           </span>
-          <span className="block text-2xs uppercase tracking-[0.14em] text-brass-300/80">Accounts &amp; Production</span>
+          <span className="block truncate text-2xs uppercase tracking-[0.02em] text-brass-300/90">Accounts &amp; Production</span>
         </span>
       </div>
     )
@@ -232,18 +233,18 @@ function Wordmark({
       aria-expanded={!collapsed}
       title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       className={cn(
-        'group/wordmark relative flex w-full items-center gap-3 border-b border-white/[0.07] px-5 py-4 text-left transition-colors',
-        'hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass-400',
+        'group/wordmark relative flex h-14 w-full shrink-0 items-center gap-2.5 border-b border-sidebar-border/70 px-4 text-left transition-colors',
+        'hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass-400',
         collapsed && 'justify-center px-0',
       )}
     >
       {badge}
       {!collapsed && (
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-display text-[0.9375rem] leading-tight tracking-wide text-white">
+          <span className="block truncate font-display text-[0.9375rem] leading-tight tracking-wide text-sidebar-foreground">
             BHUIYAN INDUSTRY
           </span>
-          <span className="block text-2xs uppercase tracking-[0.14em] text-brass-300/80">Accounts &amp; Production</span>
+          <span className="block truncate text-2xs uppercase tracking-[0.02em] text-brass-300/90">Accounts &amp; Production</span>
         </span>
       )}
       {!collapsed && (
@@ -267,10 +268,10 @@ function SidebarFooter({ collapsed }: { collapsed?: boolean }) {
 
   return (
     <div className="px-5 pb-5 pt-4">
-      <p className="stone-motto font-display text-[0.9375rem] leading-snug text-white/90">
+      <p className="stone-motto font-display text-[0.9375rem] leading-snug text-sidebar-foreground">
         BHUIYAN INDUSTRY
       </p>
-      <p className="mt-2.5 text-2xs tracking-wide text-sidebar-muted/70">
+      <p className="mt-2.5 text-2xs tracking-wide text-sidebar-muted">
         Internal Management System
       </p>
     </div>
@@ -347,7 +348,7 @@ export function MobileSidebar({
             variant="ghost"
             size="icon-sm"
             onClick={onClose}
-            className="absolute right-3 top-4 text-sidebar-muted hover:bg-white/10 hover:text-white"
+            className="absolute right-3 top-4 text-sidebar-muted hover:bg-white/[0.12] hover:text-sidebar-foreground"
             aria-label="Close navigation"
           >
             <X />

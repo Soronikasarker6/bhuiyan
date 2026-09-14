@@ -110,7 +110,9 @@ export function Header({ onOpenNav }: { onOpenNav: () => void }) {
   }, [data, persistent])
 
   return (
-    <header className="no-print sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur-md">
+    // Frosted rather than solid (`stone-topbar`), so the limestone field runs
+    // underneath the bar instead of being cut off by it.
+    <header className="stone-topbar no-print sticky top-0 z-20">
       <div className="flex h-14 items-center gap-3 px-4 sm:px-6">
         <Button
           variant="ghost"
