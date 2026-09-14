@@ -53,8 +53,15 @@
  * The navigation rail. Very slightly cooler and darker than the field so the
  * edge between them is legible without needing a border, and quieter still in
  * its veining because nav labels sit directly on it.
+ *
+ * The marble is the rail's own background; the balanced-cairn photograph is a
+ * masked layer on top of it (`.stone-rail::after` below) rather than another
+ * background layer here. That photograph is the house mark (`StoneStack` in
+ * `layouts/Sidebar.tsx`) photographed rather than drawn, which is why it earns
+ * its place on the one surface that is always on screen.
  */
 .stone-rail {
+  position: relative;
   background-color: hsl(34 26% 90%);
   background-image:
     url('../assets/stone-rail.png'),
@@ -65,6 +72,56 @@
   /* A hairline of light down the inner edge, so the rail reads as a cut face
      rather than as a flat panel butted against the content. */
   box-shadow: inset -1px 0 0 hsl(30 12% 76% / 0.7);
+}
+
+/*
+ * The photograph is a masked layer of its own rather than another
+ * `background-image` on the rail, and that is the point: sized to `contain`, a
+ * background layer has a hard top edge where the image starts, which cuts a
+ * visible seam straight across the rail. A mask fades the image in instead, so
+ * it emerges out of the marble with no edge at all.
+ *
+ * The mask peaks around three quarters down and eases off again at the very
+ * bottom, which keeps the strongest part of the picture in the empty space
+ * below the last nav group while leaving the footer wordmark on clean stone.
+ */
+.stone-rail::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 0;
+  height: 66%;
+  background: url('../assets/stone-cairn.jpg') center bottom / contain no-repeat;
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    transparent 0%,
+    transparent 30%,
+    rgb(0 0 0 / 0.34) 52%,
+    rgb(0 0 0 / 0.62) 68%,
+    rgb(0 0 0 / 0.7) 84%,
+    rgb(0 0 0 / 0.45) 100%
+  );
+  mask-image: linear-gradient(
+    180deg,
+    transparent 0%,
+    transparent 30%,
+    rgb(0 0 0 / 0.34) 52%,
+    rgb(0 0 0 / 0.62) 68%,
+    rgb(0 0 0 / 0.7) 84%,
+    rgb(0 0 0 / 0.45) 100%
+  );
+  /* The original is a cool grey; warmed and desaturated to sit in the same
+     limestone palette as everything around it. */
+  filter: sepia(0.3) saturate(0.75) brightness(1.06);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Keeps the nav above the photograph — `::after` would otherwise paint over it. */
+.stone-rail > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* ---------------------------------------------------------------- the top bar */
