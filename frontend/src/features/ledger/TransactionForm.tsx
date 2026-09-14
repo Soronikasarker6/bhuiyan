@@ -159,15 +159,20 @@ export function TransactionForm({
     () =>
       customers.map((customer) => {
         const balance = balanceOf(customer.id)
+        const balanceText =
+          balance > 0
+            ? `${formatCurrency(balance)} due`
+            : balance < 0
+              ? `${formatCurrency(-balance)} advance`
+              : 'Settled'
+
         return {
           value: customer.id,
           label: customer.name,
-          description:
-            balance > 0
-              ? `${formatCurrency(balance)} due`
-              : balance < 0
-                ? `${formatCurrency(-balance)} advance`
-                : 'Settled',
+          // The company, when there is one, alongside the balance — the two
+          // together are what actually tell two similarly-named customers
+          // apart in a list that can otherwise only show one line of extra text.
+          description: customer.company ? `${customer.company} · ${balanceText}` : balanceText,
         }
       }),
     [customers, balanceOf],

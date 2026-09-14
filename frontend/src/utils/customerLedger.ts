@@ -438,6 +438,16 @@ export function customerNameOf(customers: Customer[], customerId: ID): string {
   return customers.find((c) => c.id === customerId)?.name ?? 'Unknown customer'
 }
 
+/**
+ * "Priya Sharma — Dhaka Ceramics Ltd", for anywhere a customer picker lists
+ * more than one customer at a time — several contacts can share a name, and
+ * the company is what actually tells them apart at a glance. Falls back to
+ * the plain name when no company is on file, which is the common case.
+ */
+export function customerDisplayLabel(customer: Customer): string {
+  return customer.company ? `${customer.name} — ${customer.company}` : customer.name
+}
+
 /** Customers with the highest outstanding balance, for the dashboard. */
 export function outstandingCustomers(
   customers: Customer[],

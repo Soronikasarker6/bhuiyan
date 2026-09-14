@@ -55,6 +55,7 @@ import {
   salesByTruck,
 } from '@/utils/sales'
 import { bagKgOf, meshSizeNameOf, productNameOf } from '@/utils/products'
+import { customerDisplayLabel } from '@/utils/customerLedger'
 import { SALE_STATUS_LABEL } from '@/constants/saleStatus'
 import {
   buildCustomerLedgerRows,
@@ -1005,7 +1006,7 @@ export default function ReportsPage() {
                 <SelectTrigger><SelectValue placeholder="All customers" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL}>All customers</SelectItem>
-                  {data.customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  {data.customers.map((c) => <SelectItem key={c.id} value={c.id}>{customerDisplayLabel(c)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
