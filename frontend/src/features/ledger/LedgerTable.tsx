@@ -120,8 +120,8 @@ export function LedgerTable({
     >
       {/* ------------------------------------------------ filters */}
       <div className="border-b border-border bg-secondary/30 p-3">
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-          <div className="relative">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-7">
+          <div className="relative xl:col-span-2">
             <Search
               className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
               aria-hidden
@@ -183,7 +183,7 @@ export function LedgerTable({
             </SelectContent>
           </Select>
 
-          <div className="sm:col-span-2 xl:col-span-1">
+          <div className="sm:col-span-2 xl:col-span-2">
             <DateRangePicker
               from={filters.from ?? ''}
               to={filters.to ?? ''}
