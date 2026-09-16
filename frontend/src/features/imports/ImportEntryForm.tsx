@@ -66,7 +66,7 @@ export function ImportEntryForm({
   products: Product[]
   /** Every distinct price/ton previously used for this product, newest first. */
   pricesForProduct: (productId: string) => number[]
-  onSubmit: (values: ImportSubmit) => void
+  onSubmit: (values: ImportSubmit) => void | Promise<void>
 }) {
   const {
     register,
@@ -130,8 +130,8 @@ export function ImportEntryForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [priceChoice, customPrice, priceUnit])
 
-  const submit = handleSubmit((values) => {
-    onSubmit(values as ImportSubmit)
+  const submit = handleSubmit(async (values) => {
+    await onSubmit(values as ImportSubmit)
     reset({
       date: values.date,
       productId: values.productId,

@@ -20,7 +20,15 @@ export interface SaleItem {
   /** Required — bag-based stock deduction can't work without knowing the bag weight. */
   meshSizeId: ID
   bags: number
-  ratePerTon: number
+  /**
+   * Confidential — only included by the API for users with SALES_RATE_VIEW
+   * (Admin/Manager). Absent for everyone else; `amount` below is always
+   * present regardless, computed server-side, so totals/due/reports never
+   * depend on this field being visible.
+   */
+  ratePerTon?: number
+  /** Billable weight × rate, computed server-side — always present even when `ratePerTon` is hidden. */
+  amount?: number
   /**
    * The truck/weighbridge's actual measured tonnage for this line, when it
    * differs from `bags × bag weight`. Real bags are rarely exactly the

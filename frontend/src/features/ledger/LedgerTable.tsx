@@ -47,6 +47,9 @@ export function LedgerTable({
   customers = [],
   onDelete,
   toolbar,
+  filters,
+  onFiltersChange,
+  className,
 }: {
   transactions: Transaction[]
   accounts: Account[]
@@ -55,9 +58,17 @@ export function LedgerTable({
   customers?: Customer[]
   onDelete: (ids: string[]) => void
   toolbar?: React.ReactNode
+  className?: string
+  /**
+   * Controlled, not owned here — `LedgerPage` needs the exact same filters
+   * this table is rendering with in order to build a Print/Export PDF that
+   * matches what's on screen (see §6/§7 of the brief: the PDF must contain
+   * only the currently filtered records, never the full register).
+   */
+  filters: LedgerFilters
+  onFiltersChange: (next: LedgerFilters) => void
 }) {
   const canDelete = usePermission(PERMISSIONS.LEDGER_DELETE)
-  const [filters, setFilters] = useState<LedgerFilters>({})
   const [page, setPage] = useState(1)
   const [pending, setPending] = useState<LedgerRow | null>(null)
 
@@ -73,12 +84,12 @@ export function LedgerTable({
   const visible = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
   const setFilter = <K extends keyof LedgerFilters>(key: K, value: LedgerFilters[K]) => {
-    setFilters((current) => ({ ...current, [key]: value }))
+    onFiltersChange({ ...filters, [key]: value })
     setPage(1)
   }
 
   const clear = () => {
-    setFilters({})
+    onFiltersChange({})
     setPage(1)
   }
 
@@ -89,7 +100,7 @@ export function LedgerTable({
 
   if (transactions.length === 0) {
     return (
-      <Section title="Register" noPadding>
+      <Section title="Register" noPadding className={className}>
         <EmptyState
           icon={Receipt}
           title="No transactions yet"
@@ -105,10 +116,11 @@ export function LedgerTable({
       description={`${rows.length} of ${transactions.length} entries`}
       actions={toolbar}
       noPadding
+      className={className}
     >
       {/* ------------------------------------------------ filters */}
       <div className="border-b border-border bg-secondary/30 p-3">
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
           <div className="relative">
             <Search
               className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
@@ -176,7 +188,7 @@ export function LedgerTable({
               from={filters.from ?? ''}
               to={filters.to ?? ''}
               onChange={(from, to) => {
-                setFilters((current) => ({ ...current, from, to }))
+                onFiltersChange({ ...filters, from, to })
                 setPage(1)
               }}
               aria-label="Date range"

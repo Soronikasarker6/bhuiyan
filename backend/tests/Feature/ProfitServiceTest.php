@@ -37,14 +37,39 @@ class ProfitServiceTest extends TestCase
             'items' => [['product_id' => $product->id, 'mesh_size_id' => $mesh->id, 'bags' => 60, 'rate_per_ton' => 5000]], // 3 ton sold
         ]);
 
-        Transaction::create(['date' => '2026-03-15', 'account_id' => $cash->id, 'direction' => 'out', 'amount' => 1500]);
+        // Selected as a company cost — counted.
+        Transaction::create([
+            'date' => '2026-03-15', 'account_id' => $cash->id, 'direction' => 'out',
+            'amount' => 1500, 'is_company_cost' => true,
+        ]);
+        // Cash Out but not selected — must NOT be counted.
+        Transaction::create([
+            'date' => '2026-03-16', 'account_id' => $cash->id, 'direction' => 'out',
+            'amount' => 9000, 'is_company_cost' => false,
+        ]);
 
         $result = $profit->monthlyProfit(2026, 2); // March = index 2
 
         $this->assertEqualsWithDelta(15000.0, $result['total_sales'], 0.01); // 3 ton * 5000
         $this->assertEqualsWithDelta(3000.0, $result['cost_of_goods_sold'], 0.01); // 3 ton * 1000, not 10 ton
         $this->assertEqualsWithDelta(12000.0, $result['gross_profit'], 0.01);
-        $this->assertEqualsWithDelta(1500.0, $result['total_expenses'], 0.01);
+        $this->assertEqualsWithDelta(1500.0, $result['total_expenses'], 0.01); // only the selected 1,500, not the unselected 9,000
         $this->assertEqualsWithDelta(10500.0, $result['net_profit'], 0.01);
+    }
+
+    public function test_company_costs_are_zero_when_nothing_is_selected(): void
+    {
+        $cash = Account::factory()->create(['kind' => 'cash']);
+        $profit = app(ProfitService::class);
+
+        Transaction::create([
+            'date' => '2026-04-01', 'account_id' => $cash->id, 'direction' => 'out',
+            'amount' => 5000, 'is_company_cost' => false,
+        ]);
+
+        $result = $profit->monthlyProfit(2026, 3); // April
+
+        $this->assertEqualsWithDelta(0.0, $result['total_expenses'], 0.01);
+        $this->assertEqualsWithDelta(0.0, $result['net_profit'], 0.01);
     }
 }

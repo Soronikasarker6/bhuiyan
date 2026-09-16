@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Section } from '@/components/PageHeader'
+import { CompanyProfilePanel } from '@/features/settings/CompanyProfilePanel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/misc'
@@ -66,11 +67,15 @@ export default function SettingsPage() {
   // exist there, rather than existing but always denying access.
   const canViewUsers = !__OFFLINE__ && usePermission(PERMISSIONS.USERS_VIEW)
   const canViewRoles = !__OFFLINE__ && usePermission(PERMISSIONS.ROLES_VIEW)
+  // Company Profile is a backend-only concept too — the offline build has no
+  // server to store it on, so every document there just prints the plain
+  // defaults (see useCompanyProfile).
+  const canViewCompanyProfile = !__OFFLINE__ && usePermission(PERMISSIONS.SETTINGS_VIEW)
   const [activeTab, setActiveTab] = useState('accounts')
 
   usePageHeader({
     title: 'Settings',
-    description: 'Cash & bank accounts, categories, units of measure, users, roles, and data — configuration that never alters entries you have already recorded. Products and mesh sizes have their own page.',
+    description: 'Cash & bank accounts, categories, units of measure, users, roles, the company profile, and data — configuration that never alters entries you have already recorded. Products and mesh sizes have their own page.',
   })
 
   if (loading) return <PageSkeleton />
@@ -84,6 +89,7 @@ export default function SettingsPage() {
           <TabsTrigger value="units">Units of Measure</TabsTrigger>
           {canViewUsers && <TabsTrigger value="users">Users</TabsTrigger>}
           {canViewRoles && <TabsTrigger value="roles">Roles</TabsTrigger>}
+          {canViewCompanyProfile && <TabsTrigger value="company">Company Profile</TabsTrigger>}
           <TabsTrigger value="data">Data</TabsTrigger>
         </TabsList>
 
@@ -108,6 +114,12 @@ export default function SettingsPage() {
         {canViewRoles && (
           <TabsContent value="roles">
             <RolesPanel />
+          </TabsContent>
+        )}
+
+        {canViewCompanyProfile && (
+          <TabsContent value="company">
+            <CompanyProfilePanel />
           </TabsContent>
         )}
 

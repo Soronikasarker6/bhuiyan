@@ -1,7 +1,7 @@
 import type { MeshSize, MonthlyProfit, Product, RawMaterialImport, Sale, SaleItem, Transaction } from '@/types'
 import { buildSaleItemRows, itemsForSale } from './sales'
 import { averageCostPerTon } from './rawMaterial'
-import { monthMovement } from './ledger'
+import { companyCostsForMonth } from './ledger'
 import { makeMonthKey, MONTHS } from './format'
 
 /**
@@ -9,8 +9,9 @@ import { makeMonthKey, MONTHS } from './format'
  *
  *     Cost of Goods Sold = Σ per product: (tons sold this month) × average cost/ton
  *     Gross Profit       = Total Sales − Cost of Goods Sold
- *     Total Expenses     = the Cash & Bank Ledger's own "out" transactions this
- *                          month, transfers excluded (`monthMovement`, unchanged)
+ *     Total Expenses     = the Cash Out transactions this month someone has
+ *                          explicitly selected as a company cost — not the
+ *                          full month's cash-out movement (`companyCostsForMonth`)
  *     Net Profit         = Gross Profit − Total Expenses
  *
  * "Cost of goods sold" is deliberately not "raw material bought this month" —
@@ -50,7 +51,7 @@ export function monthlyProfit(
   }, 0)
 
   const grossProfit = totalSales - costOfGoodsSold
-  const totalExpenses = monthMovement(data.transactions, monthKey).monthOut
+  const totalExpenses = companyCostsForMonth(data.transactions, monthKey)
   const netProfit = grossProfit - totalExpenses
 
   return {

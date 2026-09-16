@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AppDataController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\CompanyProfileController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\LedgerClosingController;
@@ -61,6 +62,14 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middlewareFor('destroy', 'permission:'.P::SETTINGS_EDIT);
     Route::get('accounts/{account}/balance', [AccountController::class, 'balance'])
         ->middleware('permission:'.P::SETTINGS_VIEW);
+
+    // The one company-identity record every printed document reads —
+    // see CompanyProfile::current(). POST (not PUT) because the logo
+    // upload is multipart/form-data.
+    Route::get('company-profile', [CompanyProfileController::class, 'show'])
+        ->middleware('permission:'.P::SETTINGS_VIEW);
+    Route::post('company-profile', [CompanyProfileController::class, 'update'])
+        ->middleware('permission:'.P::SETTINGS_EDIT);
 
     Route::apiResource('categories', CategoryController::class)->except('show')
         ->middlewareFor('index', 'permission:'.P::SETTINGS_VIEW)
@@ -121,6 +130,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('transactions/transfer', [TransactionController::class, 'transfer'])
         ->middleware('permission:'.P::LEDGER_CREATE);
+    Route::patch('transactions/{transaction}/company-cost', [TransactionController::class, 'togglePnlCost'])
+        ->middleware('permission:'.P::PROFIT_EDIT);
     Route::apiResource('transactions', TransactionController::class)->only(['index', 'store', 'destroy'])
         ->middlewareFor('index', 'permission:'.P::LEDGER_VIEW)
         ->middlewareFor('store', 'permission:'.P::LEDGER_CREATE)

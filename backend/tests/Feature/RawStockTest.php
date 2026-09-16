@@ -219,6 +219,65 @@ class RawStockTest extends TestCase
         $this->waste($product, 10.5);
     }
 
+    public function test_editing_a_shipments_weights_recomputes_net_kg_and_ton(): void
+    {
+        $product = Product::factory()->create();
+        $shipment = $this->inventory->receiveStock([
+            'date' => '2026-01-01', 'product_id' => $product->id,
+            'gross_weight_kg' => 10_000, 'tare_weight_kg' => 500,
+        ]);
+
+        $this->assertEqualsWithDelta(9_500.0, $shipment->netWeightKg(), 0.0001);
+        $this->assertEqualsWithDelta(9.5, $shipment->netWeightTon(), 0.0001);
+
+        $updated = $this->inventory->updateShipment($shipment->id, [
+            'date' => '2026-01-01', 'product_id' => $product->id,
+            'gross_weight_kg' => 12_000, 'tare_weight_kg' => 1_000,
+        ]);
+
+        $this->assertEqualsWithDelta(11_000.0, $updated->netWeightKg(), 0.0001);
+        $this->assertEqualsWithDelta(11.0, $updated->netWeightTon(), 0.0001);
+        $this->assertEqualsWithDelta(11.0, $this->inventory->currentRawStock($product->id), 0.0001);
+    }
+
+    public function test_editing_a_shipment_down_below_already_consumed_tonnage_is_rejected(): void
+    {
+        $product = Product::factory()->create();
+        $mesh = MeshSize::factory()->create(['bag_kg' => 50]);
+
+        $shipment = $this->inventory->receiveStock([
+            'date' => '2026-01-01', 'product_id' => $product->id,
+            'gross_weight_kg' => 10_000, 'tare_weight_kg' => 0,
+        ]);
+        $this->produce($product, $mesh, 160, '2026-01-05'); // consumes 8 Ton, 2 Ton left
+
+        $this->expectException(InsufficientStockException::class);
+        // Shrinking the shipment to 5 Ton would leave only 5 − 8 = −3 Ton on hand.
+        $this->inventory->updateShipment($shipment->id, [
+            'date' => '2026-01-01', 'product_id' => $product->id,
+            'gross_weight_kg' => 5_000, 'tare_weight_kg' => 0,
+        ]);
+
+        // The shipment must be unchanged — the whole edit rolled back.
+        $this->assertEqualsWithDelta(10_000.0, $shipment->fresh()->gross_weight_kg, 0.0001);
+    }
+
+    public function test_editing_a_closed_shipment_is_still_blocked(): void
+    {
+        $product = Product::factory()->create();
+        $shipment = $this->inventory->receiveStock([
+            'date' => '2026-01-01', 'product_id' => $product->id,
+            'gross_weight_kg' => 10_000, 'tare_weight_kg' => 0,
+        ]);
+        $this->inventory->closeShipment($shipment->id);
+
+        $this->expectException(\App\Exceptions\BusinessRuleException::class);
+        $this->inventory->updateShipment($shipment->id, [
+            'date' => '2026-01-01', 'product_id' => $product->id,
+            'gross_weight_kg' => 9_000, 'tare_weight_kg' => 0,
+        ]);
+    }
+
     public function test_get_current_stock_reports_the_same_headline_figure(): void
     {
         $product = Product::factory()->create();

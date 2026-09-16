@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Factory, Lock, Search, Trash2 } from 'lucide-react'
+import { Factory, Lock, Pencil, Search, Trash2 } from 'lucide-react'
 import type { ImportRow } from '@/types'
 import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -27,11 +27,14 @@ import { DEFAULT_TABLE_PAGE_SIZE as PAGE_SIZE } from '@/constants/table'
 export function ImportTable({
   rows,
   onDelete,
+  onEdit,
 }: {
   rows: ImportRow[]
-  onDelete: (id: string) => void
+  onDelete: (id: string) => void | Promise<void>
+  onEdit: (row: ImportRow) => void
 }) {
   const canDelete = usePermission(PERMISSIONS.RAW_MATERIAL_DELETE)
+  const canEdit = usePermission(PERMISSIONS.RAW_MATERIAL_EDIT)
   const [page, setPage] = useState(0)
   const [pendingDelete, setPendingDelete] = useState<ImportRow | null>(null)
 
@@ -135,19 +138,34 @@ export function ImportTable({
                     )}
                   </TableCell>
                   <TableCell numeric>
-                    {canDelete && (
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        className="text-muted-foreground hover:text-destructive disabled:hover:text-muted-foreground"
-                        onClick={() => setPendingDelete(row)}
-                        disabled={row.status === 'closed'}
-                        aria-label={row.status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : 'Delete entry'}
-                        title={row.status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : undefined}
-                      >
-                        <Trash2 />
-                      </Button>
-                    )}
+                    <div className="flex justify-end gap-1">
+                      {canEdit && (
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          className="text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground"
+                          onClick={() => onEdit(row)}
+                          disabled={row.status === 'closed'}
+                          aria-label={row.status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : 'Edit entry'}
+                          title={row.status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : undefined}
+                        >
+                          <Pencil />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          className="text-muted-foreground hover:text-destructive disabled:hover:text-muted-foreground"
+                          onClick={() => setPendingDelete(row)}
+                          disabled={row.status === 'closed'}
+                          aria-label={row.status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : 'Delete entry'}
+                          title={row.status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : undefined}
+                        >
+                          <Trash2 />
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -208,9 +226,8 @@ export function ImportTable({
         title="Delete this import entry?"
         description="This removes it from the register. This cannot be undone."
         confirmLabel="Delete entry"
-        onConfirm={() => {
-          if (pendingDelete) onDelete(pendingDelete.id)
-          setPendingDelete(null)
+        onConfirm={async () => {
+          if (pendingDelete) await onDelete(pendingDelete.id)
         }}
       />
     </Section>

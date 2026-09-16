@@ -43,7 +43,7 @@ export function EditPaymentDialog({
   row: (CustomerLedgerRow & { customerName?: string }) | null
   accounts: Account[]
   onOpenChange: (open: boolean) => void
-  onSubmit: (values: PaymentUpdateInput) => void
+  onSubmit: (values: PaymentUpdateInput) => void | Promise<void>
 }) {
   const {
     register,
@@ -69,8 +69,8 @@ export function EditPaymentDialog({
     }
   }, [row, reset])
 
-  const submit = handleSubmit((values) => {
-    onSubmit({
+  const submit = handleSubmit(async (values) => {
+    await onSubmit({
       date: values.date,
       amount: Number(values.amount),
       method: values.method,

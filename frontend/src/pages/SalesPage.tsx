@@ -182,12 +182,13 @@ export default function SalesPage() {
         { label: 'Paid', value: formatCurrency(sale.amountPaid) },
         { label: 'Due', value: formatCurrency(sale.amountDue) },
       ],
+      // Rate/Ton is confidential business information and never appears on
+      // the customer-facing invoice, even when an Admin prints it.
       columns: [
         { key: 'product', label: 'Product' },
         { key: 'mesh', label: 'Mesh' },
         { key: 'bags', label: 'Bags', align: 'right' },
         { key: 'weight', label: 'Weight (Ton)', align: 'right' },
-        { key: 'rate', label: 'Rate / Ton', align: 'right' },
         { key: 'amount', label: 'Amount', align: 'right' },
       ],
       rows: sale.items.map((item) => ({
@@ -195,7 +196,6 @@ export default function SalesPage() {
         mesh: item.meshSizeName,
         bags: formatNumber(item.bags),
         weight: formatTons(item.weightTon),
-        rate: formatCurrency(item.ratePerTon),
         amount: formatCurrency(item.amount),
       })),
       totals: { product: 'Total', amount: formatCurrency(sale.totalAmount) },

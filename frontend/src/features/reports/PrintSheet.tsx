@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { formatDateTime, todayISO, formatDateLong } from '@/utils/format'
-import { BUSINESS } from '@/constants/business'
+import { useCompanyProfile } from '@/hooks/useCompanyProfile'
+import type { CompanyProfile } from '@/types'
 
 /**
  * Printing.
@@ -104,37 +105,68 @@ export function printPayloadToCsv(payload: PrintPayload): string {
 }
 
 /**
+ * The letterhead's contact line — phone, email, location and website, in
+ * that order, joined onto one row and skipping whichever fields are empty.
+ * An empty Company Profile field never prints as a bare, meaningless label
+ * (`Website:` with nothing after it) — it simply isn't there.
+ */
+function contactLine(profile: CompanyProfile): string {
+  return [profile.phone, profile.email, profile.address, profile.website]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join('  ·  ')
+}
+
+/**
  * The printed document.
  *
  * Hidden on screen, visible on paper. Black on white with real rules — the
  * screen's cream and maroon cost ink and reproduce badly on an office laser.
  */
 function PrintSheet({ payload }: { payload: PrintPayload }) {
+  const { profile } = useCompanyProfile()
+  const contact = contactLine(profile)
+  const ownerLine = [profile.designation, profile.ownerName].filter(Boolean).join(': ')
+
   return (
     <div className="print-sheet hidden" aria-hidden>
       {/*
-        The letterhead. Three lines, deliberately small: a document is
+        The letterhead. Deliberately small and plain-text: a document is
         identified by its heading, not by the size of the logo above it, and
-        every millimetre spent here is a row of data pushed onto a second page.
-
-        Only the trading name is set large enough to carry the page; what the
-        business does and who answers for it sit under it at caption size,
-        which is how a printed letterhead normally reads. The same block heads
-        every document the system produces — invoice, register and report
-        alike — because they are all issued by the same business.
+        every millimetre spent here is a row of data pushed onto a second
+        page. Every field here comes from Settings → Company Profile
+        (`useCompanyProfile`) — nothing about the business is typed into this
+        component, so changing a phone number there reaches the very next
+        document printed, invoice or register alike, with nothing to keep in
+        sync by hand.
       */}
       <header style={{ borderBottom: '1.5px solid #111', paddingBottom: 7, marginBottom: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
-          <div>
-            <h1 style={{ fontSize: '15.5pt', fontWeight: 700, margin: 0, letterSpacing: '0.02em' }}>
-              {BUSINESS.name}
-            </h1>
-            <p style={{ fontSize: '8.5pt', margin: '2px 0 0', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-              {BUSINESS.tagline}
-            </p>
-            <p style={{ fontSize: '8pt', margin: '2px 0 0', color: '#444' }}>
-              Owner / Managed by: {BUSINESS.owner}
-            </p>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            {profile.logoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={profile.logoUrl}
+                alt=""
+                style={{ height: 30, width: 30, objectFit: 'contain', flexShrink: 0 }}
+              />
+            )}
+            <div>
+              <h1 style={{ fontSize: '15.5pt', fontWeight: 700, margin: 0, letterSpacing: '0.02em' }}>
+                {profile.name}
+              </h1>
+              {profile.tagline && (
+                <p style={{ fontSize: '8.5pt', margin: '2px 0 0', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                  {profile.tagline}
+                </p>
+              )}
+              {ownerLine && (
+                <p style={{ fontSize: '8pt', margin: '2px 0 0', color: '#444' }}>{ownerLine}</p>
+              )}
+              {contact && (
+                <p style={{ fontSize: '7.5pt', margin: '2px 0 0', color: '#555' }}>{contact}</p>
+              )}
+            </div>
           </div>
           <p style={{ fontSize: '8.5pt', margin: 0, textAlign: 'right', whiteSpace: 'nowrap' }}>
             {formatDateLong(todayISO())}
@@ -244,14 +276,18 @@ function PrintSheet({ payload }: { payload: PrintPayload }) {
           borderTop: '1px solid #999',
           fontSize: '8pt',
           color: '#555',
-          display: 'flex',
-          justifyContent: 'space-between',
         }}
       >
-        {/* When it was produced stays on the left: a filed report is only as
-            trustworthy as the moment it was run, and figures move. */}
-        <span>Generated on {formatDateTime(new Date().toISOString())}</span>
-        <span>Generated by {BUSINESS.system}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          {/* When it was produced stays on the left: a filed report is only
+              as trustworthy as the moment it was run, and figures move. */}
+          <span>Generated on {formatDateTime(new Date().toISOString())}</span>
+          <span>Generated by Bhuiyan Industry Management System</span>
+        </div>
+        <div style={{ marginTop: 3, textAlign: 'center', color: '#777' }}>
+          {profile.name}
+          {profile.tagline ? ` — ${profile.tagline}` : ''}
+        </div>
       </footer>
     </div>
   )

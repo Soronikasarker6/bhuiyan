@@ -72,10 +72,20 @@ export function AppLayout() {
 
   return (
     <PageHeaderProvider>
-      {/* `stone-field` is the limestone slab the whole interface sits on —
-          see `styles/stone-shell.css`. It is applied here, once, rather than
-          per page, so every screen shares the one continuous surface. */}
-      <div className="stone-field min-h-screen">
+      {/*
+        `stone-field` is the limestone slab the whole interface sits on — see
+        `styles/stone-shell.css`. Applied here, once, rather than per page, so
+        every screen shares the one continuous surface.
+
+        `no-print` on this same element, not just on the header/sidebar
+        individually: `min-h-screen` keeps this box a full viewport tall even
+        once every child inside it is hidden, so printing would still show a
+        blank first page (background and all) ahead of the actual
+        `PrintSheet` document — pushing the real letterhead and data onto
+        page 2. Hiding the one shared ancestor removes that leftover box
+        outright, rather than chasing it in each descendant.
+      */}
+      <div className="stone-field no-print min-h-screen">
         <Sidebar
           collapsed={collapsed}
           onToggleCollapsed={() => setCollapsed((v) => !v)}

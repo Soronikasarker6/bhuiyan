@@ -30,6 +30,8 @@ class RoleSeeder extends Seeder
         )));
 
         // View + create only, no edit/delete, no Settings/Users/Roles/Closing.
+        // SALES_RATE_VIEW is deliberately withheld — Rate/TON is confidential
+        // and only Admin/Manager (finance-level roles) may see it.
         $staff = Role::firstOrCreate(['name' => 'Staff', 'guard_name' => 'api']);
         $staff->syncPermissions(array_values(array_filter(
             $all,
@@ -37,7 +39,8 @@ class RoleSeeder extends Seeder
                 && ! str_starts_with($name, 'SETTINGS_')
                 && ! str_starts_with($name, 'USERS_')
                 && ! str_starts_with($name, 'ROLES_')
-                && ! str_starts_with($name, 'CLOSING_'),
+                && ! str_starts_with($name, 'CLOSING_')
+                && $name !== Permissions::SALES_RATE_VIEW,
         )));
     }
 }

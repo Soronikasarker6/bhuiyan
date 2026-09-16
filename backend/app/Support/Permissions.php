@@ -31,6 +31,7 @@ class Permissions
     public const SALES_CREATE = 'SALES_CREATE';
     public const SALES_EDIT = 'SALES_EDIT';
     public const SALES_DELETE = 'SALES_DELETE';
+    public const SALES_RATE_VIEW = 'SALES_RATE_VIEW';
 
     public const CUSTOMERS_VIEW = 'CUSTOMERS_VIEW';
     public const CUSTOMERS_CREATE = 'CUSTOMERS_CREATE';
@@ -52,6 +53,7 @@ class Permissions
     public const CLOSING_CREATE = 'CLOSING_CREATE';
 
     public const PROFIT_VIEW = 'PROFIT_VIEW';
+    public const PROFIT_EDIT = 'PROFIT_EDIT';
 
     public const REPORTS_VIEW = 'REPORTS_VIEW';
 

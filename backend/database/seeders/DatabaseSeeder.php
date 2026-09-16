@@ -24,6 +24,7 @@ class DatabaseSeeder extends Seeder
             UnitOfMeasureSeeder::class,
             AccountSeeder::class,
             CategorySeeder::class,
+            CompanyProfileSeeder::class,
             PermissionSeeder::class,
             RoleSeeder::class,
             AdminUserSeeder::class,

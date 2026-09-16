@@ -89,6 +89,23 @@ class LedgerService
         return ['month_in' => $in, 'month_out' => $out, 'net' => $in - $out];
     }
 
+    /**
+     * Profit & Loss's "Company Costs" for one month: the Cash Out transactions
+     * someone has explicitly marked as a company cost, not the full month's
+     * cash-out movement. Customer payments are always direction='in' so they
+     * can never appear here regardless of selection.
+     */
+    public function companyCostsForMonth(string $monthKey): float
+    {
+        [$year, $month] = explode('-', $monthKey);
+
+        return (float) Transaction::whereYear('date', $year)->whereMonth('date', $month)
+            ->whereNull('transfer_id')
+            ->where('direction', 'out')
+            ->where('is_company_cost', true)
+            ->sum('amount');
+    }
+
     /** Two linked rows sharing transfer_id, written atomically. */
     public function transfer(array $payload): array
     {

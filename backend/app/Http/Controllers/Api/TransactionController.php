@@ -114,4 +114,25 @@ class TransactionController extends Controller
 
         return response()->json(null, 204);
     }
+
+    /**
+     * Flips whether one Cash Out transaction counts toward Profit & Loss's
+     * "Company Costs". Deliberately narrow — this never touches amount,
+     * category, account or any other ledger fact, only this one flag, so a
+     * P&L reviewer can curate costs without being able to edit the ledger.
+     */
+    public function togglePnlCost(Request $request, Transaction $transaction)
+    {
+        $data = $request->validate([
+            'is_company_cost' => ['required', 'boolean'],
+        ]);
+
+        if ($transaction->direction !== 'out') {
+            return response()->json(['message' => 'Only Cash Out transactions can be a company cost.'], 422);
+        }
+
+        $transaction->update(['is_company_cost' => $data['is_company_cost']]);
+
+        return response()->json($transaction);
+    }
 }

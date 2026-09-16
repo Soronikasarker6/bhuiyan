@@ -17,6 +17,8 @@ use App\Models\SaleItem;
 use App\Models\Transaction;
 use App\Models\UnitOfMeasure;
 use App\Models\WastageEntry;
+use App\Support\Permissions;
+use Illuminate\Http\Request;
 
 /**
  * Bootstrap endpoint: every collection in one call, shaped like the frontend's
@@ -26,8 +28,10 @@ use App\Models\WastageEntry;
  */
 class AppDataController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $canViewRate = (bool) $request->user()?->can(Permissions::SALES_RATE_VIEW);
+
         return response()->json([
             'products' => Product::orderBy('name')->get(),
             'meshSizes' => MeshSize::orderBy('name')->get(),
@@ -40,11 +44,33 @@ class AppDataController extends Controller
             'wastageEntries' => WastageEntry::orderByDesc('date')->orderByDesc('id')->get(),
             'productionEntries' => ProductionEntry::orderByDesc('date')->orderByDesc('id')->get(),
             'sales' => Sale::orderByDesc('date')->orderByDesc('id')->get(),
-            'saleItems' => SaleItem::all(),
+            'saleItems' => SaleItem::with('meshSize')->get()
+                ->map(fn (SaleItem $item) => $this->presentSaleItem($item, $canViewRate)),
             'customerTransactions' => CustomerTransaction::orderByDesc('date')->orderByDesc('id')->get(),
             'transactions' => Transaction::orderByDesc('date')->orderByDesc('id')->get(),
             'ledgerClosings' => LedgerClosing::with('balances')->orderByDesc('month_key')->get(),
             'seeded' => true,
         ]);
+    }
+
+    /**
+     * Rate/TON is confidential — it stays in the database and keeps driving
+     * every calculation server-side, but is only included in this payload for
+     * users holding SALES_RATE_VIEW. `amount`/weight figures are always
+     * computed and included here so totals, due, ledger and reports keep
+     * working for everyone regardless of rate visibility.
+     */
+    private function presentSaleItem(SaleItem $item, bool $canViewRate): array
+    {
+        $data = $item->toArray();
+        $data['calculated_weight_ton'] = $item->calculatedWeightTon();
+        $data['weight_ton'] = $item->billableWeightTon();
+        $data['amount'] = $item->amount();
+
+        if (! $canViewRate) {
+            unset($data['rate_per_ton']);
+        }
+
+        return $data;
     }
 }

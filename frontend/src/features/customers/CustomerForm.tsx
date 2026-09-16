@@ -40,7 +40,7 @@ export function CustomerForm({
   open: boolean
   onOpenChange: (open: boolean) => void
   editing?: Customer | null
-  onSubmit: (values: CustomerSubmit) => void
+  onSubmit: (values: CustomerSubmit) => void | Promise<void>
 }) {
   const {
     register,
@@ -72,8 +72,8 @@ export function CustomerForm({
     }
   }, [open, editing, reset])
 
-  const submit = handleSubmit((values) => {
-    onSubmit(values as CustomerSubmit)
+  const submit = handleSubmit(async (values) => {
+    await onSubmit(values as CustomerSubmit)
     onOpenChange(false)
   })
 

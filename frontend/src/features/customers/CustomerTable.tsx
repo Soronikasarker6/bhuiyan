@@ -25,7 +25,7 @@ export function CustomerTable({
   customers: Customer[]
   totalsOf: (customerId: string) => CustomerTotals
   onEdit: (customer: Customer) => void
-  onDelete: (customer: Customer) => void
+  onDelete: (customer: Customer) => void | Promise<void>
 }) {
   const canEdit = usePermission(PERMISSIONS.CUSTOMERS_EDIT)
   const canDelete = usePermission(PERMISSIONS.CUSTOMERS_DELETE)
@@ -144,9 +144,8 @@ export function CustomerTable({
             : 'This customer has no transactions yet, so nothing is lost.'
         }
         confirmLabel="Remove customer"
-        onConfirm={() => {
-          if (pendingDelete) onDelete(pendingDelete)
-          setPendingDelete(null)
+        onConfirm={async () => {
+          if (pendingDelete) await onDelete(pendingDelete)
         }}
       />
     </Section>

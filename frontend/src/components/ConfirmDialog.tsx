@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Dialog } from '@ui5/webcomponents-react/Dialog'
 import { Bar } from '@ui5/webcomponents-react/Bar'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,14 @@ const STATE = { destructive: 'Negative', success: 'Positive', default: 'None' } 
  * `state="Negative"` is what gives a destructive confirm its red accent and
  * "alertdialog" accessibility role natively, matching V12's own
  * `delete-dialog` component exactly.
+ *
+ * `onConfirm` may return a promise — while it is pending, the Confirm button
+ * shows UI5's own busy state and both buttons are disabled, so a slow delete
+ * cannot be double-submitted by an impatient second click. The dialog only
+ * closes once that promise settles, not the instant Confirm is clicked, so
+ * "confirmed" on screen actually means the request has finished. A caller
+ * that returns nothing (the pre-existing, fire-and-forget style) behaves
+ * exactly as before — this is purely additive.
  */
 export function ConfirmDialog({
   open,
@@ -39,27 +47,33 @@ export function ConfirmDialog({
   /** Extra detail — a summary of exactly what is about to be frozen or lost. */
   children?: ReactNode
 }) {
+  const [busy, setBusy] = useState(false)
+
+  const confirm = async () => {
+    setBusy(true)
+    try {
+      await onConfirm()
+    } finally {
+      setBusy(false)
+      onOpenChange(false)
+    }
+  }
+
   return (
     <Dialog
       open={open}
       headerText={title}
       state={STATE[variant]}
-      onClose={() => onOpenChange(false)}
+      onClose={() => !busy && onOpenChange(false)}
       footer={
         <Bar
           design="Footer"
           endContent={
             <>
-              <Button variant="ghost" onClick={() => onOpenChange(false)}>
+              <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
                 {cancelLabel}
               </Button>
-              <Button
-                variant={variant === 'default' ? 'default' : variant}
-                onClick={() => {
-                  onConfirm()
-                  onOpenChange(false)
-                }}
-              >
+              <Button variant={variant === 'default' ? 'default' : variant} loading={busy} onClick={confirm}>
                 {confirmLabel}
               </Button>
             </>

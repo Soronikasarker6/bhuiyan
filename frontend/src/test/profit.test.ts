@@ -27,7 +27,7 @@ describe('monthlyProfit — §6 worked example', () => {
   ]
 
   const transactions: Transaction[] = [
-    { id: 't1', date: '2026-09-15', details: 'Company costs', accountId: 'acc-1', direction: 'out', category: 'Others', amount: 8_000, createdAt: '' },
+    { id: 't1', date: '2026-09-15', details: 'Company costs', accountId: 'acc-1', direction: 'out', category: 'Others', amount: 8_000, isCompanyCost: true, createdAt: '' },
   ]
 
   it('matches the spec exactly, month by month', () => {
@@ -56,6 +56,31 @@ describe('monthlyProfit — §6 worked example', () => {
     const totals = yearlyProfitTotals(months)
     expect(totals.totalSales).toBeCloseTo(50_000, 2)
     expect(totals.netProfit).toBeCloseTo(12_000, 2)
+  })
+})
+
+describe('monthlyProfit — Company Costs only counts Cash Out transactions explicitly selected', () => {
+  it('a Cash Out transaction that is not selected contributes nothing to Company Costs', () => {
+    const transactions: Transaction[] = [
+      { id: 't1', date: '2026-09-15', details: 'Unselected expense', accountId: 'acc-1', direction: 'out', category: 'Others', amount: 5_000, isCompanyCost: false, createdAt: '' },
+    ]
+
+    const result = monthlyProfit(2026, 8, { sales: [], saleItems: [], products, meshSizes, rawMaterialImports: [], transactions })
+
+    expect(result.totalExpenses).toBe(0)
+    expect(result.netProfit).toBe(0)
+  })
+
+  it('only the selected subset of Cash Out transactions is summed, never a money-in row', () => {
+    const transactions: Transaction[] = [
+      { id: 't1', date: '2026-09-05', details: 'Selected', accountId: 'acc-1', direction: 'out', category: 'Others', amount: 3_000, isCompanyCost: true, createdAt: '' },
+      { id: 't2', date: '2026-09-06', details: 'Unselected', accountId: 'acc-1', direction: 'out', category: 'Others', amount: 9_000, isCompanyCost: false, createdAt: '' },
+      { id: 't3', date: '2026-09-07', details: 'Customer payment', accountId: 'acc-1', direction: 'in', category: 'Customer Payment', amount: 50_000, isCompanyCost: true, createdAt: '' },
+    ]
+
+    const result = monthlyProfit(2026, 8, { sales: [], saleItems: [], products, meshSizes, rawMaterialImports: [], transactions })
+
+    expect(result.totalExpenses).toBe(3_000)
   })
 })
 

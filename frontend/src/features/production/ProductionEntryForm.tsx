@@ -88,7 +88,7 @@ export function ProductionEntryForm({
   availableTon: (productId: string) => number
   /** Whether a date, for a product, falls inside an already-closed shipment cycle. */
   cycleClosed: (productId: string, date: string) => boolean
-  onSubmit: (values: ProductionSubmit) => void
+  onSubmit: (values: ProductionSubmit) => void | Promise<void>
 }) {
   const productName = (productId: string) => products.find((p) => p.id === productId)?.name ?? 'this product'
   const schema = buildSchema(availableTon, cycleClosed, productName, (meshId) => bagKgOf(meshSizes, meshId))
@@ -131,8 +131,8 @@ export function ProductionEntryForm({
   const rawStockNow = productId ? availableTon(productId) : 0
   const rawStockAfter = rawStockNow - tonsRequested
 
-  const submit = handleSubmit((values) => {
-    onSubmit(values as ProductionSubmit)
+  const submit = handleSubmit(async (values) => {
+    await onSubmit(values as ProductionSubmit)
     reset({ date: values.date, productId: values.productId, meshId: values.meshId, bags: '' as unknown as number, notes: '' })
   })
 

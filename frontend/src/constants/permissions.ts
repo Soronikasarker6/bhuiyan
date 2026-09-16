@@ -23,6 +23,7 @@ export const PERMISSIONS = {
   SALES_CREATE: 'SALES_CREATE',
   SALES_EDIT: 'SALES_EDIT',
   SALES_DELETE: 'SALES_DELETE',
+  SALES_RATE_VIEW: 'SALES_RATE_VIEW',
 
   CUSTOMERS_VIEW: 'CUSTOMERS_VIEW',
   CUSTOMERS_CREATE: 'CUSTOMERS_CREATE',
@@ -44,6 +45,7 @@ export const PERMISSIONS = {
   CLOSING_CREATE: 'CLOSING_CREATE',
 
   PROFIT_VIEW: 'PROFIT_VIEW',
+  PROFIT_EDIT: 'PROFIT_EDIT',
 
   REPORTS_VIEW: 'REPORTS_VIEW',
 
@@ -85,7 +87,13 @@ export const PERMISSION_GROUPS: Array<{ label: string; permissions: Permission[]
   },
   {
     label: 'Sales',
-    permissions: [PERMISSIONS.SALES_VIEW, PERMISSIONS.SALES_CREATE, PERMISSIONS.SALES_EDIT, PERMISSIONS.SALES_DELETE],
+    permissions: [
+      PERMISSIONS.SALES_VIEW,
+      PERMISSIONS.SALES_CREATE,
+      PERMISSIONS.SALES_EDIT,
+      PERMISSIONS.SALES_DELETE,
+      PERMISSIONS.SALES_RATE_VIEW,
+    ],
   },
   {
     label: 'Customers',
@@ -111,7 +119,7 @@ export const PERMISSION_GROUPS: Array<{ label: string; permissions: Permission[]
     permissions: [PERMISSIONS.LEDGER_VIEW, PERMISSIONS.LEDGER_CREATE, PERMISSIONS.LEDGER_DELETE],
   },
   { label: 'Monthly Closing', permissions: [PERMISSIONS.CLOSING_VIEW, PERMISSIONS.CLOSING_CREATE] },
-  { label: 'Profit & Loss', permissions: [PERMISSIONS.PROFIT_VIEW] },
+  { label: 'Profit & Loss', permissions: [PERMISSIONS.PROFIT_VIEW, PERMISSIONS.PROFIT_EDIT] },
   { label: 'Reports', permissions: [PERMISSIONS.REPORTS_VIEW] },
   { label: 'Settings', permissions: [PERMISSIONS.SETTINGS_VIEW, PERMISSIONS.SETTINGS_EDIT] },
   {

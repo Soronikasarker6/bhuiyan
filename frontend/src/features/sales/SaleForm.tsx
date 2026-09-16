@@ -138,7 +138,7 @@ export function SaleForm({
   nextInvoiceNo: string
   /** Stock currently available for one (product, mesh) — see `utils/productionStock.ts`. */
   availableBags: (productId: string, meshSizeId: string) => number
-  onSubmit: (values: SaleSubmit) => void
+  onSubmit: (values: SaleSubmit) => void | Promise<void>
 }) {
   const schema = buildSchema(availableBags, (meshSizeId) => meshSizeNameOf(meshSizes, meshSizeId))
   const defaultAccountId = defaultCashAccountId(accounts) ?? accounts[0]?.id ?? ''
@@ -208,8 +208,8 @@ export function SaleForm({
   const total = items.reduce((sum, item) => sum + itemCalcs(item).amount, 0)
   const due = Math.max(0, total - paidAtSale)
 
-  const submit = handleSubmit((values) => {
-    onSubmit(values)
+  const submit = handleSubmit(async (values) => {
+    await onSubmit(values)
     reset({
       date: values.date,
       customerId: values.customerId,

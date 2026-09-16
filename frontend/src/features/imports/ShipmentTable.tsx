@@ -49,8 +49,8 @@ export function ShipmentTable({
   onReopen,
 }: {
   rows: ShipmentCycleRow[]
-  onClose: (row: ShipmentCycleRow) => void
-  onReopen: (row: ShipmentCycleRow) => void
+  onClose: (row: ShipmentCycleRow) => void | Promise<void>
+  onReopen: (row: ShipmentCycleRow) => void | Promise<void>
 }) {
   const canEdit = usePermission(PERMISSIONS.RAW_MATERIAL_EDIT)
   const [page, setPage] = useState(0)
@@ -191,9 +191,8 @@ export function ShipmentTable({
         description="This freezes its opening, received, consumed and closing balance permanently. The closing balance becomes the next shipment of this same material's opening balance — later entries, including back-dated ones, will not change these figures again."
         confirmLabel="Close shipment"
         variant="default"
-        onConfirm={() => {
-          if (closing) onClose(closing)
-          setClosing(null)
+        onConfirm={async () => {
+          if (closing) await onClose(closing)
         }}
       >
         {closing && (
@@ -220,9 +219,8 @@ export function ShipmentTable({
         title={reopening ? `Reopen this ${reopening.productName} shipment?` : ''}
         description="Its closing balance will be recomputed live again from the production and wastage logs, and the next shipment's opening balance will move with it. Use this only to correct a mistake."
         confirmLabel="Reopen shipment"
-        onConfirm={() => {
-          if (reopening) onReopen(reopening)
-          setReopening(null)
+        onConfirm={async () => {
+          if (reopening) await onReopen(reopening)
         }}
       />
     </Section>

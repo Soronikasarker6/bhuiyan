@@ -47,7 +47,7 @@ export function PaymentForm({
   customers: Customer[]
   balanceOf: (customerId: string) => number
   accounts: Account[]
-  onSubmit: (values: PaymentSubmit) => void
+  onSubmit: (values: PaymentSubmit) => void | Promise<void>
 }) {
   const {
     register,
@@ -78,8 +78,8 @@ export function PaymentForm({
   const currentAdvance = Math.max(0, -currentBalance)
   const balanceAfter = currentBalance - amount
 
-  const submit = handleSubmit((values) => {
-    onSubmit({
+  const submit = handleSubmit(async (values) => {
+    await onSubmit({
       ...(values as PaymentSubmit),
       accountId: values.accountId === NONE ? undefined : values.accountId,
     })

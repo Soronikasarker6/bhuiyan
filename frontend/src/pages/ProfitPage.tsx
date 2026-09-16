@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { Receipt, Scale, TrendingUp, Wallet } from 'lucide-react'
 import { Section } from '@/components/PageHeader'
 import { PageSkeleton } from '@/components/PageSkeleton'
@@ -7,10 +8,15 @@ import { Money } from '@/components/Money'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { CompanyCostPicker } from '@/features/profit/CompanyCostPicker'
 import { useAppData } from '@/hooks/useAppData'
 import { usePageHeader } from '@/hooks/usePageHeader'
+import { usePermission } from '@/hooks/useAuth'
+import { PERMISSIONS } from '@/constants/permissions'
+import type { ID } from '@/types'
 import { yearlyProfit, yearlyProfitTotals } from '@/utils/profit'
-import { MONTHS } from '@/utils/format'
+import { companyCostCandidatesForMonth } from '@/utils/ledger'
+import { makeMonthKey, MONTHS } from '@/utils/format'
 
 /**
  * Profit & Loss — computed, never typed in (§6).
@@ -25,7 +31,8 @@ import { MONTHS } from '@/utils/format'
  * records actually say.
  */
 export default function ProfitPage() {
-  const { data, loading } = useAppData()
+  const { data, loading, setCompanyCost } = useAppData()
+  const canEditCompanyCosts = usePermission(PERMISSIONS.PROFIT_EDIT)
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
   const [monthIndex, setMonthIndex] = useState(today.getMonth())
@@ -45,6 +52,25 @@ export default function ProfitPage() {
 
   const yearTotals = useMemo(() => yearlyProfitTotals(months), [months])
   const selected = months[monthIndex] ?? months[0]!
+
+  const selectedMonthKey = useMemo(() => makeMonthKey(year, monthIndex), [year, monthIndex])
+  const companyCostCandidates = useMemo(
+    () => companyCostCandidatesForMonth(data.transactions, selectedMonthKey),
+    [data.transactions, selectedMonthKey],
+  )
+
+  const toggleCompanyCost = useCallback(
+    async (transactionId: ID, isCompanyCost: boolean) => {
+      try {
+        await setCompanyCost(transactionId, isCompanyCost)
+      } catch (error) {
+        toast.error('Could not update company costs', {
+          description: error instanceof Error ? error.message : undefined,
+        })
+      }
+    },
+    [setCompanyCost],
+  )
 
   usePageHeader({
     title: 'Profit & Loss',
@@ -83,6 +109,10 @@ export default function ProfitPage() {
           </div>
         </div>
       </Section>
+
+      <div className="mb-4">
+        <CompanyCostPicker candidates={companyCostCandidates} onToggle={toggleCompanyCost} canEdit={canEditCompanyCosts} />
+      </div>
 
       {/*
         One grid, not three — Total sales/COGS/Gross profit/Company costs

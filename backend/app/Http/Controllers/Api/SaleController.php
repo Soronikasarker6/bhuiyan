@@ -8,6 +8,7 @@ use App\Http\Requests\StoreSaleRequest;
 use App\Models\CustomerTransaction;
 use App\Models\Sale;
 use App\Services\SalesService;
+use App\Support\Permissions;
 use Illuminate\Http\Request;
 
 class SaleController extends Controller
@@ -29,14 +30,16 @@ class SaleController extends Controller
             $query->where('date', '<=', $request->string('to'));
         }
 
-        return $query->get()->map(fn (Sale $sale) => $this->present($sale));
+        $canViewRate = (bool) $request->user()?->can(Permissions::SALES_RATE_VIEW);
+
+        return $query->get()->map(fn (Sale $sale) => $this->present($sale, $canViewRate));
     }
 
-    public function show(Sale $sale)
+    public function show(Request $request, Sale $sale)
     {
         $sale->load(['customer', 'items.product', 'items.meshSize']);
 
-        return $this->present($sale);
+        return $this->present($sale, (bool) $request->user()?->can(Permissions::SALES_RATE_VIEW));
     }
 
     public function store(StoreSaleRequest $request)
@@ -49,7 +52,10 @@ class SaleController extends Controller
 
         $sale->load(['customer', 'items.product', 'items.meshSize']);
 
-        return response()->json($this->present($sale), 201);
+        return response()->json(
+            $this->present($sale, (bool) $request->user()?->can(Permissions::SALES_RATE_VIEW)),
+            201,
+        );
     }
 
     public function destroy(Sale $sale)
@@ -67,16 +73,24 @@ class SaleController extends Controller
     }
 
     /** Shapes a sale like the frontend's SaleSummary — totals/due/status computed, never stored. */
-    private function present(Sale $sale): array
+    private function present(Sale $sale, bool $canViewRate = false): array
     {
-        $items = $sale->items->map(fn ($item) => array_merge($item->toArray(), [
-            'product_name' => $item->product?->name,
-            'mesh_size_name' => $item->meshSize?->name,
-            'bag_kg' => (float) $item->meshSize?->bag_kg,
-            'calculated_weight_ton' => $item->calculatedWeightTon(),
-            'weight_ton' => $item->billableWeightTon(),
-            'amount' => $item->amount(),
-        ]));
+        $items = $sale->items->map(function ($item) use ($canViewRate) {
+            $data = array_merge($item->toArray(), [
+                'product_name' => $item->product?->name,
+                'mesh_size_name' => $item->meshSize?->name,
+                'bag_kg' => (float) $item->meshSize?->bag_kg,
+                'calculated_weight_ton' => $item->calculatedWeightTon(),
+                'weight_ton' => $item->billableWeightTon(),
+                'amount' => $item->amount(),
+            ]);
+
+            if (! $canViewRate) {
+                unset($data['rate_per_ton']);
+            }
+
+            return $data;
+        });
 
         $totalAmount = $items->sum('amount');
         $totalWeightTon = $items->sum('weight_ton');

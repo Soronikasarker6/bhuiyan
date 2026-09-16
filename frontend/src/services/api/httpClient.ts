@@ -87,11 +87,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T
 }
 
+/** `FormData` (a file upload, e.g. the company logo) goes through as-is; anything else is JSON. */
+function bodyOf(data: unknown): BodyInit | undefined {
+  if (data === undefined) return undefined
+  return data instanceof FormData ? data : JSON.stringify(data)
+}
+
 export const http = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, data?: unknown) =>
-    request<T>(path, { method: 'POST', body: data === undefined ? undefined : JSON.stringify(data) }),
-  put: <T>(path: string, data?: unknown) =>
-    request<T>(path, { method: 'PUT', body: data === undefined ? undefined : JSON.stringify(data) }),
+  post: <T>(path: string, data?: unknown) => request<T>(path, { method: 'POST', body: bodyOf(data) }),
+  put: <T>(path: string, data?: unknown) => request<T>(path, { method: 'PUT', body: bodyOf(data) }),
+  patch: <T>(path: string, data?: unknown) => request<T>(path, { method: 'PATCH', body: bodyOf(data) }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 }

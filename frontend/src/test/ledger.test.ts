@@ -7,7 +7,9 @@ import {
   buildTransferLegs,
   categoryBreakdown,
   defaultCashAccountId,
+  describeLedgerFilters,
   idsToRemoveWith,
+  ledgerFiltersActive,
   monthMovement,
   totalBalances,
   transferCategory,
@@ -221,5 +223,66 @@ describe('defaultCashAccountId', () => {
 
   it('returns undefined when there is no cash account at all', () => {
     expect(defaultCashAccountId([UCB, DBBL])).toBeUndefined()
+  })
+})
+
+describe('ledgerFiltersActive', () => {
+  it('is false when nothing is set', () => {
+    expect(ledgerFiltersActive({})).toBe(false)
+  })
+
+  it('is true as soon as any one filter is set', () => {
+    expect(ledgerFiltersActive({ accountId: 'cash' })).toBe(true)
+    expect(ledgerFiltersActive({ direction: 'in' })).toBe(true)
+    expect(ledgerFiltersActive({ search: 'x' })).toBe(true)
+  })
+})
+
+describe('describeLedgerFilters', () => {
+  it('reads as "All"/"All Dates" when nothing narrows the register', () => {
+    expect(describeLedgerFilters({}, ACCOUNTS)).toEqual([
+      { label: 'Period', value: 'All Dates' },
+      { label: 'Account', value: 'All' },
+      { label: 'Type', value: 'All' },
+    ])
+  })
+
+  it('names the filtered account and direction', () => {
+    const summary = describeLedgerFilters({ accountId: 'ucb', direction: 'out' }, ACCOUNTS)
+    expect(summary).toContainEqual({ label: 'Account', value: 'UCB' })
+    expect(summary).toContainEqual({ label: 'Type', value: 'Cash Out' })
+  })
+
+  it('reads Cash In for an "in" direction filter', () => {
+    expect(describeLedgerFilters({ direction: 'in' }, ACCOUNTS)).toContainEqual({
+      label: 'Type',
+      value: 'Cash In',
+    })
+  })
+
+  it('formats a full date range as a single period', () => {
+    const summary = describeLedgerFilters({ from: '2026-09-01', to: '2026-09-16' }, ACCOUNTS)
+    expect(summary[0]).toEqual({ label: 'Period', value: '1 Sep 2026 – 16 Sep 2026' })
+  })
+
+  it('handles an open-ended date filter in either direction', () => {
+    expect(describeLedgerFilters({ from: '2026-09-01' }, ACCOUNTS)[0]!.value).toBe('From 1 Sep 2026')
+    expect(describeLedgerFilters({ to: '2026-09-16' }, ACCOUNTS)[0]!.value).toBe('Until 16 Sep 2026')
+  })
+
+  it('only includes Category and Search when they are actually set', () => {
+    expect(describeLedgerFilters({}, ACCOUNTS).map((m) => m.label)).not.toContain('Category')
+    expect(describeLedgerFilters({}, ACCOUNTS).map((m) => m.label)).not.toContain('Search')
+
+    const summary = describeLedgerFilters({ category: 'Office Cost', search: 'diesel' }, ACCOUNTS)
+    expect(summary).toContainEqual({ label: 'Category', value: 'Office Cost' })
+    expect(summary).toContainEqual({ label: 'Search', value: 'diesel' })
+  })
+
+  it('falls back to "All" for an account id that no longer exists', () => {
+    expect(describeLedgerFilters({ accountId: 'gone' }, ACCOUNTS)).toContainEqual({
+      label: 'Account',
+      value: 'All',
+    })
   })
 })

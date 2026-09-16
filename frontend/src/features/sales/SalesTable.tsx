@@ -34,11 +34,12 @@ export function SalesTable({
   onExportPdf,
 }: {
   sales: SaleSummary[]
-  onDelete: (saleId: string) => void
+  onDelete: (saleId: string) => void | Promise<void>
   onExportCsv: (sale: SaleSummary) => void
   onExportPdf: (sale: SaleSummary) => void
 }) {
   const canDelete = usePermission(PERMISSIONS.SALES_DELETE)
+  const canViewRate = usePermission(PERMISSIONS.SALES_RATE_VIEW)
   const [page, setPage] = useState(0)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<SaleSummary | null>(null)
@@ -100,7 +101,7 @@ export function SalesTable({
                 <TableHead>Mesh / Size</TableHead>
                 <TableHead numeric>Qty (Bags)</TableHead>
                 <SortableHead label="Billable TON" sortKey="ton" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
-                <TableHead numeric>Rate / Ton</TableHead>
+                {canViewRate && <TableHead numeric>Rate / Ton</TableHead>}
                 <SortableHead label="Total" sortKey="total" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
                 <SortableHead label="Paid" sortKey="paid" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
                 <SortableHead label="Due" sortKey="due" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
@@ -125,9 +126,11 @@ export function SalesTable({
                       <TableCell className="max-w-[8rem] truncate text-muted-foreground">{itemFieldOrMultiple(sale, 'meshSizeName')}</TableCell>
                       <TableCell numeric>{itemsBagsTotal(sale.items)}</TableCell>
                       <TableCell numeric className="font-medium">{formatTons(sale.totalWeightTon)}</TableCell>
-                      <TableCell numeric className="text-muted-foreground">
-                        {sale.items.length === 1 ? formatCurrency(sale.items[0].ratePerTon) : 'Multiple'}
-                      </TableCell>
+                      {canViewRate && (
+                        <TableCell numeric className="text-muted-foreground">
+                          {sale.items.length === 1 ? formatCurrency(sale.items[0].ratePerTon) : 'Multiple'}
+                        </TableCell>
+                      )}
                       <TableCell numeric>
                         <Money value={sale.totalAmount} size="sm" weight="semibold" />
                       </TableCell>
@@ -165,7 +168,7 @@ export function SalesTable({
 
                     {isOpen && (
                       <TableRow className="bg-secondary/30 hover:bg-secondary/30">
-                        <TableCell colSpan={15} className="p-0">
+                        <TableCell colSpan={canViewRate ? 15 : 14} className="p-0">
                           <div className="p-3">
                             <Table containerClassName="rounded-lg border border-border bg-card">
                               <TableHeader>
@@ -174,7 +177,7 @@ export function SalesTable({
                                   <TableHead>Mesh</TableHead>
                                   <TableHead numeric>Bags</TableHead>
                                   <TableHead numeric>Weight (Ton)</TableHead>
-                                  <TableHead numeric>Rate / Ton</TableHead>
+                                  {canViewRate && <TableHead numeric>Rate / Ton</TableHead>}
                                   <TableHead numeric>Amount</TableHead>
                                 </TableRow>
                               </TableHeader>
@@ -185,7 +188,7 @@ export function SalesTable({
                                     <TableCell className="text-muted-foreground">{item.meshSizeName}</TableCell>
                                     <TableCell numeric>{item.bags}</TableCell>
                                     <TableCell numeric>{item.weightTon.toFixed(2)}</TableCell>
-                                    <TableCell numeric>{formatCurrency(item.ratePerTon)}</TableCell>
+                                    {canViewRate && <TableCell numeric>{formatCurrency(item.ratePerTon)}</TableCell>}
                                     <TableCell numeric className="font-medium">{formatCurrency(item.amount)}</TableCell>
                                   </TableRow>
                                 ))}
@@ -226,9 +229,8 @@ export function SalesTable({
         title={pendingDelete ? `Delete ${pendingDelete.invoiceNo}?` : ''}
         description="This removes the invoice, its items, and every linked ledger entry (its sale debit and any payments recorded against it) from the customer's account. This cannot be undone."
         confirmLabel="Delete invoice"
-        onConfirm={() => {
-          if (pendingDelete) onDelete(pendingDelete.id)
-          setPendingDelete(null)
+        onConfirm={async () => {
+          if (pendingDelete) await onDelete(pendingDelete.id)
         }}
       />
     </Section>

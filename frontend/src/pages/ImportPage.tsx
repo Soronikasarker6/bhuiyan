@@ -12,8 +12,10 @@ import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { ExportMenu } from '@/components/ExportMenu'
+import { EditImportDialog } from '@/features/imports/EditImportDialog'
 import { ImportEntryForm, type ImportSubmit } from '@/features/imports/ImportEntryForm'
 import { ImportTable } from '@/features/imports/ImportTable'
+import type { ShipmentInput } from '@/services/api/shipmentService'
 import { WastageForm, type WastageSubmit } from '@/features/imports/WastageForm'
 import { WastageTable } from '@/features/imports/WastageTable'
 import { RawMaterialStockSummary } from '@/features/imports/RawMaterialStockSummary'
@@ -23,7 +25,7 @@ import { useAppData } from '@/hooks/useAppData'
 import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
-import type { RawMaterialImport, ShipmentCycleRow, WastageEntry } from '@/types'
+import type { ImportRow, RawMaterialImport, ShipmentCycleRow, WastageEntry } from '@/types'
 import { activeProducts, bagKgOf } from '@/utils/products'
 import { buildImportRows, importTotals, todaysImports } from '@/utils/imports'
 import {
@@ -50,11 +52,12 @@ const ALL = '__all__'
  * the product filter below is how it is narrowed to one type at a time.
  */
 export default function ImportPage() {
-  const { data, loading, update } = useAppData()
+  const { data, loading, update, updateRawMaterialImport } = useAppData()
   const { print } = usePrint()
   const canCreate = usePermission(PERMISSIONS.RAW_MATERIAL_CREATE)
   const [productFilter, setProductFilter] = useState(ALL)
   const [activeTab, setActiveTab] = useState('imports')
+  const [editingImport, setEditingImport] = useState<ImportRow | null>(null)
   // §6 — an optional reporting window over the register and the stock figures.
   // Empty by default, so the page opens on the all-time position.
   const [from, setFrom] = useState('')
@@ -130,7 +133,7 @@ export default function ImportPage() {
   )
 
   const closeShipment = useCallback(
-    (row: ShipmentCycleRow) => {
+    async (row: ShipmentCycleRow) => {
       const entry = data.rawMaterialImports.find((i) => i.id === row.id)
       if (!entry || entry.status === 'closed') return
 
@@ -146,30 +149,32 @@ export default function ImportPage() {
         },
       }
 
-      update(
+      const ok = await update(
         'rawMaterialImports',
         data.rawMaterialImports.map((i) => (i.id === entry.id ? updated : i)),
       )
-      toast.success('Shipment closed', {
-        description: `Closing balance ${formatTons(row.closingTon)} Ton carries forward as the next ${row.productName} shipment's opening balance.`,
-      })
+      if (ok) {
+        toast.success('Shipment closed', {
+          description: `Closing balance ${formatTons(row.closingTon)} Ton carries forward as the next ${row.productName} shipment's opening balance.`,
+        })
+      }
     },
     [data.rawMaterialImports, update],
   )
 
   const reopenShipment = useCallback(
-    (row: ShipmentCycleRow) => {
+    async (row: ShipmentCycleRow) => {
       const entry = data.rawMaterialImports.find((i) => i.id === row.id)
       if (!entry) return
 
       const { closing: _closing, ...rest } = entry
       const updated: RawMaterialImport = { ...rest, status: 'open' }
 
-      update(
+      const ok = await update(
         'rawMaterialImports',
         data.rawMaterialImports.map((i) => (i.id === entry.id ? updated : i)),
       )
-      toast.success('Shipment reopened', { description: 'Its balance is live again, and later shipments will recompute from it.' })
+      if (ok) toast.success('Shipment reopened', { description: 'Its balance is live again, and later shipments will recompute from it.' })
     },
     [data.rawMaterialImports, update],
   )
@@ -200,7 +205,7 @@ export default function ImportPage() {
   )
 
   const addEntry = useCallback(
-    (values: ImportSubmit) => {
+    async (values: ImportSubmit) => {
       const entry: RawMaterialImport = {
         id: uid(),
         date: values.date,
@@ -215,29 +220,50 @@ export default function ImportPage() {
         createdAt: now(),
       }
 
-      update('rawMaterialImports', [entry, ...data.rawMaterialImports])
+      const ok = await update('rawMaterialImports', [entry, ...data.rawMaterialImports])
 
-      const net = values.grossWeightKg - values.tareWeightKg
-      toast.success('Import recorded', {
-        description: `Net weight ${formatNumber(net)} kg (${formatTons(net / 1000)} Ton)`,
-      })
+      if (ok) {
+        const net = values.grossWeightKg - values.tareWeightKg
+        toast.success('Import recorded', {
+          description: `Net weight ${formatNumber(net)} kg (${formatTons(net / 1000)} Ton)`,
+        })
+      }
     },
     [data.rawMaterialImports, update],
   )
 
+  const editEntry = useCallback(
+    async (values: ShipmentInput) => {
+      if (!editingImport) return
+
+      try {
+        await updateRawMaterialImport(editingImport.id, values)
+        toast.success('Import updated', {
+          description: `Net weight ${formatNumber(values.grossWeightKg - values.tareWeightKg)} kg (${formatTons((values.grossWeightKg - values.tareWeightKg) / 1000)} Ton)`,
+        })
+        setEditingImport(null)
+      } catch (error) {
+        toast.error('Could not update the import entry', {
+          description: error instanceof Error ? error.message : undefined,
+        })
+      }
+    },
+    [editingImport, updateRawMaterialImport],
+  )
+
   const deleteEntry = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const entry = data.rawMaterialImports.find((i) => i.id === id)
       if (entry?.status === 'closed') {
         toast.error('This shipment is closed', { description: 'Reopen it in Shipment History first if it needs to be removed.' })
         return
       }
 
-      update(
+      const ok = await update(
         'rawMaterialImports',
         data.rawMaterialImports.filter((entry) => entry.id !== id),
       )
-      toast.success('Entry deleted')
+      if (ok) toast.success('Entry deleted')
     },
     [data.rawMaterialImports, update],
   )
@@ -255,7 +281,7 @@ export default function ImportPage() {
   )
 
   const addWastage = useCallback(
-    (values: WastageSubmit) => {
+    async (values: WastageSubmit) => {
       const entry: WastageEntry = {
         id: uid(),
         date: values.date,
@@ -265,16 +291,16 @@ export default function ImportPage() {
         createdAt: now(),
       }
 
-      update('wastageEntries', [entry, ...data.wastageEntries])
-      toast.success('Wastage recorded', { description: `${formatNumber(values.quantityKg)} kg deducted from available stock` })
+      const ok = await update('wastageEntries', [entry, ...data.wastageEntries])
+      if (ok) toast.success('Wastage recorded', { description: `${formatNumber(values.quantityKg)} kg deducted from available stock` })
     },
     [data.wastageEntries, update],
   )
 
   const deleteWastage = useCallback(
-    (id: string) => {
-      update('wastageEntries', data.wastageEntries.filter((entry) => entry.id !== id))
-      toast.success('Entry deleted')
+    async (id: string) => {
+      const ok = await update('wastageEntries', data.wastageEntries.filter((entry) => entry.id !== id))
+      if (ok) toast.success('Entry deleted')
     },
     [data.wastageEntries, update],
   )
@@ -469,7 +495,7 @@ export default function ImportPage() {
 
         <TabsContent value="imports" className="space-y-4">
           {canCreate && <ImportEntryForm products={products} pricesForProduct={pricesForProduct} onSubmit={addEntry} />}
-          <ImportTable rows={rows} onDelete={deleteEntry} />
+          <ImportTable rows={rows} onDelete={deleteEntry} onEdit={setEditingImport} />
         </TabsContent>
 
         <TabsContent value="wastage" className="space-y-4">
@@ -488,6 +514,13 @@ export default function ImportPage() {
           <ShipmentTable rows={shipmentRows} onClose={closeShipment} onReopen={reopenShipment} />
         </TabsContent>
       </Tabs>
+
+      <EditImportDialog
+        row={editingImport}
+        products={products}
+        onOpenChange={(open) => !open && setEditingImport(null)}
+        onSubmit={editEntry}
+      />
     </div>
   )
 }

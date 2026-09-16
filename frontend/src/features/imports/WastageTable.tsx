@@ -18,7 +18,7 @@ export function WastageTable({
   onDelete,
 }: {
   rows: WastageRow[]
-  onDelete: (id: string) => void
+  onDelete: (id: string) => void | Promise<void>
 }) {
   const canDelete = usePermission(PERMISSIONS.RAW_MATERIAL_DELETE)
   const [pendingDelete, setPendingDelete] = useState<WastageRow | null>(null)
@@ -104,9 +104,8 @@ export function WastageTable({
         title="Delete this wastage entry?"
         description="This removes it from the register and adds the quantity back to available stock. This cannot be undone."
         confirmLabel="Delete entry"
-        onConfirm={() => {
-          if (pendingDelete) onDelete(pendingDelete.id)
-          setPendingDelete(null)
+        onConfirm={async () => {
+          if (pendingDelete) await onDelete(pendingDelete.id)
         }}
       />
     </Section>

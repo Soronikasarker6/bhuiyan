@@ -110,7 +110,7 @@ export default function ProductionPage() {
   )
 
   const addEntry = useCallback(
-    (values: ProductionSubmit) => {
+    async (values: ProductionSubmit) => {
       const entry: ProductionEntry = {
         id: uid(),
         date: values.date,
@@ -121,16 +121,16 @@ export default function ProductionPage() {
         createdAt: now(),
       }
 
-      update('productionEntries', [entry, ...data.productionEntries])
-      toast.success('Production recorded', { description: `${formatNumber(values.bags)} bags` })
+      const ok = await update('productionEntries', [entry, ...data.productionEntries])
+      if (ok) toast.success('Production recorded', { description: `${formatNumber(values.bags)} bags` })
     },
     [data.productionEntries, update],
   )
 
   const deleteEntry = useCallback(
-    (id: string) => {
-      update('productionEntries', data.productionEntries.filter((entry) => entry.id !== id))
-      toast.success('Entry deleted', { description: 'Stock has been recalculated.' })
+    async (id: string) => {
+      const ok = await update('productionEntries', data.productionEntries.filter((entry) => entry.id !== id))
+      if (ok) toast.success('Entry deleted', { description: 'Stock has been recalculated.' })
     },
     [data.productionEntries, update],
   )
@@ -279,9 +279,8 @@ export default function ProductionPage() {
         title="Delete this production entry?"
         description="This removes it from the register and reduces available stock. This cannot be undone."
         confirmLabel="Delete entry"
-        onConfirm={() => {
-          if (pendingDelete) deleteEntry(pendingDelete.id)
-          setPendingDelete(null)
+        onConfirm={async () => {
+          if (pendingDelete) await deleteEntry(pendingDelete.id)
         }}
       />
     </div>

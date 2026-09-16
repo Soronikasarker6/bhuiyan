@@ -72,7 +72,9 @@ export function buildSaleItemRows(
       bagKg,
       calculatedWeightTon,
       weightTon,
-      amount: saleItemAmount(weightTon, item.ratePerTon),
+      // Prefer the server-computed amount — it stays correct even when
+      // `ratePerTon` is withheld from the payload for confidentiality.
+      amount: item.amount ?? saleItemAmount(weightTon, item.ratePerTon ?? 0),
     }
   })
 }

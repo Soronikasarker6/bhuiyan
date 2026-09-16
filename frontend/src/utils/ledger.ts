@@ -7,7 +7,7 @@ import type {
   MonthKey,
   Transaction,
 } from '@/types'
-import { isWithin, monthKeyOf } from './format'
+import { formatDate, isWithin, monthKeyOf } from './format'
 
 /**
  * Cash and bank arithmetic.
@@ -168,6 +168,42 @@ export interface LedgerFilters {
   to?: string
 }
 
+export function ledgerFiltersActive(filters: LedgerFilters): boolean {
+  return Object.values(filters).some(Boolean)
+}
+
+/**
+ * A compact, printable summary of which filters narrowed a Print/Export PDF
+ * — Period, Account and Type always appear (reading "All"/"All Dates" when
+ * not narrowing anything), Category and Search only when actually set. Used
+ * so a filtered Cash & Bank Ledger PDF states plainly what it was filtered
+ * to, matching what the on-screen register shows.
+ */
+export function describeLedgerFilters(
+  filters: LedgerFilters,
+  accounts: Account[],
+): Array<{ label: string; value: string }> {
+  const account = filters.accountId ? accounts.find((a) => a.id === filters.accountId)?.name : undefined
+
+  const period = filters.from && filters.to
+    ? `${formatDate(filters.from)} – ${formatDate(filters.to)}`
+    : filters.from
+      ? `From ${formatDate(filters.from)}`
+      : filters.to
+        ? `Until ${formatDate(filters.to)}`
+        : 'All Dates'
+
+  const type = filters.direction === 'in' ? 'Cash In' : filters.direction === 'out' ? 'Cash Out' : 'All'
+
+  return [
+    { label: 'Period', value: period },
+    { label: 'Account', value: account ?? 'All' },
+    { label: 'Type', value: type },
+    ...(filters.category ? [{ label: 'Category', value: filters.category }] : []),
+    ...(filters.search ? [{ label: 'Search', value: filters.search }] : []),
+  ]
+}
+
 /**
  * The register: filtered, ordered oldest-first so the running balance means
  * something, then reversed for display.
@@ -281,6 +317,24 @@ export function monthMovement(transactions: Transaction[], key: MonthKey): Month
   const monthOut = own.filter((t) => t.direction === 'out').reduce((s, t) => s + t.amount, 0)
 
   return { monthIn, monthOut, net: monthIn - monthOut }
+}
+
+/**
+ * Cash Out transactions for a month, available for Profit & Loss's "Company
+ * Costs" picker — every Cash Out in the month, regardless of selection, so
+ * the checklist can show both checked and unchecked rows.
+ */
+export function companyCostCandidatesForMonth(transactions: Transaction[], key: MonthKey): Transaction[] {
+  return transactions.filter(
+    (t) => monthKeyOf(t.date) === key && !t.transferId && t.direction === 'out',
+  )
+}
+
+/** Profit & Loss's "Company Costs" for a month — only the Cash Out transactions selected as one. */
+export function companyCostsForMonth(transactions: Transaction[], key: MonthKey): number {
+  return companyCostCandidatesForMonth(transactions, key)
+    .filter((t) => t.isCompanyCost)
+    .reduce((sum, t) => sum + t.amount, 0)
 }
 
 /** Cash and bank movement across a year, for the reports chart. */

@@ -10,6 +10,7 @@ import { ThemeProvider } from '@ui5/webcomponents-react/ThemeProvider'
 import { TooltipProvider } from '@/components/ui/misc'
 import { AppDataProvider } from '@/hooks/useAppData'
 import { AuthProvider } from '@/hooks/useAuth'
+import { CompanyProfileProvider } from '@/hooks/useCompanyProfile'
 import { PrintProvider } from '@/features/reports/PrintSheet'
 import { AppRouter } from './router/AppRouter'
 import './styles/index.css'
@@ -58,22 +59,24 @@ createRoot(document.getElementById('root')!).render(
       <Router basename={basename}>
         <MaybeAuthProvider>
           <AppDataProvider>
-            <TooltipProvider delayDuration={200}>
-              <PrintProvider>
-                <AppRouter />
-                <Toaster
-                  position="bottom-right"
-                  richColors
-                  closeButton
-                  toastOptions={{
-                    classNames: {
-                      toast: 'font-sans text-[0.8125rem]',
-                      description: 'text-xs',
-                    },
-                  }}
-                />
-              </PrintProvider>
-            </TooltipProvider>
+            <CompanyProfileProvider>
+              <TooltipProvider delayDuration={200}>
+                <PrintProvider>
+                  <AppRouter />
+                  <Toaster
+                    position="bottom-right"
+                    richColors
+                    closeButton
+                    toastOptions={{
+                      classNames: {
+                        toast: 'font-sans text-[0.8125rem]',
+                        description: 'text-xs',
+                      },
+                    }}
+                  />
+                </PrintProvider>
+              </TooltipProvider>
+            </CompanyProfileProvider>
           </AppDataProvider>
         </MaybeAuthProvider>
       </Router>

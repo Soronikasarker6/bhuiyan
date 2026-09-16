@@ -442,7 +442,16 @@ class InventoryService
         });
     }
 
-    /** Edit a shipment's own fields. Blocked while closed — reopen it first. */
+    /**
+     * Edit a shipment's own fields. Blocked while closed — reopen it first.
+     *
+     * Also blocked if the edit would take the product's current raw stock
+     * negative — e.g. lowering gross/tare weight on a shipment whose tonnage
+     * has already been consumed by production/wastage recorded since. Same
+     * guard as `consumeStock()`, just re-checked after the edit rather than
+     * before a new entry, since the edit itself is what could create the
+     * shortfall here.
+     */
     public function updateShipment(int $shipmentId, array $attributes): RawMaterialImport
     {
         return DB::transaction(function () use ($shipmentId, $attributes) {
@@ -452,11 +461,21 @@ class InventoryService
                 throw new BusinessRuleException('This shipment is closed. Reopen it first, then edit.');
             }
 
+            $productId = $shipment->product_id;
             $shipment->update($attributes);
 
             $receivedTon = $shipment->netWeightTon();
             InventoryTransaction::where('source_type', 'shipment')->where('source_id', $shipment->id)
                 ->update(['quantity_ton' => $receivedTon]);
+
+            $availableAfterEdit = $this->currentRawStock($productId);
+            if ($availableAfterEdit < 0) {
+                $product = Product::find($productId);
+                throw new InsufficientStockException(
+                    "This edit would take {$product?->name} raw stock negative by ".round(abs($availableAfterEdit), 3)
+                    .' Ton — production or wastage already recorded against this shipment exceeds the new weight.'
+                );
+            }
 
             return $shipment->fresh();
         });

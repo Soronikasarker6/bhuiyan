@@ -42,9 +42,9 @@ export default function CustomersPage() {
     return { totalDue, totalAdvance }
   }, [totalsByCustomer])
 
-  const addOrUpdate = (values: CustomerSubmit) => {
+  const addOrUpdate = async (values: CustomerSubmit) => {
     if (editing) {
-      update(
+      const ok = await update(
         'customers',
         data.customers.map((c) =>
           c.id === editing.id
@@ -59,7 +59,7 @@ export default function CustomersPage() {
             : c,
         ),
       )
-      toast.success('Customer updated')
+      if (ok) toast.success('Customer updated')
       return
     }
 
@@ -93,13 +93,13 @@ export default function CustomersPage() {
       patch.customerTransactions = [row, ...data.customerTransactions]
     }
 
-    updateMany(patch)
-    toast.success(`${customer.name} added`)
+    const ok = await updateMany(patch)
+    if (ok) toast.success(`${customer.name} added`)
   }
 
-  const removeCustomer = (customer: Customer) => {
-    update('customers', data.customers.filter((c) => c.id !== customer.id))
-    toast.success(`${customer.name} removed`)
+  const removeCustomer = async (customer: Customer) => {
+    const ok = await update('customers', data.customers.filter((c) => c.id !== customer.id))
+    if (ok) toast.success(`${customer.name} removed`)
   }
 
   usePageHeader({

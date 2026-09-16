@@ -77,7 +77,7 @@ export function WastageForm({
   availableTon: (productId: string) => number
   /** Whether a date, for a product, falls inside an already-closed shipment cycle. */
   cycleClosed: (productId: string, date: string) => boolean
-  onSubmit: (values: WastageSubmit) => void
+  onSubmit: (values: WastageSubmit) => void | Promise<void>
 }) {
   const productName = (productId: string) => products.find((p) => p.id === productId)?.name ?? 'this product'
   const schema = buildSchema(availableTon, cycleClosed, productName)
@@ -108,8 +108,8 @@ export function WastageForm({
 
   const productId = watch('productId')
 
-  const submit = handleSubmit((values) => {
-    onSubmit(values as WastageSubmit)
+  const submit = handleSubmit(async (values) => {
+    await onSubmit(values as WastageSubmit)
     reset({ date: values.date, productId: values.productId, quantityKg: '' as unknown as number, reason: '' })
   })
 

@@ -44,6 +44,14 @@ export interface Transaction {
    */
   customerId?: ID
   customerTransactionId?: ID
+  /**
+   * Whether this Cash Out transaction is counted as a "Company Cost" in
+   * Profit & Loss. Meaningless (always false) on a money-in row — direction
+   * must be 'out' for this to ever be true. Selected/cleared from the
+   * Profit & Loss page, persisted here rather than recomputed, so the
+   * business's own judgement of what counts as a cost survives a refresh.
+   */
+  isCompanyCost?: boolean
   createdAt: string
 }
 

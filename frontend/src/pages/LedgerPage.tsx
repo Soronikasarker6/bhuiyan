@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDownLeft, ArrowUpRight, Landmark, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
@@ -22,8 +22,11 @@ import {
   accountBalances,
   buildLedgerRows,
   buildTransferLegs,
+  describeLedgerFilters,
+  ledgerFiltersActive,
   summariseRows,
   totalBalances,
+  type LedgerFilters,
 } from '@/utils/ledger'
 import { customerBalance, transactionsForCustomer } from '@/utils/customerLedger'
 import { downloadTextFile } from '@/utils/download'
@@ -40,6 +43,10 @@ export default function LedgerPage() {
   const { data, loading, update, recordPayment } = useAppData()
   const { print } = usePrint()
   const canCreate = usePermission(PERMISSIONS.LEDGER_CREATE)
+
+  // Owned here, not inside LedgerTable, so Print/Export can build a PDF from
+  // the exact same filtered rows the table is showing (§6/§7 of the brief).
+  const [filters, setFilters] = useState<LedgerFilters>({})
 
   const balances = useMemo(
     () => accountBalances(data.accounts, data.transactions),
@@ -183,54 +190,77 @@ export default function LedgerPage() {
 
   // ---------------------------------------------------------------- printing
 
-  const buildRegisterPayload = useCallback((): PrintPayload => {
-    const rows = buildLedgerRows(data.transactions, data.accounts)
-    const summary = summariseRows(rows)
+  /**
+   * Built from whatever filters are passed in, never from the full,
+   * unfiltered register — the same `buildLedgerRows` call the on-screen table
+   * makes, so a filtered PDF's rows and totals can never drift from what's
+   * on screen (§6). With no filters active this is exactly the previous,
+   * unfiltered behaviour (§6, "preserve the existing default behavior").
+   */
+  const buildRegisterPayload = useCallback(
+    (current: LedgerFilters): PrintPayload => {
+      const rows = buildLedgerRows(data.transactions, data.accounts, current)
+      const summary = summariseRows(rows)
+      const active = ledgerFiltersActive(current)
 
-    return {
-      title: 'Cash & Bank Ledger',
-      subtitle: `${rows.length} entries`,
-      meta: [
-        { label: 'Cash in hand', value: formatCurrency(totals.cash) },
-        { label: 'Total in banks', value: formatCurrency(totals.bank) },
-        { label: 'Combined', value: formatCurrency(totals.combined) },
-      ],
-      columns: [
-        { key: 'date', label: 'Date' },
-        { key: 'details', label: 'Details' },
-        { key: 'account', label: 'Account' },
-        { key: 'category', label: 'Category' },
-        { key: 'in', label: 'In', align: 'right' },
-        { key: 'out', label: 'Out', align: 'right' },
-        { key: 'balance', label: 'Balance', align: 'right' },
-      ],
-      // Oldest first on paper, so the running balance builds down the page.
-      rows: [...rows].reverse().map((row) => ({
-        date: formatDate(row.date),
-        details: row.details || '—',
-        account: row.accountName,
-        category: row.category,
-        in: row.direction === 'in' ? formatCurrency(row.amount) : '',
-        out: row.direction === 'out' ? formatCurrency(row.amount) : '',
-        balance: formatCurrency(row.balance),
-      })),
-      totals: {
-        date: 'Total',
-        in: formatCurrency(summary.totalIn),
-        out: formatCurrency(summary.totalOut),
-        balance: formatCurrency(totals.combined),
-      },
-      footnote:
-        'Transfers appear as two linked entries — one out, one in — and do not change the combined cash and bank total.',
-    }
-  }, [data.transactions, data.accounts, totals])
+      // A running balance summed across accounts describes nothing (see
+      // utils/ledger.ts) — so the printed total only carries a Balance figure
+      // when the filter narrows to one account, taken from its most recent
+      // visible entry (rows is newest-first here, before the print reversal).
+      const balanceTotal = current.accountId && rows.length > 0 ? formatCurrency(rows[0]!.balance) : ''
 
-  const printRegister = useCallback(() => print(buildRegisterPayload()), [buildRegisterPayload, print])
+      return {
+        title: 'Cash & Bank Ledger',
+        subtitle: `${rows.length} ${rows.length === 1 ? 'entry' : 'entries'}${active ? ' · filtered' : ''}`,
+        meta: active
+          ? describeLedgerFilters(current, data.accounts)
+          : [
+              { label: 'Cash in hand', value: formatCurrency(totals.cash) },
+              { label: 'Total in banks', value: formatCurrency(totals.bank) },
+              { label: 'Combined', value: formatCurrency(totals.combined) },
+            ],
+        columns: [
+          { key: 'date', label: 'Date' },
+          { key: 'details', label: 'Details' },
+          { key: 'account', label: 'Account' },
+          { key: 'category', label: 'Category' },
+          { key: 'in', label: 'In', align: 'right' },
+          { key: 'out', label: 'Out', align: 'right' },
+          { key: 'balance', label: 'Balance', align: 'right' },
+        ],
+        // Oldest first on paper, so the running balance builds down the page.
+        rows: [...rows].reverse().map((row) => ({
+          date: formatDate(row.date),
+          details: row.details || '—',
+          account: row.accountName,
+          category: row.category,
+          in: row.direction === 'in' ? formatCurrency(row.amount) : '',
+          out: row.direction === 'out' ? formatCurrency(row.amount) : '',
+          balance: formatCurrency(row.balance),
+        })),
+        totals: {
+          date: 'Total',
+          in: formatCurrency(summary.totalIn),
+          out: formatCurrency(summary.totalOut),
+          balance: balanceTotal || (active ? '' : formatCurrency(totals.combined)),
+        },
+        footnote:
+          'Transfers appear as two linked entries — one out, one in — and do not change the combined cash and bank total.',
+      }
+    },
+    [data.transactions, data.accounts, totals],
+  )
+
+  const printRegister = useCallback(() => print(buildRegisterPayload(filters)), [buildRegisterPayload, filters, print])
 
   const exportRegisterCsv = useCallback(() => {
-    downloadTextFile(`cash-bank-ledger-${todayISO()}.csv`, printPayloadToCsv(buildRegisterPayload()), 'text/csv;charset=utf-8;')
+    downloadTextFile(
+      `cash-bank-ledger-${todayISO()}.csv`,
+      printPayloadToCsv(buildRegisterPayload(filters)),
+      'text/csv;charset=utf-8;',
+    )
     toast.success('Register exported', { description: 'Saved as CSV.' })
-  }, [buildRegisterPayload])
+  }, [buildRegisterPayload, filters])
 
   usePageHeader({
     title: 'Cash & Bank Ledger',
@@ -314,32 +344,33 @@ export default function LedgerPage() {
         />
       </StatGrid>
 
-      <div className="grid gap-4 xl:grid-cols-[27rem_minmax(0,1fr)]">
-        <div className="space-y-4">
-          {canCreate && (
-            <TransactionForm
-              accounts={data.accounts}
-              categories={data.categories}
-              customers={data.customers}
-              balanceOf={balanceOfCustomer}
-              transactions={data.transactions}
-              onSubmit={addTransaction}
-            />
-          )}
+      <div className="grid gap-4 xl:grid-cols-2">
+        {canCreate && (
+          <TransactionForm
+            accounts={data.accounts}
+            categories={data.categories}
+            customers={data.customers}
+            balanceOf={balanceOfCustomer}
+            transactions={data.transactions}
+            onSubmit={addTransaction}
+          />
+        )}
 
-          <Section title="Account balances" description="Calculated from every entry">
-            <BalanceSummary balances={balances} totals={totals} />
-          </Section>
-        </div>
-
-        <LedgerTable
-          transactions={data.transactions}
-          accounts={data.accounts}
-          categories={data.categories}
-          customers={data.customers}
-          onDelete={deleteTransactions}
-        />
+        <Section title="Account balances" description="Calculated from every entry">
+          <BalanceSummary balances={balances} totals={totals} />
+        </Section>
       </div>
+
+      <LedgerTable
+        transactions={data.transactions}
+        accounts={data.accounts}
+        categories={data.categories}
+        customers={data.customers}
+        onDelete={deleteTransactions}
+        filters={filters}
+        onFiltersChange={setFilters}
+        className="mt-4"
+      />
     </div>
   )
 }

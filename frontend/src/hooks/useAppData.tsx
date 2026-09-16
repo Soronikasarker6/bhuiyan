@@ -17,7 +17,9 @@ import { defaultCashAccountId } from '@/utils/ledger'
 import { appDataService } from '@/services/api/appDataService'
 import { backupService } from '@/services/api/backupService'
 import { customerService } from '@/services/api/customerService'
+import { ledgerService } from '@/services/api/ledgerService'
 import { salesService } from '@/services/api/salesService'
+import { shipmentService, type ShipmentInput } from '@/services/api/shipmentService'
 import { syncSlice } from '@/services/api/sync'
 import { ApiError, onTokenChange } from '@/services/api/httpClient'
 
@@ -84,9 +86,17 @@ interface AppDataValue {
   loading: boolean
   /** False when the browser refuses to persist (local mode) — a private window, say. */
   persistent: boolean
-  update: <K extends DataSlice>(slice: K, value: AppData[K]) => void
+  /**
+   * Resolves once the change has been persisted (and, on the API build, the
+   * refetch after it) — awaitable by a caller that wants a real busy state.
+   * Resolves `false` (after already toasting its own "Could not save"
+   * error) rather than rejecting on failure, so a caller that ignores the
+   * result behaves exactly as before; a caller that shows its own success
+   * toast should check it first so it never claims success on a failed save.
+   */
+  update: <K extends DataSlice>(slice: K, value: AppData[K]) => Promise<boolean>
   /** Several slices at once, as one atomic screen update. */
-  updateMany: (patch: Partial<AppData>) => void
+  updateMany: (patch: Partial<AppData>) => Promise<boolean>
   reset: () => void
   clearTransactionalData: () => void
   exportBackup: () => string | Promise<string>
@@ -96,6 +106,10 @@ interface AppDataValue {
   /** Edit a Cash In already recorded — never the customer it belongs to, only when/how much/how. */
   updatePayment: (customerTransactionId: ID, input: PaymentUpdateInput) => Promise<void>
   deletePayment: (customerTransactionId: ID) => Promise<void>
+  /** Toggles whether one Cash Out transaction counts as a Profit & Loss "Company Cost". */
+  setCompanyCost: (transactionId: ID, isCompanyCost: boolean) => Promise<void>
+  /** Edit a raw material import already recorded — recalculates net weight/ton and re-validates stock server-side. */
+  updateRawMaterialImport: (id: ID, input: ShipmentInput) => Promise<void>
 }
 
 const AppDataContext = createContext<AppDataValue | null>(null)
@@ -153,16 +167,20 @@ function useLocalAppData(): AppDataValue {
     }
   }, [])
 
-  const update = useCallback(<K extends DataSlice>(slice: K, value: AppData[K]) => {
+  const update = useCallback(async <K extends DataSlice>(slice: K, value: AppData[K]) => {
     setData((current) => ({ ...current, [slice]: value }))
 
+    // Local mode always applies the change to on-screen state regardless of
+    // whether the browser could persist it — "not stored" is a storage
+    // warning, not a failed operation, so this still resolves `true`.
     const outcome = repository.save(slice, value)
     if (!outcome.ok) {
       toast.error('Saved on screen, but not stored', { description: outcome.message, duration: 9000 })
     }
+    return true
   }, [])
 
-  const updateMany = useCallback((patch: Partial<AppData>) => {
+  const updateMany = useCallback(async (patch: Partial<AppData>) => {
     setData((current) => {
       const next = { ...current, ...patch }
 
@@ -176,6 +194,7 @@ function useLocalAppData(): AppDataValue {
 
       return next
     })
+    return true
   }, [])
 
   const reset = useCallback(() => {
@@ -418,6 +437,43 @@ function useLocalAppData(): AppDataValue {
     [updateMany],
   )
 
+  const setCompanyCost = useCallback(
+    async (transactionId: ID, isCompanyCost: boolean) => {
+      const current = dataRef.current
+      update(
+        'transactions',
+        current.transactions.map((t) => (t.id === transactionId ? { ...t, isCompanyCost } : t)),
+      )
+    },
+    [update],
+  )
+
+  const updateRawMaterialImport = useCallback(
+    async (id: ID, input: ShipmentInput) => {
+      const current = dataRef.current
+      update(
+        'rawMaterialImports',
+        current.rawMaterialImports.map((entry) =>
+          entry.id === id
+            ? {
+                ...entry,
+                date: input.date,
+                productId: input.productId,
+                shipName: input.shipName?.trim() || undefined,
+                serialNo: input.serialNo?.trim() || undefined,
+                truckNo: input.truckNo?.trim() || undefined,
+                grossWeightKg: input.grossWeightKg,
+                tareWeightKg: input.tareWeightKg,
+                pricePerTon: input.pricePerTon || undefined,
+                notes: input.notes?.trim() || undefined,
+              }
+            : entry,
+        ),
+      )
+    },
+    [update],
+  )
+
   return useMemo<AppDataValue>(
     () => ({
       data,
@@ -433,6 +489,8 @@ function useLocalAppData(): AppDataValue {
       recordPayment,
       updatePayment,
       deletePayment,
+      setCompanyCost,
+      updateRawMaterialImport,
     }),
     [
       data,
@@ -446,6 +504,8 @@ function useLocalAppData(): AppDataValue {
       recordPayment,
       updatePayment,
       deletePayment,
+      setCompanyCost,
+      updateRawMaterialImport,
     ],
   )
 }
@@ -505,29 +565,28 @@ function useApiAppData(): AppDataValue {
   }, [refresh])
 
   const update = useCallback(
-    <K extends DataSlice>(slice: K, value: AppData[K]) => {
+    <K extends DataSlice>(slice: K, value: AppData[K]) =>
       syncSlice(slice, dataRef.current[slice], value, dataRef.current)
-        .then(refresh)
+        .then(() => refresh().then(() => true))
         .catch((error) => {
           toast.error('Could not save', { description: errorMessage(error) })
-          refresh()
-        })
-    },
+          return refresh().then(() => false)
+        }),
     [refresh],
   )
 
   const updateMany = useCallback(
     (patch: Partial<AppData>) => {
       const current = dataRef.current
-      ;(async () => {
+      return (async () => {
         for (const slice of Object.keys(patch) as DataSlice[]) {
           await syncSlice(slice, current[slice], patch[slice]!, current)
         }
       })()
-        .then(refresh)
+        .then(() => refresh().then(() => true))
         .catch((error) => {
           toast.error('Could not save', { description: errorMessage(error) })
-          refresh()
+          return refresh().then(() => false)
         })
     },
     [refresh],
@@ -620,6 +679,30 @@ function useApiAppData(): AppDataValue {
     [refresh],
   )
 
+  const setCompanyCost = useCallback(
+    async (transactionId: ID, isCompanyCost: boolean) => {
+      try {
+        await ledgerService.setCompanyCost(transactionId, isCompanyCost)
+        await refresh()
+      } catch (error) {
+        throw new Error(errorMessage(error) ?? 'Could not update the company cost selection.')
+      }
+    },
+    [refresh],
+  )
+
+  const updateRawMaterialImport = useCallback(
+    async (id: ID, input: ShipmentInput) => {
+      try {
+        await shipmentService.update(id, input)
+        await refresh()
+      } catch (error) {
+        throw new Error(errorMessage(error) ?? 'Could not update the import entry.')
+      }
+    },
+    [refresh],
+  )
+
   return useMemo<AppDataValue>(
     () => ({
       data,
@@ -635,6 +718,8 @@ function useApiAppData(): AppDataValue {
       recordPayment,
       updatePayment,
       deletePayment,
+      setCompanyCost,
+      updateRawMaterialImport,
     }),
     [
       data,
@@ -648,6 +733,8 @@ function useApiAppData(): AppDataValue {
       recordPayment,
       updatePayment,
       deletePayment,
+      setCompanyCost,
+      updateRawMaterialImport,
     ],
   )
 }

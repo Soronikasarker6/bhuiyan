@@ -11,7 +11,7 @@ use Illuminate\Support\Collection;
  * 10,000kg but selling 3,000kg only counts 3,000kg's cost.
  *
  *   grossProfit = totalSales - costOfGoodsSold
- *   netProfit   = grossProfit - totalExpenses (this month's Cash & Bank "out", transfers excluded)
+ *   netProfit   = grossProfit - totalExpenses (this month's Cash Out transactions selected as a company cost)
  */
 class ProfitService
 {
@@ -45,7 +45,7 @@ class ProfitService
         }
 
         $grossProfit = $totalSales - $costOfGoodsSold;
-        $totalExpenses = $this->ledger->monthMovement($monthKey)['month_out'];
+        $totalExpenses = $this->ledger->companyCostsForMonth($monthKey);
         $netProfit = $grossProfit - $totalExpenses;
 
         return [
