@@ -20,6 +20,7 @@ import { PERMISSIONS } from '@/constants/permissions'
 import type { SaleSummary } from '@/types'
 import { activeProducts, activeMeshSizes } from '@/utils/products'
 import { buildSaleSummaries, filterSaleSummaries, nextInvoiceNo } from '@/utils/sales'
+import { customerDisplayLabel } from '@/utils/customerLedger'
 import { availableBags as availableBagsFor } from '@/utils/productionStock'
 import { downloadTextFile } from '@/utils/download'
 import {
@@ -274,7 +275,7 @@ export default function SalesPage() {
               <SelectTrigger><SelectValue placeholder="All customers" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>All customers</SelectItem>
-                {data.customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                {data.customers.map((c) => <SelectItem key={c.id} value={c.id}>{customerDisplayLabel(c)}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

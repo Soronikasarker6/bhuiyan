@@ -18,6 +18,7 @@ import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import type { Transaction } from '@/types'
+import { cn } from '@/utils/cn'
 import {
   accountBalances,
   buildLedgerRows,
