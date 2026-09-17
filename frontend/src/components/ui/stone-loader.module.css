@@ -1,0 +1,41 @@
+/**
+ * Three gravel chips tumbling in sequence — the busy state for a business
+ * built on crushed stone (mesh sizes, tons, bags), instead of a generic
+ * three-dot spinner.
+ */
+.stone {
+  transform-origin: 50% 100%;
+  animation: tumble 1000ms ease-in-out infinite;
+}
+.stone:nth-child(1) {
+  animation-delay: 0ms;
+}
+.stone:nth-child(2) {
+  animation-delay: 140ms;
+}
+.stone:nth-child(3) {
+  animation-delay: 280ms;
+}
+
+@keyframes tumble {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 0.5;
+  }
+  35% {
+    transform: translateY(-45%) rotate(35deg);
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(0) rotate(-8deg);
+    opacity: 0.75;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stone {
+    animation: none;
+    opacity: 0.85;
+  }
+}

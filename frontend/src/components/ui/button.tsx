@@ -4,6 +4,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { Button as UI5Button } from '@ui5/webcomponents-react/Button'
 import type { ButtonPropTypes } from '@ui5/webcomponents-react/Button'
 import { cn } from '@/utils/cn'
+import { StoneLoader } from '@/components/ui/stone-loader'
 import styles from './button.module.css'
 
 /**
@@ -113,8 +114,10 @@ const Button = React.forwardRef<HTMLElement, ButtonProps>(function Button(
       ref={ref as any}
       className={cn(SIZE_CLASS[size ?? 'default'], className)}
       design={DESIGN[variant ?? 'default']}
-      disabled={disabled}
-      loading={loading}
+      disabled={disabled || loading}
+      // UI5's own `loading` renders its native three-dot busy indicator —
+      // we render our own stone loader below instead, so this never gets set.
+      aria-busy={loading || undefined}
       type={type === 'submit' ? 'Submit' : type === 'reset' ? 'Reset' : 'Button'}
       accessibleName={ariaLabel}
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -132,8 +135,13 @@ const Button = React.forwardRef<HTMLElement, ButtonProps>(function Button(
         unconstrained lucide icon renders at its 24px default, oversized for
         a button this compact.
       */}
-      <span className="inline-flex items-center justify-center gap-1.5 [&_svg]:size-3.5 [&_svg]:shrink-0">
-        {children}
+      <span className="relative inline-flex items-center justify-center gap-1.5 [&_svg]:size-3.5 [&_svg]:shrink-0">
+        <span className={cn('inline-flex items-center gap-1.5', loading && 'invisible')}>{children}</span>
+        {loading && (
+          <span className="absolute inset-0 flex items-center justify-center">
+            <StoneLoader />
+          </span>
+        )}
       </span>
     </UI5Button>
   )
