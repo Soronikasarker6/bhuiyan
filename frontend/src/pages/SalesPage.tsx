@@ -175,34 +175,32 @@ export default function SalesPage() {
   )
 
   const buildInvoicePayload = useCallback(
-    (sale: SaleSummary): PrintPayload => ({
-      title: `Invoice ${sale.invoiceNo}`,
-      subtitle: `${sale.customerName}${sale.truckNo ? ` · Truck ${sale.truckNo}` : ''}`,
-      meta: [
-        { label: 'Date', value: formatDate(sale.date) },
-        { label: 'Paid', value: formatCurrency(sale.amountPaid) },
-        { label: 'Due', value: formatCurrency(sale.amountDue) },
-      ],
-      // Rate/Ton is confidential business information and never appears on
-      // the customer-facing invoice, even when an Admin prints it.
-      columns: [
-        { key: 'product', label: 'Product' },
-        { key: 'mesh', label: 'Mesh' },
-        { key: 'bags', label: 'Bags', align: 'right' },
-        { key: 'weight', label: 'Weight (Ton)', align: 'right' },
-        { key: 'amount', label: 'Amount', align: 'right' },
-      ],
-      rows: sale.items.map((item) => ({
-        product: item.productName,
-        mesh: item.meshSizeName,
-        bags: formatNumber(item.bags),
-        weight: formatTons(item.weightTon),
-        amount: formatCurrency(item.amount),
-      })),
-      totals: { product: 'Total', amount: formatCurrency(sale.totalAmount) },
-      footnote: sale.notes,
-    }),
-    [],
+    (sale: SaleSummary): PrintPayload => {
+      const customer = data.customers.find((c) => c.id === sale.customerId)
+
+      return {
+        title: `Invoice ${sale.invoiceNo}`,
+        subtitle: `${customer ? customerDisplayLabel(customer) : sale.customerName}${sale.truckNo ? ` · Truck ${sale.truckNo}` : ''}`,
+        meta: [{ label: 'Date', value: formatDate(sale.date) }],
+        // Rate/Ton and Amount are confidential business information and
+        // never appear on the customer-facing invoice, even when an Admin
+        // prints it — this is a dispatch record, not a priced bill.
+        columns: [
+          { key: 'product', label: 'Product' },
+          { key: 'mesh', label: 'Mesh' },
+          { key: 'bags', label: 'Bags', align: 'right' },
+          { key: 'weight', label: 'Weight (Ton)', align: 'right' },
+        ],
+        rows: sale.items.map((item) => ({
+          product: item.productName,
+          mesh: item.meshSizeName,
+          bags: formatNumber(item.bags),
+          weight: formatTons(item.weightTon),
+        })),
+        footnote: sale.notes,
+      }
+    },
+    [data.customers],
   )
 
   const printInvoice = useCallback((sale: SaleSummary) => print(buildInvoicePayload(sale)), [buildInvoicePayload, print])
