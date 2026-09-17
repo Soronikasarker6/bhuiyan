@@ -22,7 +22,7 @@ class Transaction extends Model
     protected $fillable = [
         'date', 'details', 'account_id', 'direction', 'category_id',
         'category_name', 'amount', 'transfer_id', 'reference_sale_id',
-        'customer_id', 'customer_transaction_id', 'is_company_cost',
+        'customer_id', 'customer_transaction_id',
     ];
 
     protected function casts(): array
@@ -30,7 +30,6 @@ class Transaction extends Model
         return [
             'date' => 'date:Y-m-d',
             'amount' => 'float',
-            'is_company_cost' => 'boolean',
         ];
     }
 

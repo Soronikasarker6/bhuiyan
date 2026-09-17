@@ -43,9 +43,9 @@ export const ledgerService = {
   removeTransaction(id: ID): Promise<void> {
     return http.delete(`/transactions/${id}`)
   },
-  /** Toggles whether one Cash Out transaction counts as a Profit & Loss "Company Cost". */
-  setCompanyCost(id: ID, isCompanyCost: boolean): Promise<unknown> {
-    return http.patch(`/transactions/${id}/company-cost`, { is_company_cost: isCompanyCost })
+  /** Selects or clears one Cash Out category as a Profit & Loss "Company Cost" for one month. */
+  setCompanyCostSelection(monthKey: string, categoryId: ID, selected: boolean): Promise<unknown> {
+    return http.patch('/company-cost-selections', { month_key: monthKey, category_id: categoryId, selected })
   },
   async closeMonth(monthKey: string): Promise<LedgerClosing> {
     return mapEntity<LedgerClosing>(await http.post('/ledger-closings', { month_key: monthKey }))

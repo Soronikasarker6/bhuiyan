@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\BusinessRuleException;
 use App\Models\Account;
 use App\Models\Category;
+use App\Models\CompanyCostSelection;
 use App\Models\CustomerTransaction;
 use App\Models\LedgerClosing;
 use App\Models\LedgerClosingBalance;
@@ -90,20 +91,70 @@ class LedgerService
     }
 
     /**
-     * Profit & Loss's "Company Costs" for one month: the Cash Out transactions
-     * someone has explicitly marked as a company cost, not the full month's
-     * cash-out movement. Customer payments are always direction='in' so they
-     * can never appear here regardless of selection.
+     * Every category eligible to be a Profit & Loss "Company Cost"
+     * (direction='out', not a transfer/financing/personal category someone
+     * excluded in Settings), each with its own Cash Out total for the month
+     * and whether it is currently selected. Included even at ৳0 so the
+     * picker can show every eligible category, checked or not.
      */
-    public function companyCostsForMonth(string $monthKey): float
+    public function companyCostCategoryTotals(string $monthKey): Collection
     {
         [$year, $month] = explode('-', $monthKey);
 
-        return (float) Transaction::whereYear('date', $year)->whereMonth('date', $month)
-            ->whereNull('transfer_id')
-            ->where('direction', 'out')
-            ->where('is_company_cost', true)
+        $selectedIds = CompanyCostSelection::where('month_key', $monthKey)->pluck('category_id')->all();
+
+        return Category::where('direction', 'out')
+            ->where('expense_type', 'company_expense')
+            ->orderBy('name')
+            ->get()
+            ->map(function (Category $category) use ($year, $month, $selectedIds) {
+                $amount = (float) Transaction::where('category_id', $category->id)
+                    ->whereYear('date', $year)->whereMonth('date', $month)
+                    ->whereNull('transfer_id')
+                    ->where('direction', 'out')
+                    ->sum('amount');
+
+                return [
+                    'category_id' => $category->id,
+                    'name' => $category->name,
+                    'amount' => $amount,
+                    'selected' => in_array($category->id, $selectedIds, true),
+                ];
+            });
+    }
+
+    /**
+     * Profit & Loss's "Company Costs" for one month: the sum of every
+     * eligible category someone has selected, not the full month's cash-out
+     * movement. Customer payments are always direction='in' so they can
+     * never appear here regardless of selection.
+     */
+    public function companyCostsForMonth(string $monthKey): float
+    {
+        return $this->companyCostCategoryTotals($monthKey)
+            ->where('selected', true)
             ->sum('amount');
+    }
+
+    /**
+     * Selects or clears one category as a Company Cost for one month.
+     * Rejects anything that isn't an eligible Cash Out category — a Cash In
+     * category, or one someone marked Excluded (a transfer, a loan
+     * repayment, a personal withdrawal) — the same way the old per-
+     * transaction toggle only ever accepted direction='out' rows.
+     */
+    public function setCompanyCostSelection(string $monthKey, int $categoryId, bool $selected): void
+    {
+        $category = Category::findOrFail($categoryId);
+        if ($category->direction !== 'out' || $category->expense_type !== 'company_expense') {
+            throw new BusinessRuleException('Only an eligible Cash Out expense category can be a company cost.');
+        }
+
+        if ($selected) {
+            CompanyCostSelection::firstOrCreate(['month_key' => $monthKey, 'category_id' => $categoryId]);
+        } else {
+            CompanyCostSelection::where('month_key', $monthKey)->where('category_id', $categoryId)->delete();
+        }
     }
 
     /** Two linked rows sharing transfer_id, written atomically. */

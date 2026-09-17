@@ -34,6 +34,7 @@ const KEYS = {
   accounts: 'accounts',
   categories: 'categories',
   transactions: 'transactions',
+  companyCostSelections: 'company-cost-selections',
   wastageEntries: 'wastage-entries',
   ledgerClosings: 'ledger-closings',
   seeded: 'seeded',
@@ -74,6 +75,7 @@ export const repository = {
       accounts: storageService.get(KEYS.accounts) ?? fallback.accounts,
       categories: storageService.get(KEYS.categories) ?? fallback.categories,
       transactions: storageService.get(KEYS.transactions) ?? [],
+      companyCostSelections: storageService.get(KEYS.companyCostSelections) ?? [],
       wastageEntries: storageService.get(KEYS.wastageEntries) ?? [],
       ledgerClosings: storageService.get(KEYS.ledgerClosings) ?? [],
       seeded: true,
@@ -109,6 +111,7 @@ export const repository = {
       saleItems: [],
       customerTransactions: [],
       transactions: [],
+      companyCostSelections: [],
       ledgerClosings: [],
       wastageEntries: [],
     }

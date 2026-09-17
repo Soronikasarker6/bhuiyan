@@ -150,8 +150,19 @@ export default function DashboardPage() {
       meshSizes: data.meshSizes,
       rawMaterialImports: data.rawMaterialImports,
       transactions: data.transactions,
+      categories: data.categories,
+      companyCostSelections: data.companyCostSelections,
     }),
-    [data.sales, data.saleItems, data.products, data.meshSizes, data.rawMaterialImports, data.transactions],
+    [
+      data.sales,
+      data.saleItems,
+      data.products,
+      data.meshSizes,
+      data.rawMaterialImports,
+      data.transactions,
+      data.categories,
+      data.companyCostSelections,
+    ],
   )
 
   const salesTrend = useMemo(() => {
@@ -198,16 +209,8 @@ export default function DashboardPage() {
   )
 
   const thisMonthProfit = useMemo(
-    () =>
-      monthlyProfit(new Date().getFullYear(), new Date().getMonth(), {
-        sales: data.sales,
-        saleItems: data.saleItems,
-        products: data.products,
-        meshSizes: data.meshSizes,
-        rawMaterialImports: data.rawMaterialImports,
-        transactions: data.transactions,
-      }),
-    [data.sales, data.saleItems, data.products, data.meshSizes, data.rawMaterialImports, data.transactions],
+    () => monthlyProfit(new Date().getFullYear(), new Date().getMonth(), profitInputs),
+    [profitInputs],
   )
 
   const productWiseStock = useMemo(() => {

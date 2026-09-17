@@ -1,4 +1,14 @@
-import type { MeshSize, MonthlyProfit, Product, RawMaterialImport, Sale, SaleItem, Transaction } from '@/types'
+import type {
+  Category,
+  CompanyCostSelection,
+  MeshSize,
+  MonthlyProfit,
+  Product,
+  RawMaterialImport,
+  Sale,
+  SaleItem,
+  Transaction,
+} from '@/types'
 import { buildSaleItemRows, itemsForSale } from './sales'
 import { averageCostPerTon } from './rawMaterial'
 import { companyCostsForMonth } from './ledger'
@@ -9,9 +19,9 @@ import { makeMonthKey, MONTHS } from './format'
  *
  *     Cost of Goods Sold = Σ per product: (tons sold this month) × average cost/ton
  *     Gross Profit       = Total Sales − Cost of Goods Sold
- *     Total Expenses     = the Cash Out transactions this month someone has
- *                          explicitly selected as a company cost — not the
- *                          full month's cash-out movement (`companyCostsForMonth`)
+ *     Total Expenses     = the Cash Out expense categories this month someone
+ *                          has explicitly selected as a company cost — not
+ *                          the full month's cash-out movement (`companyCostsForMonth`)
  *     Net Profit         = Gross Profit − Total Expenses
  *
  * "Cost of goods sold" is deliberately not "raw material bought this month" —
@@ -30,6 +40,8 @@ export function monthlyProfit(
     meshSizes: MeshSize[]
     rawMaterialImports: RawMaterialImport[]
     transactions: Transaction[]
+    categories: Category[]
+    companyCostSelections: CompanyCostSelection[]
   },
 ): MonthlyProfit {
   const monthKey = makeMonthKey(year, monthIndex)
@@ -51,7 +63,7 @@ export function monthlyProfit(
   }, 0)
 
   const grossProfit = totalSales - costOfGoodsSold
-  const totalExpenses = companyCostsForMonth(data.transactions, monthKey)
+  const totalExpenses = companyCostsForMonth(data.transactions, data.categories, data.companyCostSelections, monthKey)
   const netProfit = grossProfit - totalExpenses
 
   return {

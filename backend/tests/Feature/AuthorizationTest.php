@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Account;
+use App\Models\Category;
+use App\Models\CompanyCostSelection;
 use App\Models\Customer;
 use App\Models\MeshSize;
 use App\Models\Product;
@@ -144,29 +146,27 @@ class AuthorizationTest extends TestCase
 
     public function test_staff_can_view_profit_but_not_curate_company_costs(): void
     {
-        $cash = Account::factory()->create(['kind' => 'cash']);
-        $transaction = Transaction::create([
-            'date' => '2026-01-01', 'account_id' => $cash->id, 'direction' => 'out',
-            'amount' => 1000, 'is_company_cost' => false,
-        ]);
+        $category = Category::factory()->create(['direction' => 'out', 'expense_type' => 'company_expense']);
 
         // Staff has PROFIT_VIEW (it's a plain _VIEW permission) but must not
         // also get the narrower PROFIT_EDIT that lets a reviewer curate which
-        // Cash Out rows count as a Company Cost.
+        // Cash Out categories count as a Company Cost.
         $staff = User::factory()->create();
         $staff->assignRole('Staff');
         Sanctum::actingAs($staff, ['*']);
 
-        $this->patchJson("/api/transactions/{$transaction->id}/company-cost", ['is_company_cost' => true])
-            ->assertForbidden();
-        $this->assertFalse($transaction->fresh()->is_company_cost);
+        $this->patchJson('/api/company-cost-selections', [
+            'month_key' => '2026-01', 'category_id' => $category->id, 'selected' => true,
+        ])->assertForbidden();
+        $this->assertSame(0, CompanyCostSelection::where('category_id', $category->id)->count());
 
         $admin = User::factory()->create();
         $admin->assignRole('Admin');
         Sanctum::actingAs($admin, ['*']);
 
-        $this->patchJson("/api/transactions/{$transaction->id}/company-cost", ['is_company_cost' => true])
-            ->assertOk();
-        $this->assertTrue($transaction->fresh()->is_company_cost);
+        $this->patchJson('/api/company-cost-selections', [
+            'month_key' => '2026-01', 'category_id' => $category->id, 'selected' => true,
+        ])->assertOk();
+        $this->assertSame(1, CompanyCostSelection::where('category_id', $category->id)->count());
     }
 }

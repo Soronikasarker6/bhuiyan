@@ -40,6 +40,7 @@ import {
   accountBalances,
   buildLedgerRows,
   categoryBreakdown,
+  companyCostCategoryTotals,
   monthMovement,
   totalBalances,
 } from '@/utils/ledger'
@@ -77,6 +78,7 @@ import {
   formatTons,
   isWithin,
   lastDayOfMonth,
+  makeMonthKey,
   todayISO,
 } from '@/utils/format'
 
@@ -216,8 +218,28 @@ export default function ReportsPage() {
       meshSizes: data.meshSizes,
       rawMaterialImports: data.rawMaterialImports,
       transactions: data.transactions,
+      categories: data.categories,
+      companyCostSelections: data.companyCostSelections,
     })
     const profitTotals = yearlyProfitTotals(profitYear)
+
+    // Company Costs by category, summed across the whole year — each
+    // month's selected+eligible categories (companyCostCategoryTotals),
+    // aggregated by name, so the PDF/CSV shows "Salary ৳600,000" rather than
+    // any individual Cash Out transaction or person's name (§11).
+    const companyCostsByCategory = (() => {
+      const totals = new Map<string, number>()
+      for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
+        const monthKey = makeMonthKey(year, monthIndex)
+        for (const row of companyCostCategoryTotals(data.transactions, data.categories, data.companyCostSelections, monthKey)) {
+          if (!row.selected) continue
+          totals.set(row.name, (totals.get(row.name) ?? 0) + row.amount)
+        }
+      }
+      return [...totals.entries()]
+        .map(([category, amount]) => ({ category, amount }))
+        .sort((a, b) => b.amount - a.amount)
+    })()
     const balances = accountBalances(data.accounts, data.transactions, to)
     const balanceTotals = totalBalances(balances)
 
@@ -814,6 +836,31 @@ export default function ReportsPage() {
             gross: formatNumber(profitTotals.grossProfit),
             expenses: formatNumber(profitTotals.totalExpenses),
             net: formatNumber(profitTotals.netProfit),
+          },
+        }),
+      },
+      {
+        id: 'pnl-categories',
+        group: 'Company Finance',
+        name: 'Company Costs by Category',
+        description: `The expense categories selected as Company Costs, and their totals for ${year} — not individual Cash Out entries.`,
+        icon: Wallet,
+        count: companyCostsByCategory.length,
+        build: () => ({
+          title: `Company Costs by Category — ${year}`,
+          subtitle: 'Each selected Cash Out category, summed for the year',
+          meta: [{ label: 'Total company costs', value: formatCurrency(companyCostsByCategory.reduce((sum, r) => sum + r.amount, 0)) }],
+          columns: [
+            { key: 'category', label: 'Category' },
+            { key: 'amount', label: 'Amount', align: 'right' },
+          ],
+          rows: companyCostsByCategory.map((row) => ({
+            category: row.category,
+            amount: formatNumber(row.amount),
+          })),
+          totals: {
+            category: 'Total Company Costs',
+            amount: formatNumber(companyCostsByCategory.reduce((sum, r) => sum + r.amount, 0)),
           },
         }),
       },

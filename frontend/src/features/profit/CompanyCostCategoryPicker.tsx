@@ -1,36 +1,36 @@
 import { useMemo, useState } from 'react'
 import { Search, Wallet } from 'lucide-react'
-import type { ID, Transaction } from '@/types'
+import type { ID } from '@/types'
+import type { CompanyCostCategoryTotal } from '@/utils/ledger'
 import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Money } from '@/components/Money'
-import { formatDate } from '@/utils/format'
 
 /**
- * Profit & Loss's "Company Costs" picker — every Cash Out transaction for the
- * selected month, with a checkbox for whether it counts toward the period's
- * Company Costs. Mirrors the checkbox-list idiom `RoleForm` uses for
- * permissions (plain checkboxes + a group toggle), not a UI5 table selection
- * model, since that's the pattern already established for "pick some of
- * these" in this codebase.
+ * Profit & Loss's "Company Costs" picker — one row per eligible Cash Out
+ * *category* (Salary, Machine Cost, Rent, …), each showing that category's
+ * total for the selected month, not a scrolling list of individual
+ * transactions/person names. Company Costs = the sum of whichever categories
+ * are checked. Mirrors the checkbox-list idiom `RoleForm` uses for
+ * permissions, same as the transaction-level picker this replaces.
  *
  * Each row's checkbox is disabled while its own toggle request is in
  * flight — a UI5-style busy state scoped to that one row, so a slow request
  * can't be double-submitted and the rest of the list stays interactive.
  *
- * `canEdit` mirrors the backend's own PROFIT_EDIT gate on the toggle route —
- * a viewer without it (e.g. Staff, who can see P&L but not curate it) gets
- * read-only checkboxes rather than controls that would 403 on click.
+ * `canEdit` mirrors the backend's own PROFIT_EDIT gate — a viewer without it
+ * (e.g. Staff, who can see P&L but not curate it) gets read-only checkboxes
+ * rather than controls that would 403 on click.
  */
-export function CompanyCostPicker({
+export function CompanyCostCategoryPicker({
   candidates,
   onToggle,
   canEdit,
 }: {
-  candidates: Transaction[]
-  onToggle: (transactionId: ID, isCompanyCost: boolean) => Promise<void>
+  candidates: CompanyCostCategoryTotal[]
+  onToggle: (categoryId: ID, selected: boolean) => Promise<void>
   canEdit: boolean
 }) {
   const [search, setSearch] = useState('')
@@ -39,15 +39,14 @@ export function CompanyCostPicker({
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase()
     if (!needle) return candidates
-    return candidates.filter((t) =>
-      `${t.details ?? ''} ${t.category}`.toLowerCase().includes(needle),
-    )
+    return candidates.filter((c) => c.name.toLowerCase().includes(needle))
   }, [candidates, search])
 
   const selectedTotal = useMemo(
-    () => candidates.filter((t) => t.isCompanyCost).reduce((sum, t) => sum + t.amount, 0),
+    () => candidates.filter((c) => c.selected).reduce((sum, c) => sum + c.amount, 0),
     [candidates],
   )
+  const selectedCount = useMemo(() => candidates.filter((c) => c.selected).length, [candidates])
 
   const setRowPending = (id: ID, busy: boolean) => {
     setPending((current) => {
@@ -58,28 +57,28 @@ export function CompanyCostPicker({
     })
   }
 
-  const toggle = async (transaction: Transaction, checked: boolean) => {
-    setRowPending(transaction.id, true)
+  const toggle = async (category: CompanyCostCategoryTotal, checked: boolean) => {
+    setRowPending(category.categoryId, true)
     try {
-      await onToggle(transaction.id, checked)
+      await onToggle(category.categoryId, checked)
     } finally {
-      setRowPending(transaction.id, false)
+      setRowPending(category.categoryId, false)
     }
   }
 
   const selectAll = async (checked: boolean) => {
-    const targets = filtered.filter((t) => Boolean(t.isCompanyCost) !== checked)
-    for (const t of targets) {
-      await toggle(t, checked)
+    const targets = filtered.filter((c) => c.selected !== checked)
+    for (const c of targets) {
+      await toggle(c, checked)
     }
   }
 
-  const allChecked = filtered.length > 0 && filtered.every((t) => t.isCompanyCost)
+  const allChecked = filtered.length > 0 && filtered.every((c) => c.selected)
 
   return (
     <Section
-      title="Company costs — select Cash Out expenses"
-      description="Only the Cash Out transactions checked below count toward this month's Company Costs."
+      title="Company costs — select expense categories"
+      description="Only the categories checked below count toward this month's Company Costs. Each category's amount is the sum of its Cash Out entries this month."
       actions={
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -87,7 +86,7 @@ export function CompanyCostPicker({
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search description, category…"
+              placeholder="Search category…"
               className="h-8 w-56 pl-8 text-xs"
             />
           </div>
@@ -101,7 +100,12 @@ export function CompanyCostPicker({
       }
     >
       {candidates.length === 0 ? (
-        <EmptyState icon={Wallet} size="sm" title="No Cash Out transactions this month" description="Nothing to select for Company Costs yet." />
+        <EmptyState
+          icon={Wallet}
+          size="sm"
+          title="No expense categories configured"
+          description="Mark a Cash Out category as a Company Expense in Settings → Categories to see it here."
+        />
       ) : filtered.length === 0 ? (
         <EmptyState icon={Search} size="sm" title="No matches" description="Try a different search." />
       ) : (
@@ -114,30 +118,31 @@ export function CompanyCostPicker({
               disabled={!canEdit}
               onChange={(e) => selectAll(e.target.checked)}
             />
-            {filtered.length} transaction{filtered.length === 1 ? '' : 's'}
+            {filtered.length} categor{filtered.length === 1 ? 'y' : 'ies'}
           </label>
-          {filtered.map((t) => (
+          {filtered.map((c) => (
             <label
-              key={t.id}
+              key={c.categoryId}
               className="flex items-center gap-2.5 rounded-md px-1.5 py-1.5 text-xs hover:bg-secondary/40"
             >
               <input
                 type="checkbox"
                 className="h-3.5 w-3.5 shrink-0 rounded border-border accent-primary-700"
-                checked={Boolean(t.isCompanyCost)}
-                disabled={!canEdit || pending.has(t.id)}
-                onChange={(e) => toggle(t, e.target.checked)}
+                checked={c.selected}
+                disabled={!canEdit || pending.has(c.categoryId)}
+                onChange={(e) => toggle(c, e.target.checked)}
               />
-              <span className="w-20 shrink-0 whitespace-nowrap text-muted-foreground">{formatDate(t.date)}</span>
-              <span className="min-w-0 flex-1 truncate">{t.details || t.category}</span>
-              <span className="shrink-0 text-2xs text-muted-foreground">{t.category}</span>
-              <Money value={t.amount} size="sm" className="w-24 shrink-0 text-right" />
+              <span className="min-w-0 flex-1 truncate">{c.name}</span>
+              <Money value={c.amount} size="sm" className="w-24 shrink-0 text-right" />
             </label>
           ))}
         </div>
       )}
 
-      <div className="mt-3 flex justify-end">
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <span className="text-2xs uppercase tracking-wider text-muted-foreground">
+          Selected categories: {selectedCount}
+        </span>
         <div className="inline-flex overflow-hidden rounded-lg border border-brass-200">
           <div className="bg-brass-100 px-4 py-2 text-2xs font-semibold uppercase tracking-wider text-brass-800">
             Selected company costs

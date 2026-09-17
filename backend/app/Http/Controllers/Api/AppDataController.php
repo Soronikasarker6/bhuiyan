@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\Category;
+use App\Models\CompanyCostSelection;
 use App\Models\Customer;
 use App\Models\CustomerTransaction;
 use App\Models\LedgerClosing;
@@ -48,6 +49,7 @@ class AppDataController extends Controller
                 ->map(fn (SaleItem $item) => $this->presentSaleItem($item, $canViewRate)),
             'customerTransactions' => CustomerTransaction::orderByDesc('date')->orderByDesc('id')->get(),
             'transactions' => Transaction::orderByDesc('date')->orderByDesc('id')->get(),
+            'companyCostSelections' => CompanyCostSelection::all(['id', 'month_key', 'category_id']),
             'ledgerClosings' => LedgerClosing::with('balances')->orderByDesc('month_key')->get(),
             'seeded' => true,
         ]);

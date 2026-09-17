@@ -37,7 +37,7 @@ import { useAppData } from '@/hooks/useAppData'
 import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
-import type { Account, AccountKind, AppUser, Category, Direction, Role, UnitOfMeasure } from '@/types'
+import type { Account, AccountKind, AppUser, Category, Direction, ExpenseType, Role, UnitOfMeasure } from '@/types'
 import { balanceOf } from '@/utils/ledger'
 import { formatCurrency, formatDateTime } from '@/utils/format'
 import { now, uid } from '@/utils/id'
@@ -384,7 +384,7 @@ function CategoriesPanel() {
   const usageOf = (category: Category) =>
     data.transactions.filter((t) => t.category === category.name).length
 
-  const add = (direction: Direction, name: string) => {
+  const add = (direction: Direction, name: string, expenseType: ExpenseType) => {
     const trimmed = name.trim()
     if (!trimmed) return false
 
@@ -399,11 +399,24 @@ function CategoriesPanel() {
 
     update('categories', [
       ...data.categories,
-      { id: uid(), name: trimmed, direction, createdAt: now() },
+      {
+        id: uid(),
+        name: trimmed,
+        direction,
+        expenseType: direction === 'out' ? expenseType : undefined,
+        createdAt: now(),
+      },
     ])
 
     toast.success(`${trimmed} added`)
     return true
+  }
+
+  const setExpenseType = (category: Category, expenseType: ExpenseType) => {
+    update(
+      'categories',
+      data.categories.map((c) => (c.id === category.id ? { ...c, expenseType } : c)),
+    )
   }
 
   const remove = (category: Category) => {
@@ -425,7 +438,8 @@ function CategoriesPanel() {
           direction={direction}
           categories={data.categories.filter((c) => c.direction === direction)}
           usageOf={usageOf}
-          onAdd={(name) => add(direction, name)}
+          onAdd={(name, expenseType) => add(direction, name, expenseType)}
+          onSetExpenseType={setExpenseType}
           onRemove={(category) => setPending({ category, used: usageOf(category) })}
         />
       ))}
@@ -451,19 +465,22 @@ function CategoryList({
   categories,
   usageOf,
   onAdd,
+  onSetExpenseType,
   onRemove,
 }: {
   direction: Direction
   categories: Category[]
   usageOf: (category: Category) => number
-  onAdd: (name: string) => boolean
+  onAdd: (name: string, expenseType: ExpenseType) => boolean
+  onSetExpenseType: (category: Category, expenseType: ExpenseType) => void
   onRemove: (category: Category) => void
 }) {
   const [value, setValue] = useState('')
+  const [expenseType, setExpenseType] = useState<ExpenseType>('company_expense')
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
-    if (onAdd(value)) setValue('')
+    if (onAdd(value, expenseType)) setValue('')
   }
 
   return (
@@ -472,7 +489,7 @@ function CategoryList({
       description={
         direction === 'in'
           ? 'What money coming in is filed under'
-          : 'What money going out is filed under'
+          : 'What money going out is filed under — mark whether each is a real company expense, eligible for Profit & Loss'
       }
     >
       {categories.length === 0 ? (
@@ -496,6 +513,20 @@ function CategoryList({
                 {used > 0 && (
                   <span className="font-mono tabular text-2xs text-muted-foreground">{used}</span>
                 )}
+                {direction === 'out' && (
+                  <Select
+                    value={category.expenseType ?? 'company_expense'}
+                    onValueChange={(v) => onSetExpenseType(category, v as ExpenseType)}
+                  >
+                    <SelectTrigger className="h-6 w-44 border-none bg-transparent px-2 text-2xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="company_expense">Company Expense</SelectItem>
+                      <SelectItem value="excluded">Excluded</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
                 <button
                   type="button"
                   onClick={() => onRemove(category)}
@@ -517,6 +548,17 @@ function CategoryList({
           placeholder={direction === 'in' ? 'Export Payment' : 'Insurance'}
           aria-label={`New ${direction === 'in' ? 'cash in' : 'cash out'} category`}
         />
+        {direction === 'out' && (
+          <Select value={expenseType} onValueChange={(v) => setExpenseType(v as ExpenseType)}>
+            <SelectTrigger className="w-44 shrink-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="company_expense">Company Expense</SelectItem>
+              <SelectItem value="excluded">Excluded</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
         <Button type="submit" className="shrink-0">
           Add
         </Button>

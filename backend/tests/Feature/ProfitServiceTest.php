@@ -3,11 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\Account;
+use App\Models\Category;
+use App\Models\CompanyCostSelection;
 use App\Models\Customer;
 use App\Models\MeshSize;
 use App\Models\Product;
 use App\Models\ProductionEntry;
 use App\Models\Transaction;
+use App\Services\LedgerService;
 use App\Services\ProfitService;
 use App\Services\SalesService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -37,16 +40,20 @@ class ProfitServiceTest extends TestCase
             'items' => [['product_id' => $product->id, 'mesh_size_id' => $mesh->id, 'bags' => 60, 'rate_per_ton' => 5000]], // 3 ton sold
         ]);
 
-        // Selected as a company cost — counted.
+        $selectedCategory = Category::factory()->create(['direction' => 'out', 'expense_type' => 'company_expense']);
+        $unselectedCategory = Category::factory()->create(['direction' => 'out', 'expense_type' => 'company_expense']);
+
+        // Category selected as a company cost for this month — counted.
         Transaction::create([
             'date' => '2026-03-15', 'account_id' => $cash->id, 'direction' => 'out',
-            'amount' => 1500, 'is_company_cost' => true,
+            'category_id' => $selectedCategory->id, 'amount' => 1500,
         ]);
-        // Cash Out but not selected — must NOT be counted.
+        // Cash Out in an eligible category, but not selected this month — must NOT be counted.
         Transaction::create([
             'date' => '2026-03-16', 'account_id' => $cash->id, 'direction' => 'out',
-            'amount' => 9000, 'is_company_cost' => false,
+            'category_id' => $unselectedCategory->id, 'amount' => 9000,
         ]);
+        CompanyCostSelection::create(['month_key' => '2026-03', 'category_id' => $selectedCategory->id]);
 
         $result = $profit->monthlyProfit(2026, 2); // March = index 2
 
@@ -60,16 +67,55 @@ class ProfitServiceTest extends TestCase
     public function test_company_costs_are_zero_when_nothing_is_selected(): void
     {
         $cash = Account::factory()->create(['kind' => 'cash']);
+        $category = Category::factory()->create(['direction' => 'out', 'expense_type' => 'company_expense']);
         $profit = app(ProfitService::class);
 
         Transaction::create([
             'date' => '2026-04-01', 'account_id' => $cash->id, 'direction' => 'out',
-            'amount' => 5000, 'is_company_cost' => false,
+            'category_id' => $category->id, 'amount' => 5000,
         ]);
 
         $result = $profit->monthlyProfit(2026, 3); // April
 
         $this->assertEqualsWithDelta(0.0, $result['total_expenses'], 0.01);
         $this->assertEqualsWithDelta(0.0, $result['net_profit'], 0.01);
+    }
+
+    public function test_excluded_category_never_counts_even_when_selected(): void
+    {
+        $cash = Account::factory()->create(['kind' => 'cash']);
+        $category = Category::factory()->create(['direction' => 'out', 'expense_type' => 'excluded']);
+        $ledger = app(LedgerService::class);
+
+        Transaction::create([
+            'date' => '2026-05-01', 'account_id' => $cash->id, 'direction' => 'out',
+            'category_id' => $category->id, 'amount' => 4000,
+        ]);
+        // Stray selection row for an excluded category (shouldn't normally
+        // exist — setCompanyCostSelection() rejects creating one — but a
+        // category could be re-marked Excluded after being selected).
+        CompanyCostSelection::create(['month_key' => '2026-05', 'category_id' => $category->id]);
+
+        $this->assertSame(0.0, $ledger->companyCostsForMonth('2026-05'));
+        $this->assertCount(0, $ledger->companyCostCategoryTotals('2026-05'));
+    }
+
+    public function test_multiple_transactions_in_one_category_are_summed(): void
+    {
+        $cash = Account::factory()->create(['kind' => 'cash']);
+        $category = Category::factory()->create(['direction' => 'out', 'expense_type' => 'company_expense', 'name' => 'Salary']);
+        $ledger = app(LedgerService::class);
+
+        Transaction::create(['date' => '2026-06-01', 'account_id' => $cash->id, 'direction' => 'out', 'category_id' => $category->id, 'amount' => 20000]);
+        Transaction::create(['date' => '2026-06-10', 'account_id' => $cash->id, 'direction' => 'out', 'category_id' => $category->id, 'amount' => 15000]);
+        Transaction::create(['date' => '2026-06-20', 'account_id' => $cash->id, 'direction' => 'out', 'category_id' => $category->id, 'amount' => 15000]);
+        // Outside the month — must not be included.
+        Transaction::create(['date' => '2026-07-01', 'account_id' => $cash->id, 'direction' => 'out', 'category_id' => $category->id, 'amount' => 999999]);
+
+        $totals = $ledger->companyCostCategoryTotals('2026-06');
+        $this->assertEqualsWithDelta(50000.0, $totals->firstWhere('category_id', $category->id)['amount'], 0.01);
+
+        $ledger->setCompanyCostSelection('2026-06', $category->id, true);
+        $this->assertEqualsWithDelta(50000.0, $ledger->companyCostsForMonth('2026-06'), 0.01);
     }
 }

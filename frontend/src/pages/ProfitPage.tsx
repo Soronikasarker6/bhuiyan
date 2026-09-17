@@ -8,14 +8,14 @@ import { Money } from '@/components/Money'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { CompanyCostPicker } from '@/features/profit/CompanyCostPicker'
+import { CompanyCostCategoryPicker } from '@/features/profit/CompanyCostCategoryPicker'
 import { useAppData } from '@/hooks/useAppData'
 import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import type { ID } from '@/types'
 import { yearlyProfit, yearlyProfitTotals } from '@/utils/profit'
-import { companyCostCandidatesForMonth } from '@/utils/ledger'
+import { companyCostCategoryTotals } from '@/utils/ledger'
 import { makeMonthKey, MONTHS } from '@/utils/format'
 
 /**
@@ -31,7 +31,7 @@ import { makeMonthKey, MONTHS } from '@/utils/format'
  * records actually say.
  */
 export default function ProfitPage() {
-  const { data, loading, setCompanyCost } = useAppData()
+  const { data, loading, setCompanyCostSelection } = useAppData()
   const canEditCompanyCosts = usePermission(PERMISSIONS.PROFIT_EDIT)
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
@@ -46,8 +46,20 @@ export default function ProfitPage() {
         meshSizes: data.meshSizes,
         rawMaterialImports: data.rawMaterialImports,
         transactions: data.transactions,
+        categories: data.categories,
+        companyCostSelections: data.companyCostSelections,
       }),
-    [year, data.sales, data.saleItems, data.products, data.meshSizes, data.rawMaterialImports, data.transactions],
+    [
+      year,
+      data.sales,
+      data.saleItems,
+      data.products,
+      data.meshSizes,
+      data.rawMaterialImports,
+      data.transactions,
+      data.categories,
+      data.companyCostSelections,
+    ],
   )
 
   const yearTotals = useMemo(() => yearlyProfitTotals(months), [months])
@@ -55,21 +67,21 @@ export default function ProfitPage() {
 
   const selectedMonthKey = useMemo(() => makeMonthKey(year, monthIndex), [year, monthIndex])
   const companyCostCandidates = useMemo(
-    () => companyCostCandidatesForMonth(data.transactions, selectedMonthKey),
-    [data.transactions, selectedMonthKey],
+    () => companyCostCategoryTotals(data.transactions, data.categories, data.companyCostSelections, selectedMonthKey),
+    [data.transactions, data.categories, data.companyCostSelections, selectedMonthKey],
   )
 
   const toggleCompanyCost = useCallback(
-    async (transactionId: ID, isCompanyCost: boolean) => {
+    async (categoryId: ID, selected: boolean) => {
       try {
-        await setCompanyCost(transactionId, isCompanyCost)
+        await setCompanyCostSelection(selectedMonthKey, categoryId, selected)
       } catch (error) {
         toast.error('Could not update company costs', {
           description: error instanceof Error ? error.message : undefined,
         })
       }
     },
-    [setCompanyCost],
+    [setCompanyCostSelection, selectedMonthKey],
   )
 
   usePageHeader({
@@ -111,7 +123,7 @@ export default function ProfitPage() {
       </Section>
 
       <div className="mb-4">
-        <CompanyCostPicker candidates={companyCostCandidates} onToggle={toggleCompanyCost} canEdit={canEditCompanyCosts} />
+        <CompanyCostCategoryPicker candidates={companyCostCandidates} onToggle={toggleCompanyCost} canEdit={canEditCompanyCosts} />
       </div>
 
       {/*

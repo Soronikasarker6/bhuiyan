@@ -1,6 +1,8 @@
 import type {
   Account,
   AccountBalance,
+  Category,
+  CompanyCostSelection,
   ID,
   ISODate,
   LedgerRow,
@@ -319,22 +321,60 @@ export function monthMovement(transactions: Transaction[], key: MonthKey): Month
   return { monthIn, monthOut, net: monthIn - monthOut }
 }
 
-/**
- * Cash Out transactions for a month, available for Profit & Loss's "Company
- * Costs" picker — every Cash Out in the month, regardless of selection, so
- * the checklist can show both checked and unchecked rows.
- */
-export function companyCostCandidatesForMonth(transactions: Transaction[], key: MonthKey): Transaction[] {
-  return transactions.filter(
-    (t) => monthKeyOf(t.date) === key && !t.transferId && t.direction === 'out',
-  )
+export interface CompanyCostCategoryTotal {
+  categoryId: ID
+  name: string
+  amount: number
+  selected: boolean
 }
 
-/** Profit & Loss's "Company Costs" for a month — only the Cash Out transactions selected as one. */
-export function companyCostsForMonth(transactions: Transaction[], key: MonthKey): number {
-  return companyCostCandidatesForMonth(transactions, key)
-    .filter((t) => t.isCompanyCost)
-    .reduce((sum, t) => sum + t.amount, 0)
+/** Cash Out categories eligible to be a Profit & Loss "Company Cost" — real operating expenses, not a transfer/financing/personal one someone excluded in Settings. */
+export function eligibleCompanyCostCategories(categories: Category[]): Category[] {
+  return categories.filter((c) => c.direction === 'out' && c.expenseType === 'company_expense')
+}
+
+/**
+ * Every eligible Cash Out category for a month, each with its own total
+ * (summed across every transaction filed under it that month, never a
+ * transfer leg) and whether it is currently selected — this is what
+ * Profit & Loss's "Company Costs" picker shows, one row per category, not
+ * one row per transaction. Included at ৳0 when a category had no activity
+ * that month, so the picker still lists every eligible category.
+ */
+export function companyCostCategoryTotals(
+  transactions: Transaction[],
+  categories: Category[],
+  selections: CompanyCostSelection[],
+  key: MonthKey,
+): CompanyCostCategoryTotal[] {
+  const selectedIds = new Set(
+    selections.filter((s) => s.monthKey === key).map((s) => s.categoryId),
+  )
+
+  const monthOut = transactions.filter(
+    (t) => monthKeyOf(t.date) === key && !t.transferId && t.direction === 'out',
+  )
+
+  return eligibleCompanyCostCategories(categories).map((category) => ({
+    categoryId: category.id,
+    name: category.name,
+    amount: monthOut
+      .filter((t) => t.category === category.name)
+      .reduce((sum, t) => sum + t.amount, 0),
+    selected: selectedIds.has(category.id),
+  }))
+}
+
+/** Profit & Loss's "Company Costs" for a month — the sum of every eligible category someone has selected. */
+export function companyCostsForMonth(
+  transactions: Transaction[],
+  categories: Category[],
+  selections: CompanyCostSelection[],
+  key: MonthKey,
+): number {
+  return companyCostCategoryTotals(transactions, categories, selections, key)
+    .filter((c) => c.selected)
+    .reduce((sum, c) => sum + c.amount, 0)
 }
 
 /** Cash and bank movement across a year, for the reports chart. */

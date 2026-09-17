@@ -108,8 +108,8 @@ const syncAccounts = simple<Account>({
 })
 
 const syncCategories = simple<Category>({
-  create: (c) => categoryService.create(c.name, c.direction),
-  update: (id, c) => categoryService.update(id, c.name, c.direction),
+  create: (c) => categoryService.create(c.name, c.direction, c.expenseType),
+  update: (id, c) => categoryService.update(id, c.name, c.direction, c.expenseType),
   remove: (id) => categoryService.remove(id),
 })
 

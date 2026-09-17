@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AppDataController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\CompanyCostSelectionController;
 use App\Http\Controllers\Api\CompanyProfileController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
@@ -130,7 +131,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('transactions/transfer', [TransactionController::class, 'transfer'])
         ->middleware('permission:'.P::LEDGER_CREATE);
-    Route::patch('transactions/{transaction}/company-cost', [TransactionController::class, 'togglePnlCost'])
+    Route::patch('company-cost-selections', [CompanyCostSelectionController::class, 'toggle'])
         ->middleware('permission:'.P::PROFIT_EDIT);
     Route::apiResource('transactions', TransactionController::class)->only(['index', 'store', 'destroy'])
         ->middlewareFor('index', 'permission:'.P::LEDGER_VIEW)

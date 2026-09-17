@@ -21,6 +21,7 @@ export const appDataService = {
       accounts: mapEntities(raw.accounts),
       categories: mapEntities(raw.categories),
       transactions: mapTransactions(raw.transactions),
+      companyCostSelections: mapEntities(raw.companyCostSelections),
       ledgerClosings: mapEntities(raw.ledgerClosings),
       seeded: true,
     } as AppData

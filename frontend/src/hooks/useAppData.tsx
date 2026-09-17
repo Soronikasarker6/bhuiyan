@@ -106,8 +106,8 @@ interface AppDataValue {
   /** Edit a Cash In already recorded — never the customer it belongs to, only when/how much/how. */
   updatePayment: (customerTransactionId: ID, input: PaymentUpdateInput) => Promise<void>
   deletePayment: (customerTransactionId: ID) => Promise<void>
-  /** Toggles whether one Cash Out transaction counts as a Profit & Loss "Company Cost". */
-  setCompanyCost: (transactionId: ID, isCompanyCost: boolean) => Promise<void>
+  /** Selects or clears one Cash Out category as a Profit & Loss "Company Cost" for one month. */
+  setCompanyCostSelection: (monthKey: string, categoryId: ID, selected: boolean) => Promise<void>
   /** Edit a raw material import already recorded — recalculates net weight/ton and re-validates stock server-side. */
   updateRawMaterialImport: (id: ID, input: ShipmentInput) => Promise<void>
 }
@@ -127,6 +127,7 @@ const EMPTY: AppData = {
   accounts: [],
   categories: [],
   transactions: [],
+  companyCostSelections: [],
   wastageEntries: [],
   ledgerClosings: [],
   seeded: false,
@@ -437,13 +438,26 @@ function useLocalAppData(): AppDataValue {
     [updateMany],
   )
 
-  const setCompanyCost = useCallback(
-    async (transactionId: ID, isCompanyCost: boolean) => {
+  const setCompanyCostSelection = useCallback(
+    async (monthKey: string, categoryId: ID, selected: boolean) => {
       const current = dataRef.current
-      update(
-        'transactions',
-        current.transactions.map((t) => (t.id === transactionId ? { ...t, isCompanyCost } : t)),
+      const existing = current.companyCostSelections.find(
+        (s) => s.monthKey === monthKey && s.categoryId === categoryId,
       )
+
+      if (selected) {
+        if (existing) return
+        update('companyCostSelections', [
+          ...current.companyCostSelections,
+          { id: uid(), monthKey, categoryId },
+        ])
+      } else {
+        if (!existing) return
+        update(
+          'companyCostSelections',
+          current.companyCostSelections.filter((s) => s.id !== existing.id),
+        )
+      }
     },
     [update],
   )
@@ -489,7 +503,7 @@ function useLocalAppData(): AppDataValue {
       recordPayment,
       updatePayment,
       deletePayment,
-      setCompanyCost,
+      setCompanyCostSelection,
       updateRawMaterialImport,
     }),
     [
@@ -504,7 +518,7 @@ function useLocalAppData(): AppDataValue {
       recordPayment,
       updatePayment,
       deletePayment,
-      setCompanyCost,
+      setCompanyCostSelection,
       updateRawMaterialImport,
     ],
   )
@@ -679,10 +693,10 @@ function useApiAppData(): AppDataValue {
     [refresh],
   )
 
-  const setCompanyCost = useCallback(
-    async (transactionId: ID, isCompanyCost: boolean) => {
+  const setCompanyCostSelection = useCallback(
+    async (monthKey: string, categoryId: ID, selected: boolean) => {
       try {
-        await ledgerService.setCompanyCost(transactionId, isCompanyCost)
+        await ledgerService.setCompanyCostSelection(monthKey, categoryId, selected)
         await refresh()
       } catch (error) {
         throw new Error(errorMessage(error) ?? 'Could not update the company cost selection.')
@@ -718,7 +732,7 @@ function useApiAppData(): AppDataValue {
       recordPayment,
       updatePayment,
       deletePayment,
-      setCompanyCost,
+      setCompanyCostSelection,
       updateRawMaterialImport,
     }),
     [
@@ -733,7 +747,7 @@ function useApiAppData(): AppDataValue {
       recordPayment,
       updatePayment,
       deletePayment,
-      setCompanyCost,
+      setCompanyCostSelection,
       updateRawMaterialImport,
     ],
   )

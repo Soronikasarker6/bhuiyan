@@ -13,10 +13,20 @@ export interface Account {
 
 export type Direction = 'in' | 'out'
 
+/**
+ * Only meaningful when `direction === 'out'`: whether this category is a
+ * real operating expense (eligible to be a Profit & Loss "Company Cost") or
+ * a transfer/financing/personal movement that should never be one — Cash to
+ * Bank, a bank loan repayment, a related-party debt. `undefined`/null on a
+ * Cash In category, and on an older Cash Out category that predates this.
+ */
+export type ExpenseType = 'company_expense' | 'excluded'
+
 export interface Category {
   id: ID
   name: string
   direction: Direction
+  expenseType?: ExpenseType | null
   createdAt: string
 }
 
@@ -44,15 +54,19 @@ export interface Transaction {
    */
   customerId?: ID
   customerTransactionId?: ID
-  /**
-   * Whether this Cash Out transaction is counted as a "Company Cost" in
-   * Profit & Loss. Meaningless (always false) on a money-in row — direction
-   * must be 'out' for this to ever be true. Selected/cleared from the
-   * Profit & Loss page, persisted here rather than recomputed, so the
-   * business's own judgement of what counts as a cost survives a refresh.
-   */
-  isCompanyCost?: boolean
   createdAt: string
+}
+
+/**
+ * One row = one Cash Out category counts toward Profit & Loss's "Company
+ * Costs" for one month — see `utils/ledger.ts`'s `companyCostCategoryTotals`.
+ * Presence is the selection; there is no boolean to flip, only creating or
+ * removing this row (mirrors the backend's `company_cost_selections` table).
+ */
+export interface CompanyCostSelection {
+  id: ID
+  monthKey: MonthKey
+  categoryId: ID
 }
 
 /** A transaction with its running account balance resolved. Derived. */

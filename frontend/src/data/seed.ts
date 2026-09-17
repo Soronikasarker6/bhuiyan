@@ -3,6 +3,7 @@ import type {
   AppData,
   Customer,
   CustomerTransaction,
+  ExpenseType,
   MeshSize,
   Product,
   ProductionEntry,
@@ -133,6 +134,10 @@ const OUT_CATEGORIES = [
   'Others',
 ]
 
+// Which OUT_CATEGORIES are transfers/financing rather than a real operating
+// expense — excluded from Profit & Loss's "Company Costs" picker entirely.
+const EXCLUDED_OUT_CATEGORIES = new Set(['Bank Loan Repayment', 'Cash to Bank', 'Bank to Cash'])
+
 export function seedData(): AppData {
   const stamp = stampAgo(20)
 
@@ -151,7 +156,13 @@ export function seedData(): AppData {
 
   const categories = [
     ...IN_CATEGORIES.map((name, i) => ({ id: `cat-in-${i + 1}`, name, direction: 'in' as const, createdAt: stamp })),
-    ...OUT_CATEGORIES.map((name, i) => ({ id: `cat-out-${i + 1}`, name, direction: 'out' as const, createdAt: stamp })),
+    ...OUT_CATEGORIES.map((name, i) => ({
+      id: `cat-out-${i + 1}`,
+      name,
+      direction: 'out' as const,
+      expenseType: (EXCLUDED_OUT_CATEGORIES.has(name) ? 'excluded' : 'company_expense') as ExpenseType,
+      createdAt: stamp,
+    })),
   ]
 
   // ---------------------------------------------------------------- raw material import
@@ -260,6 +271,7 @@ export function seedData(): AppData {
     accounts,
     categories,
     transactions,
+    companyCostSelections: [],
     wastageEntries,
     ledgerClosings: [],
     seeded: true,

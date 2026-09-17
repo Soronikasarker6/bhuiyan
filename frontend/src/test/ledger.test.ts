@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import type { Account, Transaction } from '@/types'
+import type { Account, Category, CompanyCostSelection, Transaction } from '@/types'
 import {
   accountBalances,
   balanceOf,
   buildLedgerRows,
   buildTransferLegs,
   categoryBreakdown,
+  companyCostCategoryTotals,
+  companyCostsForMonth,
   defaultCashAccountId,
   describeLedgerFilters,
   idsToRemoveWith,
@@ -284,5 +286,57 @@ describe('describeLedgerFilters', () => {
       label: 'Account',
       value: 'All',
     })
+  })
+})
+
+describe('companyCostCategoryTotals / companyCostsForMonth', () => {
+  const salary: Category = { id: 'cat-salary', name: 'Salary', direction: 'out', expenseType: 'company_expense', createdAt: '' }
+  const machineCost: Category = { id: 'cat-machine', name: 'Machine Cost', direction: 'out', expenseType: 'company_expense', createdAt: '' }
+  const cashToBank: Category = { id: 'cat-transfer', name: 'Cash to Bank', direction: 'out', expenseType: 'excluded', createdAt: '' }
+  const categories = [salary, machineCost, cashToBank]
+
+  const transactions = [
+    txn('t1', '2026-09-01', 'cash', 'out', 20_000, { category: 'Salary' }),
+    txn('t2', '2026-09-10', 'cash', 'out', 15_000, { category: 'Salary' }),
+    txn('t3', '2026-09-20', 'cash', 'out', 15_000, { category: 'Salary' }),
+    txn('t4', '2026-09-12', 'cash', 'out', 10_000, { category: 'Machine Cost' }),
+    txn('t5', '2026-09-16', 'cash', 'out', 15_000, { category: 'Machine Cost' }),
+    txn('t6', '2026-09-08', 'cash', 'out', 999_999, { category: 'Cash to Bank' }),
+    // Outside September — must not be included.
+    txn('t7', '2026-08-31', 'cash', 'out', 999_999, { category: 'Salary' }),
+  ]
+
+  it('sums every transaction in a category, not the last one', () => {
+    const totals = companyCostCategoryTotals(transactions, categories, [], '2026-09')
+    expect(totals.find((c) => c.categoryId === 'cat-salary')?.amount).toBe(50_000)
+    expect(totals.find((c) => c.categoryId === 'cat-machine')?.amount).toBe(25_000)
+  })
+
+  it('a category with no activity this month still appears, at ৳0', () => {
+    const totals = companyCostCategoryTotals([], categories, [], '2026-09')
+    expect(totals.find((c) => c.categoryId === 'cat-salary')?.amount).toBe(0)
+  })
+
+  it('never returns an excluded category, even if a selection row exists for it', () => {
+    const selections: CompanyCostSelection[] = [{ id: 'sel-1', monthKey: '2026-09', categoryId: 'cat-transfer' }]
+    const totals = companyCostCategoryTotals(transactions, categories, selections, '2026-09')
+    expect(totals.some((c) => c.categoryId === 'cat-transfer')).toBe(false)
+    expect(companyCostsForMonth(transactions, categories, selections, '2026-09')).toBe(0)
+  })
+
+  it('Company Costs sums only the selected categories', () => {
+    const selections: CompanyCostSelection[] = [{ id: 'sel-1', monthKey: '2026-09', categoryId: 'cat-salary' }]
+    expect(companyCostsForMonth(transactions, categories, selections, '2026-09')).toBe(50_000)
+
+    const bothSelected: CompanyCostSelection[] = [
+      ...selections,
+      { id: 'sel-2', monthKey: '2026-09', categoryId: 'cat-machine' },
+    ]
+    expect(companyCostsForMonth(transactions, categories, bothSelected, '2026-09')).toBe(75_000)
+  })
+
+  it('a selection for a different month has no effect', () => {
+    const selections: CompanyCostSelection[] = [{ id: 'sel-1', monthKey: '2026-08', categoryId: 'cat-salary' }]
+    expect(companyCostsForMonth(transactions, categories, selections, '2026-09')).toBe(0)
   })
 })

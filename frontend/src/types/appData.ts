@@ -5,7 +5,7 @@ import type { ProductionEntry } from './production'
 import type { Customer } from './customer'
 import type { Sale, SaleItem } from './sale'
 import type { CustomerTransaction } from './customerLedger'
-import type { Account, Category, Transaction, LedgerClosing } from './ledger'
+import type { Account, Category, CompanyCostSelection, Transaction, LedgerClosing } from './ledger'
 
 export interface AppData {
   products: Product[]
@@ -25,6 +25,8 @@ export interface AppData {
   accounts: Account[]
   categories: Category[]
   transactions: Transaction[]
+  /** Which Cash Out categories count toward Profit & Loss's "Company Costs", per month. */
+  companyCostSelections: CompanyCostSelection[]
   ledgerClosings: LedgerClosing[]
   /** Set once when the sample data is laid down, so the UI can label it. */
   seeded: boolean
