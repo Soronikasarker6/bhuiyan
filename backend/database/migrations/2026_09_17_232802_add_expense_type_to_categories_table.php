@@ -30,14 +30,21 @@ return new class extends Migration
 
         DB::table('categories')->where('direction', 'out')->update(['expense_type' => 'company_expense']);
 
-        $excludedKeywords = ['bank to cash', 'cash to bank', 'bank loan', 'customer bill', 'profit'];
+        // Exact names only — a keyword/substring match (e.g. "profit") would
+        // also catch a real operating-expense category that merely happens
+        // to contain that word (a "Profit Sharing Bonus" payroll line is a
+        // real cost, not a transfer). Matches the Excluded set the fresh
+        // seeder ships (see CategorySeeder), plus the common loan/debt
+        // repayment names existing data is likely to use.
+        $excludedNames = [
+            'bank to cash', 'cash to bank', 'bank loan repayment',
+            'debt repayment', 'loan repayment',
+        ];
 
-        DB::table('categories')->where('direction', 'out')->get(['id', 'name'])->each(function ($category) use ($excludedKeywords) {
-            $name = mb_strtolower($category->name);
-            $isExcluded = str_starts_with($name, 'debt')
-                || collect($excludedKeywords)->contains(fn ($keyword) => str_contains($name, $keyword));
+        DB::table('categories')->where('direction', 'out')->get(['id', 'name'])->each(function ($category) use ($excludedNames) {
+            $name = mb_strtolower(trim($category->name));
 
-            if ($isExcluded) {
+            if (in_array($name, $excludedNames, true)) {
                 DB::table('categories')->where('id', $category->id)->update(['expense_type' => 'excluded']);
             }
         });

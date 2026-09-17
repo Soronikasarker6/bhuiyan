@@ -169,4 +169,27 @@ class AuthorizationTest extends TestCase
         ])->assertOk();
         $this->assertSame(1, CompanyCostSelection::where('category_id', $category->id)->count());
     }
+
+    public function test_staff_cannot_bulk_replace_company_cost_selections(): void
+    {
+        $category = Category::factory()->create(['direction' => 'out', 'expense_type' => 'company_expense']);
+
+        $staff = User::factory()->create();
+        $staff->assignRole('Staff');
+        Sanctum::actingAs($staff, ['*']);
+
+        $this->putJson('/api/company-cost-selections', [
+            'month_key' => '2026-02', 'category_ids' => [$category->id],
+        ])->assertForbidden();
+        $this->assertSame(0, CompanyCostSelection::where('month_key', '2026-02')->count());
+
+        $admin = User::factory()->create();
+        $admin->assignRole('Admin');
+        Sanctum::actingAs($admin, ['*']);
+
+        $this->putJson('/api/company-cost-selections', [
+            'month_key' => '2026-02', 'category_ids' => [$category->id],
+        ])->assertOk();
+        $this->assertSame(1, CompanyCostSelection::where('month_key', '2026-02')->count());
+    }
 }

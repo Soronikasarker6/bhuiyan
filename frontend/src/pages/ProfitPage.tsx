@@ -8,7 +8,7 @@ import { Money } from '@/components/Money'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { CompanyCostCategoryPicker } from '@/features/profit/CompanyCostCategoryPicker'
+import { CompanyCostCategorySelect, CompanyCostTable } from '@/features/profit/CompanyCostCategoryPicker'
 import { useAppData } from '@/hooks/useAppData'
 import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
@@ -31,11 +31,21 @@ import { makeMonthKey, MONTHS } from '@/utils/format'
  * records actually say.
  */
 export default function ProfitPage() {
-  const { data, loading, setCompanyCostSelection } = useAppData()
+  const { data, loading, setCompanyCostSelections } = useAppData()
   const canEditCompanyCosts = usePermission(PERMISSIONS.PROFIT_EDIT)
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
   const [monthIndex, setMonthIndex] = useState(today.getMonth())
+  const [showCompanyCosts, setShowCompanyCosts] = useState(false)
+
+  const handleMonthChange = (index: number) => {
+    setMonthIndex(index)
+    setShowCompanyCosts(false)
+  }
+  const handleYearChange = (nextYear: number) => {
+    setYear(nextYear)
+    setShowCompanyCosts(false)
+  }
 
   const months = useMemo(
     () =>
@@ -71,17 +81,19 @@ export default function ProfitPage() {
     [data.transactions, data.categories, data.companyCostSelections, selectedMonthKey],
   )
 
-  const toggleCompanyCost = useCallback(
-    async (categoryId: ID, selected: boolean) => {
+  const applyCompanyCostSelection = useCallback(
+    async (categoryIds: ID[]) => {
       try {
-        await setCompanyCostSelection(selectedMonthKey, categoryId, selected)
+        await setCompanyCostSelections(selectedMonthKey, categoryIds)
+        return true
       } catch (error) {
         toast.error('Could not update company costs', {
           description: error instanceof Error ? error.message : undefined,
         })
+        return false
       }
     },
-    [setCompanyCostSelection, selectedMonthKey],
+    [setCompanyCostSelections, selectedMonthKey],
   )
 
   usePageHeader({
@@ -99,7 +111,7 @@ export default function ProfitPage() {
             <label htmlFor="profit-month" className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
               Month
             </label>
-            <Select value={String(monthIndex)} onValueChange={(v) => setMonthIndex(Number(v))}>
+            <Select value={String(monthIndex)} onValueChange={(v) => handleMonthChange(Number(v))}>
               <SelectTrigger id="profit-month">
                 <SelectValue />
               </SelectTrigger>
@@ -117,14 +129,24 @@ export default function ProfitPage() {
             <label htmlFor="profit-year" className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
               Year
             </label>
-            <Input id="profit-year" type="number" min={2000} max={2100} value={year} onChange={(e) => setYear(Number(e.target.value))} />
+            <Input id="profit-year" type="number" min={2000} max={2100} value={year} onChange={(e) => handleYearChange(Number(e.target.value))} />
           </div>
+
+          <CompanyCostCategorySelect
+            key={selectedMonthKey}
+            candidates={companyCostCandidates}
+            onApply={applyCompanyCostSelection}
+            canEdit={canEditCompanyCosts}
+            onGo={() => setShowCompanyCosts(true)}
+          />
         </div>
       </Section>
 
-      <div className="mb-4">
-        <CompanyCostCategoryPicker candidates={companyCostCandidates} onToggle={toggleCompanyCost} canEdit={canEditCompanyCosts} />
-      </div>
+      {showCompanyCosts && (
+        <div className="mb-4">
+          <CompanyCostTable candidates={companyCostCandidates} />
+        </div>
+      )}
 
       {/*
         One grid, not three — Total sales/COGS/Gross profit/Company costs

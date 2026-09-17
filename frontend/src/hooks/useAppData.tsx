@@ -108,6 +108,8 @@ interface AppDataValue {
   deletePayment: (customerTransactionId: ID) => Promise<void>
   /** Selects or clears one Cash Out category as a Profit & Loss "Company Cost" for one month. */
   setCompanyCostSelection: (monthKey: string, categoryId: ID, selected: boolean) => Promise<void>
+  /** Replaces the whole set of selected Company Cost categories for one month in a single request. */
+  setCompanyCostSelections: (monthKey: string, categoryIds: ID[]) => Promise<void>
   /** Edit a raw material import already recorded — recalculates net weight/ton and re-validates stock server-side. */
   updateRawMaterialImport: (id: ID, input: ShipmentInput) => Promise<void>
 }
@@ -462,6 +464,21 @@ function useLocalAppData(): AppDataValue {
     [update],
   )
 
+  const setCompanyCostSelections = useCallback(
+    async (monthKey: string, categoryIds: ID[]) => {
+      const current = dataRef.current
+      const keep = current.companyCostSelections.filter(
+        (s) => s.monthKey !== monthKey || categoryIds.includes(s.categoryId),
+      )
+      const already = new Set(keep.filter((s) => s.monthKey === monthKey).map((s) => s.categoryId))
+      const added = categoryIds
+        .filter((categoryId) => !already.has(categoryId))
+        .map((categoryId) => ({ id: uid(), monthKey, categoryId }))
+      update('companyCostSelections', [...keep, ...added])
+    },
+    [update],
+  )
+
   const updateRawMaterialImport = useCallback(
     async (id: ID, input: ShipmentInput) => {
       const current = dataRef.current
@@ -504,6 +521,7 @@ function useLocalAppData(): AppDataValue {
       updatePayment,
       deletePayment,
       setCompanyCostSelection,
+      setCompanyCostSelections,
       updateRawMaterialImport,
     }),
     [
@@ -519,6 +537,7 @@ function useLocalAppData(): AppDataValue {
       updatePayment,
       deletePayment,
       setCompanyCostSelection,
+      setCompanyCostSelections,
       updateRawMaterialImport,
     ],
   )
@@ -705,6 +724,18 @@ function useApiAppData(): AppDataValue {
     [refresh],
   )
 
+  const setCompanyCostSelections = useCallback(
+    async (monthKey: string, categoryIds: ID[]) => {
+      try {
+        await ledgerService.setCompanyCostSelections(monthKey, categoryIds)
+        await refresh()
+      } catch (error) {
+        throw new Error(errorMessage(error) ?? 'Could not update the company cost selections.')
+      }
+    },
+    [refresh],
+  )
+
   const updateRawMaterialImport = useCallback(
     async (id: ID, input: ShipmentInput) => {
       try {
@@ -733,6 +764,7 @@ function useApiAppData(): AppDataValue {
       updatePayment,
       deletePayment,
       setCompanyCostSelection,
+      setCompanyCostSelections,
       updateRawMaterialImport,
     }),
     [
@@ -748,6 +780,7 @@ function useApiAppData(): AppDataValue {
       updatePayment,
       deletePayment,
       setCompanyCostSelection,
+      setCompanyCostSelections,
       updateRawMaterialImport,
     ],
   )

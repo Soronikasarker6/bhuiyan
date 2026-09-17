@@ -133,6 +133,8 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('permission:'.P::LEDGER_CREATE);
     Route::patch('company-cost-selections', [CompanyCostSelectionController::class, 'toggle'])
         ->middleware('permission:'.P::PROFIT_EDIT);
+    Route::put('company-cost-selections', [CompanyCostSelectionController::class, 'replace'])
+        ->middleware('permission:'.P::PROFIT_EDIT);
     Route::apiResource('transactions', TransactionController::class)->only(['index', 'store', 'destroy'])
         ->middlewareFor('index', 'permission:'.P::LEDGER_VIEW)
         ->middlewareFor('store', 'permission:'.P::LEDGER_CREATE)

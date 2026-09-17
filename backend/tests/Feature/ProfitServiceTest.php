@@ -118,4 +118,29 @@ class ProfitServiceTest extends TestCase
         $ledger->setCompanyCostSelection('2026-06', $category->id, true);
         $this->assertEqualsWithDelta(50000.0, $ledger->companyCostsForMonth('2026-06'), 0.01);
     }
+
+    public function test_bulk_selection_replaces_the_whole_set_in_one_call(): void
+    {
+        $ledger = app(LedgerService::class);
+        $kept = Category::factory()->create(['direction' => 'out', 'expense_type' => 'company_expense']);
+        $dropped = Category::factory()->create(['direction' => 'out', 'expense_type' => 'company_expense']);
+        $added = Category::factory()->create(['direction' => 'out', 'expense_type' => 'company_expense']);
+
+        CompanyCostSelection::create(['month_key' => '2026-08', 'category_id' => $kept->id]);
+        CompanyCostSelection::create(['month_key' => '2026-08', 'category_id' => $dropped->id]);
+
+        $ledger->setCompanyCostSelections('2026-08', [$kept->id, $added->id]);
+
+        $selectedIds = CompanyCostSelection::where('month_key', '2026-08')->pluck('category_id')->all();
+        $this->assertEqualsCanonicalizing([$kept->id, $added->id], $selectedIds);
+    }
+
+    public function test_bulk_selection_rejects_an_ineligible_category(): void
+    {
+        $ledger = app(LedgerService::class);
+        $ineligible = Category::factory()->create(['direction' => 'in']);
+
+        $this->expectException(\App\Exceptions\BusinessRuleException::class);
+        $ledger->setCompanyCostSelections('2026-08', [$ineligible->id]);
+    }
 }

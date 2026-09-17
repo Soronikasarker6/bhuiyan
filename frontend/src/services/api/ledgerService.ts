@@ -47,6 +47,10 @@ export const ledgerService = {
   setCompanyCostSelection(monthKey: string, categoryId: ID, selected: boolean): Promise<unknown> {
     return http.patch('/company-cost-selections', { month_key: monthKey, category_id: categoryId, selected })
   },
+  /** Replaces the whole set of selected Company Cost categories for one month in a single request. */
+  setCompanyCostSelections(monthKey: string, categoryIds: ID[]): Promise<unknown> {
+    return http.put('/company-cost-selections', { month_key: monthKey, category_ids: categoryIds })
+  },
   async closeMonth(monthKey: string): Promise<LedgerClosing> {
     return mapEntity<LedgerClosing>(await http.post('/ledger-closings', { month_key: monthKey }))
   },

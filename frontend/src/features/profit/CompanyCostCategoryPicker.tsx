@@ -1,103 +1,113 @@
 import { useMemo, useState } from 'react'
-import { Search, Wallet } from 'lucide-react'
+import { MultiComboBox } from '@ui5/webcomponents-react/MultiComboBox'
+import { MultiComboBoxItem } from '@ui5/webcomponents-react/MultiComboBoxItem'
+import { Wallet } from 'lucide-react'
 import type { ID } from '@/types'
 import type { CompanyCostCategoryTotal } from '@/utils/ledger'
 import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
-import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Money } from '@/components/Money'
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 /**
- * Profit & Loss's "Company Costs" picker — one row per eligible Cash Out
- * *category* (Salary, Machine Cost, Rent, …), each showing that category's
- * total for the selected month, not a scrolling list of individual
- * transactions/person names. Company Costs = the sum of whichever categories
- * are checked. Mirrors the checkbox-list idiom `RoleForm` uses for
- * permissions, same as the transaction-level picker this replaces.
+ * Profit & Loss's "Company Costs" filter — a multiselect combobox of every
+ * eligible Cash Out *category* (Salary, Machine Cost, Rent, …) plus a "Go"
+ * button, meant to sit inline with the Month/Year pickers above the page.
+ * Company Costs = the sum of whichever categories are checked here.
  *
- * Each row's checkbox is disabled while its own toggle request is in
- * flight — a UI5-style busy state scoped to that one row, so a slow request
- * can't be double-submitted and the rest of the list stays interactive.
+ * Checking/unchecking a category in the dropdown only updates *local* state
+ * — nothing is saved as you click, which used to fire one API request per
+ * selection and made the combobox feel sluggish. Pressing "Go" saves the
+ * whole picked set in a single request (`onApply`, one array of category
+ * ids), right before the results table is revealed.
+ *
+ * The parent should remount this component (e.g. `key={monthKey}`) when the
+ * selected month/year changes, so its local selection resets to that
+ * period's already-saved categories instead of carrying over unsaved picks
+ * from the last one.
  *
  * `canEdit` mirrors the backend's own PROFIT_EDIT gate — a viewer without it
- * (e.g. Staff, who can see P&L but not curate it) gets read-only checkboxes
- * rather than controls that would 403 on click.
+ * (e.g. Staff, who can see P&L but not curate it) gets a read-only combobox
+ * rather than a control that would 403 on click.
  */
-export function CompanyCostCategoryPicker({
+export function CompanyCostCategorySelect({
   candidates,
-  onToggle,
+  onApply,
   canEdit,
+  onGo,
 }: {
   candidates: CompanyCostCategoryTotal[]
-  onToggle: (categoryId: ID, selected: boolean) => Promise<void>
+  /** Resolves to whether the save succeeded — `go()` only reveals the table on `true`, never on a failed save. */
+  onApply: (categoryIds: ID[]) => Promise<boolean>
   canEdit: boolean
+  onGo: () => void
 }) {
-  const [search, setSearch] = useState('')
-  const [pending, setPending] = useState<Set<ID>>(new Set())
+  const [busy, setBusy] = useState(false)
+  const [pendingValues, setPendingValues] = useState<ID[]>(() => candidates.filter((c) => c.selected).map((c) => c.categoryId))
 
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase()
-    if (!needle) return candidates
-    return candidates.filter((c) => c.name.toLowerCase().includes(needle))
-  }, [candidates, search])
+  const go = async () => {
+    const persistedSet = new Set(candidates.filter((c) => c.selected).map((c) => c.categoryId))
+    const pendingSet = new Set(pendingValues)
+    const changed = persistedSet.size !== pendingSet.size || [...persistedSet].some((id) => !pendingSet.has(id))
 
-  const selectedTotal = useMemo(
-    () => candidates.filter((c) => c.selected).reduce((sum, c) => sum + c.amount, 0),
-    [candidates],
+    if (changed) {
+      setBusy(true)
+      let saved = false
+      try {
+        saved = await onApply(pendingValues)
+      } finally {
+        setBusy(false)
+      }
+      if (!saved) return
+    }
+    onGo()
+  }
+
+  return (
+    <>
+      <div className="min-w-[16rem] flex-1">
+        <label
+          htmlFor="company-cost-categories"
+          className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground"
+        >
+          Company cost categories
+        </label>
+        <MultiComboBox
+          id="company-cost-categories"
+          className="w-full"
+          placeholder={candidates.length === 0 ? 'No categories configured' : 'Select categories…'}
+          disabled={!canEdit || busy || candidates.length === 0}
+          loading={busy}
+          showSelectAll
+          selectedValues={pendingValues}
+          onSelectionChange={(event) =>
+            setPendingValues(event.detail.items.map((item) => item.value ?? ''))
+          }
+        >
+          {candidates.map((category) => (
+            <MultiComboBoxItem key={category.categoryId} value={category.categoryId} text={category.name} />
+          ))}
+        </MultiComboBox>
+      </div>
+
+      <Button type="button" loading={busy} onClick={go} disabled={candidates.length === 0}>
+        Go
+      </Button>
+    </>
   )
-  const selectedCount = useMemo(() => candidates.filter((c) => c.selected).length, [candidates])
+}
 
-  const setRowPending = (id: ID, busy: boolean) => {
-    setPending((current) => {
-      const next = new Set(current)
-      if (busy) next.add(id)
-      else next.delete(id)
-      return next
-    })
-  }
-
-  const toggle = async (category: CompanyCostCategoryTotal, checked: boolean) => {
-    setRowPending(category.categoryId, true)
-    try {
-      await onToggle(category.categoryId, checked)
-    } finally {
-      setRowPending(category.categoryId, false)
-    }
-  }
-
-  const selectAll = async (checked: boolean) => {
-    const targets = filtered.filter((c) => c.selected !== checked)
-    for (const c of targets) {
-      await toggle(c, checked)
-    }
-  }
-
-  const allChecked = filtered.length > 0 && filtered.every((c) => c.selected)
+/** The selected categories, and this month's amount for each — shown once "Go" is pressed above. */
+export function CompanyCostTable({ candidates }: { candidates: CompanyCostCategoryTotal[] }) {
+  const selected = useMemo(() => candidates.filter((c) => c.selected), [candidates])
+  const selectedTotal = useMemo(() => selected.reduce((sum, c) => sum + c.amount, 0), [selected])
 
   return (
     <Section
-      title="Company costs — select expense categories"
-      description="Only the categories checked below count toward this month's Company Costs. Each category's amount is the sum of its Cash Out entries this month."
-      actions={
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search category…"
-              className="h-8 w-56 pl-8 text-xs"
-            />
-          </div>
-          <Button type="button" size="sm" variant="outline" onClick={() => selectAll(true)} disabled={!canEdit || filtered.length === 0}>
-            Select all
-          </Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => selectAll(false)} disabled={!canEdit || filtered.length === 0}>
-            Clear all
-          </Button>
-        </div>
-      }
+      title="Company costs — selected expense categories"
+      description="Only the categories chosen above count toward this month's Company Costs. Each category's amount is the sum of its Cash Out entries this month."
+      noPadding
     >
       {candidates.length === 0 ? (
         <EmptyState
@@ -106,52 +116,43 @@ export function CompanyCostCategoryPicker({
           title="No expense categories configured"
           description="Mark a Cash Out category as a Company Expense in Settings → Categories to see it here."
         />
-      ) : filtered.length === 0 ? (
-        <EmptyState icon={Search} size="sm" title="No matches" description="Try a different search." />
+      ) : selected.length === 0 ? (
+        <EmptyState
+          icon={Wallet}
+          size="sm"
+          title="No categories selected"
+          description="Choose one or more categories above, then press Go."
+        />
       ) : (
-        <div className="max-h-[22rem] space-y-1 overflow-y-auto rounded-lg border border-border p-2">
-          <label className="flex items-center gap-2 border-b border-border px-1.5 pb-1.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-            <input
-              type="checkbox"
-              className="h-3.5 w-3.5 rounded border-border accent-primary-700"
-              checked={allChecked}
-              disabled={!canEdit}
-              onChange={(e) => selectAll(e.target.checked)}
-            />
-            {filtered.length} categor{filtered.length === 1 ? 'y' : 'ies'}
-          </label>
-          {filtered.map((c) => (
-            <label
-              key={c.categoryId}
-              className="flex items-center gap-2.5 rounded-md px-1.5 py-1.5 text-xs hover:bg-secondary/40"
-            >
-              <input
-                type="checkbox"
-                className="h-3.5 w-3.5 shrink-0 rounded border-border accent-primary-700"
-                checked={c.selected}
-                disabled={!canEdit || pending.has(c.categoryId)}
-                onChange={(e) => toggle(c, e.target.checked)}
-              />
-              <span className="min-w-0 flex-1 truncate">{c.name}</span>
-              <Money value={c.amount} size="sm" className="w-24 shrink-0 text-right" />
-            </label>
-          ))}
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Category</TableHead>
+                <TableHead numeric>Amount</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {selected.map((category) => (
+                <TableRow key={category.categoryId}>
+                  <TableCell className="font-medium">{category.name}</TableCell>
+                  <TableCell numeric>
+                    <Money value={category.amount} size="sm" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+            <TableFooter>
+              <TableRow className="hover:bg-transparent">
+                <TableCell className="text-2xs uppercase tracking-wider">Selected company costs</TableCell>
+                <TableCell numeric>
+                  <Money value={selectedTotal} size="sm" weight="bold" />
+                </TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
         </div>
       )}
-
-      <div className="mt-3 flex items-center justify-end gap-2">
-        <span className="text-2xs uppercase tracking-wider text-muted-foreground">
-          Selected categories: {selectedCount}
-        </span>
-        <div className="inline-flex overflow-hidden rounded-lg border border-brass-200">
-          <div className="bg-brass-100 px-4 py-2 text-2xs font-semibold uppercase tracking-wider text-brass-800">
-            Selected company costs
-          </div>
-          <div className="border-l border-brass-200 bg-brass-100 px-4 py-2">
-            <Money value={selectedTotal} size="sm" weight="bold" className="text-brass-800" />
-          </div>
-        </div>
-      </div>
     </Section>
   )
 }

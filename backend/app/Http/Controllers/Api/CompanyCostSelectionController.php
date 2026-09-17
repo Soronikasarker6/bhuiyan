@@ -37,4 +37,26 @@ class CompanyCostSelectionController extends Controller
                 ->firstWhere('category_id', (int) $data['category_id'])
         );
     }
+
+    /**
+     * Replaces the whole set of selected categories for one month in a
+     * single request — what the picker's "Go" button calls, instead of one
+     * `toggle()` round trip per category changed.
+     */
+    public function replace(Request $request)
+    {
+        $data = $request->validate([
+            'month_key' => ['required', 'regex:/^\d{4}-\d{2}$/'],
+            'category_ids' => ['array'],
+            'category_ids.*' => ['integer', 'exists:categories,id'],
+        ]);
+
+        try {
+            $this->ledger->setCompanyCostSelections($data['month_key'], $data['category_ids'] ?? []);
+        } catch (BusinessRuleException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($this->ledger->companyCostCategoryTotals($data['month_key']));
+    }
 }

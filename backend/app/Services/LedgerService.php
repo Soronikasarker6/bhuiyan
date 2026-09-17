@@ -103,24 +103,28 @@ class LedgerService
 
         $selectedIds = CompanyCostSelection::where('month_key', $monthKey)->pluck('category_id')->all();
 
-        return Category::where('direction', 'out')
+        $categories = Category::where('direction', 'out')
             ->where('expense_type', 'company_expense')
             ->orderBy('name')
-            ->get()
-            ->map(function (Category $category) use ($year, $month, $selectedIds) {
-                $amount = (float) Transaction::where('category_id', $category->id)
-                    ->whereYear('date', $year)->whereMonth('date', $month)
-                    ->whereNull('transfer_id')
-                    ->where('direction', 'out')
-                    ->sum('amount');
+            ->get();
 
-                return [
-                    'category_id' => $category->id,
-                    'name' => $category->name,
-                    'amount' => $amount,
-                    'selected' => in_array($category->id, $selectedIds, true),
-                ];
-            });
+        // One grouped query for every eligible category's total, not one
+        // Transaction::sum() per category — this runs on every P&L page
+        // load and once per month in the yearly Reports build.
+        $amountByCategory = Transaction::whereIn('category_id', $categories->pluck('id'))
+            ->whereYear('date', $year)->whereMonth('date', $month)
+            ->whereNull('transfer_id')
+            ->where('direction', 'out')
+            ->selectRaw('category_id, SUM(amount) as total')
+            ->groupBy('category_id')
+            ->pluck('total', 'category_id');
+
+        return $categories->map(fn (Category $category) => [
+            'category_id' => $category->id,
+            'name' => $category->name,
+            'amount' => (float) ($amountByCategory[$category->id] ?? 0),
+            'selected' => in_array($category->id, $selectedIds, true),
+        ]);
     }
 
     /**
@@ -155,6 +159,37 @@ class LedgerService
         } else {
             CompanyCostSelection::where('month_key', $monthKey)->where('category_id', $categoryId)->delete();
         }
+    }
+
+    /**
+     * Replaces the *entire* set of Company Cost categories selected for one
+     * month in a single call — the picker's "Go" batches every pick/unpick
+     * from one session into this one request instead of one round trip per
+     * category, the way {@see setCompanyCostSelection()} works.
+     */
+    public function setCompanyCostSelections(string $monthKey, array $categoryIds): void
+    {
+        $categoryIds = array_values(array_unique(array_map('intval', $categoryIds)));
+
+        $eligibleIds = Category::where('direction', 'out')
+            ->where('expense_type', 'company_expense')
+            ->pluck('id')
+            ->all();
+
+        if (array_diff($categoryIds, $eligibleIds)) {
+            throw new BusinessRuleException('Only an eligible Cash Out expense category can be a company cost.');
+        }
+
+        DB::transaction(function () use ($monthKey, $categoryIds) {
+            CompanyCostSelection::where('month_key', $monthKey)
+                ->whereNotIn('category_id', $categoryIds)
+                ->delete();
+
+            $existingIds = CompanyCostSelection::where('month_key', $monthKey)->pluck('category_id')->all();
+            foreach (array_diff($categoryIds, $existingIds) as $categoryId) {
+                CompanyCostSelection::create(['month_key' => $monthKey, 'category_id' => $categoryId]);
+            }
+        });
     }
 
     /** Two linked rows sharing transfer_id, written atomically. */
