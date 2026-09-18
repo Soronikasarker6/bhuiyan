@@ -33,7 +33,7 @@ export function RequirePermission({
   useEffect(() => {
     if (!allowed) {
       toast.error("You don't have permission to view that page.")
-      navigate('/', { replace: true })
+      navigate('/dashboard', { replace: true })
     }
   }, [allowed, navigate])
 

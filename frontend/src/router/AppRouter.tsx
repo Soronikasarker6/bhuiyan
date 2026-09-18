@@ -18,7 +18,15 @@ import { RequirePermission } from './RequirePermission'
  * same route tree it always has. `RequirePermission` runs in both builds
  * (it's a no-op gate offline — see `usePermission`) so every route always
  * declares the permission it needs, once, in one place.
+ *
+ * The app used to open on the Dashboard at `/`. It now opens on `/dashboard`
+ * — freeing up `/` for the public marketing site (`LandingPage`, backend
+ * build only) — while the offline build, which has no public site to show,
+ * still lands on the same Dashboard screen: nothing there matches `/dashboard`
+ * literally except that one route, so a bare `/` just falls through to the
+ * catch-all below and is bounced straight to it.
  */
+const LandingPage = lazy(() => import('@/pages/LandingPage'))
 const LoginPage = lazy(() => import('@/pages/LoginPage'))
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
 const ImportPage = lazy(() => import('@/pages/ImportPage'))
@@ -51,7 +59,7 @@ function Page({ permission, children }: { permission: string | string[]; childre
 export function AppRouter() {
   const appRoutes = (
     <Route element={<AppLayout />}>
-      <Route index element={<Page permission={PERMISSIONS.DASHBOARD_VIEW}><DashboardPage /></Page>} />
+      <Route path="/dashboard" element={<Page permission={PERMISSIONS.DASHBOARD_VIEW}><DashboardPage /></Page>} />
       <Route path="/import" element={<Page permission={PERMISSIONS.RAW_MATERIAL_VIEW}><ImportPage /></Page>} />
       <Route path="/production" element={<Page permission={PERMISSIONS.PRODUCTION_VIEW}><ProductionPage /></Page>} />
       <Route path="/sales" element={<Page permission={PERMISSIONS.SALES_VIEW}><SalesPage /></Page>} />
@@ -72,7 +80,7 @@ export function AppRouter() {
           </Page>
         }
       />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Route>
   )
 
@@ -82,6 +90,7 @@ export function AppRouter() {
 
   return (
     <Routes>
+      <Route path="/" element={<Lazy><LandingPage /></Lazy>} />
       <Route path="/login" element={<Lazy><LoginPage /></Lazy>} />
       <Route element={<RequireAuth />}>{appRoutes}</Route>
     </Routes>

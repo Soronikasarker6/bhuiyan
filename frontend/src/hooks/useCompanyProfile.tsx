@@ -45,7 +45,11 @@ export function CompanyProfileProvider({ children }: { children: ReactNode }) {
     if (__OFFLINE__) return
 
     try {
-      setProfile(await companyProfileService.get())
+      // The public endpoint, not the SETTINGS_VIEW-gated one — this is the
+      // one shared read path every consumer uses (Settings' own display,
+      // every printed document, and the public landing page's Contact
+      // section), and none of it is confidential, so it's safe unauthenticated.
+      setProfile(await companyProfileService.getPublic())
     } catch {
       // A letterhead falling back to the plain defaults is not worth a toast
       // on every failed background refetch — Settings surfaces real errors

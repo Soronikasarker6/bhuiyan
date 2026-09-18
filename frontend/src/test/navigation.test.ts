@@ -65,7 +65,7 @@ describe('navigationSegments (this app\'s real sidebar data)', () => {
   })
 
   it('keeps Dashboard standalone, not part of any group', () => {
-    const dashboard = navigationSegments.find((s) => s.type === 'item' && s.item.path === '/')
+    const dashboard = navigationSegments.find((s) => s.type === 'item' && s.item.path === '/dashboard')
     expect(dashboard).toBeDefined()
   })
 

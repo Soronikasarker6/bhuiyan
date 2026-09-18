@@ -1,0 +1,60 @@
+/**
+ * Public landing page — decorative bits `quarry-theme.css` and
+ * `stone-shell.css` don't already cover. Everything else on this page
+ * (background, cards, buttons, type) reads through the same design tokens
+ * and Tailwind utilities every other page uses; this file exists only for
+ * the handful of rules Tailwind can't express. Imported only by
+ * `pages/LandingPage.tsx`, never globally.
+ */
+
+/*
+ * The hero band. The same dark quarried gradient the sidebar rail is cut
+ * from (see `.stone-rail` in `stone-shell.css`), but without that class's
+ * cairn photograph — sized for a narrow tall rail, it would mis-scale badly
+ * across a full-width hero, so this repeats just the gradient on its own.
+ * Also reused, unmodified, for the Contact and Footer bands further down
+ * the page — see `#top` below for the one section that adds a photograph.
+ */
+.landing-hero {
+  background-color: hsl(88 20% 18%);
+  background-image: linear-gradient(178deg, hsl(88 18% 24%) 0%, hsl(88 20% 17%) 55%, hsl(90 24% 11%) 100%);
+}
+
+/*
+ * The very first thing a visitor sees, so this is the one band that gets a
+ * real photograph rather than the plain gradient — river pebbles, the same
+ * quarried-stone language as the rest of the site. The gradient stays, now
+ * as a translucent scrim laid over the photo instead of a solid fill, so the
+ * white heading text above it is still comfortably readable.
+ */
+#top.landing-hero {
+  background-image:
+    linear-gradient(178deg, hsl(88 18% 20% / 0.82) 0%, hsl(88 20% 15% / 0.85) 55%, hsl(90 24% 9% / 0.9) 100%),
+    url('../assets/hero-pebbles.jpg');
+  background-size: cover, cover;
+  background-position: center, center;
+}
+
+/* A quiet once-on-load reveal — not a scroll-triggered animation, so it costs nothing after first paint. */
+@media (prefers-reduced-motion: no-preference) {
+  .landing-fade-in {
+    animation: landing-fade-in 0.5s ease-out both;
+  }
+}
+@keyframes landing-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The connector between two steps of the operations workflow: an arrowhead pointing down on mobile, right on desktop. */
+.landing-flow-arrow {
+  position: relative;
+  flex-shrink: 0;
+  color: hsl(38 45% 45% / 0.7);
+}

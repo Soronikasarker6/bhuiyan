@@ -9,9 +9,9 @@ import { useAuth } from '@/hooks/useAuth'
  * ever rendered when `__OFFLINE__` is false — see `src/router/AppRouter.tsx`.
  *
  * An optional `permission` gates the whole route on top of plain
- * logged-in-or-not: missing it redirects to `/` with an explanatory toast,
- * the route-level equivalent of V12's Angular `canActivateRoute(permission)`
- * guard factory.
+ * logged-in-or-not: missing it redirects to `/dashboard` with an explanatory
+ * toast, the route-level equivalent of V12's Angular
+ * `canActivateRoute(permission)` guard factory.
  */
 export function RequireAuth({ permission }: { permission?: string }) {
   const { user, loading, isPermissionValid } = useAuth()
@@ -23,7 +23,7 @@ export function RequireAuth({ permission }: { permission?: string }) {
   useEffect(() => {
     if (denied) {
       toast.error("You don't have permission to view that page.")
-      navigate('/', { replace: true })
+      navigate('/dashboard', { replace: true })
     }
   }, [denied, navigate])
 
