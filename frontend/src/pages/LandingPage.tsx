@@ -13,6 +13,7 @@ import {
   Warehouse,
   X,
 } from 'lucide-react'
+import { StoneMark } from '@/components/StoneMark'
 import { Button } from '@/components/ui/button'
 import { useCompanyProfile } from '@/hooks/useCompanyProfile'
 import '@/styles/landing-theme.css'
@@ -96,8 +97,8 @@ function Nav() {
               className="h-9 w-9 shrink-0 rounded-lg object-contain"
             />
           ) : (
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-700 text-sm font-semibold text-white">
-              BI
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-700 text-white">
+              <StoneMark className="h-5 w-5" />
             </span>
           )}
           <span className="min-w-0">
