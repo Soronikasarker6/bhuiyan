@@ -6,13 +6,14 @@ import type {
   RawMaterialImport,
   RawMaterialStock,
   RawStockSummary,
+  ShipmentCycle,
   ShipmentCycleRow,
   ShipmentStatus,
   WastageEntry,
   WastageRow,
 } from '@/types'
 import { productNameOf } from './products'
-import { chronological, kgToTons, netWeightKg } from './imports'
+import { kgToTons, netWeightKg } from './imports'
 
 /**
  * Raw material costing — a separate, weight-based stock from the mesh/bag
@@ -208,6 +209,7 @@ export function allRawStockSummaries(
 export function rawMaterialStock(
   productId: ID,
   products: Product[],
+  shipmentCycles: ShipmentCycle[],
   imports: RawMaterialImport[],
   wastage: WastageEntry[],
   productionEntries: ProductionEntry[],
@@ -217,7 +219,7 @@ export function rawMaterialStock(
   const wastageTon = wastageTonOf(productId, wastage)
   const producedTon = producedTonOf(productId, productionEntries, bagKgOf)
 
-  const cycles = buildShipmentCycles(productId, products, imports, wastage, productionEntries, bagKgOf)
+  const cycles = buildShipmentCycles(productId, products, shipmentCycles, imports, wastage, productionEntries, bagKgOf)
   const latest = cycles[cycles.length - 1]
 
   // No shipment has ever been recorded for this material — fall back to the
@@ -225,8 +227,9 @@ export function rawMaterialStock(
   // wastage/production logged, and no import yet, still reports a number.
   const openingTon = latest ? latest.openingTon : 0
   const receivedTon = latest ? latest.receivedTon : 0
-  const consumedTon = latest ? latest.consumedTon : wastageTon + producedTon
-  const closingTon = latest ? latest.closingTon : openingTon + receivedTon - consumedTon
+  const consumedTon = latest ? latest.consumedTon : producedTon
+  const cycleWastageTon = latest ? latest.wastageTon : wastageTon
+  const closingTon = latest ? latest.closingTon : openingTon + receivedTon - consumedTon - cycleWastageTon
 
   return {
     productId,
@@ -239,6 +242,7 @@ export function rawMaterialStock(
     openingTon,
     receivedTon,
     consumedTon,
+    cycleWastageTon,
     closingTon,
     shipmentCount: cycles.length,
     openShipmentCount: cycles.filter((c) => c.status === 'open').length,
@@ -248,12 +252,13 @@ export function rawMaterialStock(
 
 export function allRawMaterialStock(
   products: Product[],
+  shipmentCycles: ShipmentCycle[],
   imports: RawMaterialImport[],
   wastage: WastageEntry[],
   productionEntries: ProductionEntry[],
   bagKgOf: (meshId: ID) => number,
 ): RawMaterialStock[] {
-  return products.map((p) => rawMaterialStock(p.id, products, imports, wastage, productionEntries, bagKgOf))
+  return products.map((p) => rawMaterialStock(p.id, products, shipmentCycles, imports, wastage, productionEntries, bagKgOf))
 }
 
 // ---------------------------------------------------------------- wastage
@@ -287,41 +292,39 @@ export function wastageTotals(entries: WastageEntry[]): { entryCount: number; qu
   )
 }
 
-// ---------------------------------------------------------------- shipment-wise cycles (§2, §3, §4)
+// ---------------------------------------------------------------- shipment cycles (§1–§4)
 
-/** Whether `(date, createdAt)` falls at or after the boundary `(boundaryDate, boundaryCreatedAt)`. */
-function atOrAfter(date: ISODate, createdAt: string, boundaryDate: ISODate, boundaryCreatedAt: string): boolean {
-  if (date !== boundaryDate) return date > boundaryDate
-  return createdAt >= boundaryCreatedAt
-}
-
-/** Whether `(date, createdAt)` falls strictly before the boundary. */
-function strictlyBefore(date: ISODate, createdAt: string, boundaryDate: ISODate, boundaryCreatedAt: string): boolean {
-  if (date !== boundaryDate) return date < boundaryDate
-  return createdAt < boundaryCreatedAt
+/** Oldest first — the order cycles actually opened in. */
+function chronologicalCycle(a: ShipmentCycle, b: ShipmentCycle): number {
+  if (a.openedOn !== b.openedOn) return a.openedOn < b.openedOn ? -1 : 1
+  return a.id < b.id ? -1 : 1
 }
 
 /**
- * Every shipment cycle for one raw material, oldest first (§2).
+ * Every shipment cycle for one raw material, oldest first (§2/§3).
  *
- * Each shipment's opening balance is the previous shipment's closing balance
- * for this *same* `productId` — never another material's, never a lifetime
- * sum. A cycle's window runs from its own receipt up to (not including) the
- * next shipment of this material, so wastage/production dated in between is
- * exactly what "consumed" counts — the first cycle's window has no lower
- * bound, so it also picks up anything dated before any shipment existed. A
- * closed shipment's four figures come from its frozen snapshot instead —
+ * Each cycle's opening balance is the previous cycle's closing balance for
+ * this *same* `productId` — never another material's, never a lifetime
+ * sum. A cycle's window runs from its own `openedOn` up to (not including)
+ * the next cycle's `openedOn`, so wastage/production dated in between is
+ * exactly what "consumed"/"wastage" count — the first cycle's window has no
+ * lower bound, so it also picks up anything dated before any shipment
+ * existed. A closed cycle's figures come from its frozen snapshot instead —
  * recomputing them from the logs would defeat the entire point of closing.
+ *
+ * `receivedTon` sums *every* import whose `shipmentId` points at this
+ * cycle — one, or several, while it stayed open — never one row per import.
  */
 export function buildShipmentCycles(
   productId: ID,
   products: Product[],
+  shipmentCycles: ShipmentCycle[],
   imports: RawMaterialImport[],
   wastage: WastageEntry[],
   productionEntries: ProductionEntry[],
   bagKgOf: (meshId: ID) => number,
 ): ShipmentCycleRow[] {
-  const shipments = imports.filter((i) => i.productId === productId).sort(chronological)
+  const cycles = shipmentCycles.filter((c) => c.productId === productId).sort(chronologicalCycle)
   const productWastage = wastage.filter((w) => w.productId === productId)
   const productProduction = productionEntries.filter((e) => e.productId === productId)
 
@@ -329,25 +332,18 @@ export function buildShipmentCycles(
   const rows: ShipmentCycleRow[] = []
   let runningOpening = 0
 
-  shipments.forEach((shipment, index) => {
-    const meta = {
-      id: shipment.id,
-      productId,
-      productName,
-      date: shipment.date,
-      shipName: shipment.shipName,
-      serialNo: shipment.serialNo,
-      truckNo: shipment.truckNo,
-    }
+  cycles.forEach((cycle, index) => {
+    const meta = { id: cycle.id, productId, productName, openedOn: cycle.openedOn }
 
-    if (shipment.status === 'closed' && shipment.closing) {
-      const { openingTon, receivedTon, consumedTon, closingTon, closedAt } = shipment.closing
+    if (cycle.status === 'closed' && cycle.closing) {
+      const { openingTon, receivedTon, consumedTon, wastageTon, closingTon, closedAt } = cycle.closing
       rows.push({
         ...meta,
         receivedTon,
         openingTon,
         availableTon: openingTon + receivedTon,
         consumedTon,
+        wastageTon,
         closingTon,
         status: 'closed',
         closedAt,
@@ -357,28 +353,34 @@ export function buildShipmentCycles(
     }
 
     const isFirst = index === 0
-    const next = shipments[index + 1]
+    const next = cycles[index + 1]
 
-    const inWindow = (date: ISODate, createdAt: string) => {
-      if (!isFirst && !atOrAfter(date, createdAt, shipment.date, shipment.createdAt)) return false
-      if (next && !strictlyBefore(date, createdAt, next.date, next.createdAt)) return false
+    // Cycles are windowed by date alone — unlike the old per-import chain,
+    // a cycle can span several imports received at different times, so
+    // there is no single "moment" left to break a same-day tie against.
+    const inWindow = (date: ISODate) => {
+      if (!isFirst && date < cycle.openedOn) return false
+      if (next && date >= next.openedOn) return false
       return true
     }
 
-    const consumedTon =
-      productWastage
-        .filter((w) => inWindow(w.date, w.createdAt))
-        .reduce((sum, w) => sum + kgToTons(Number(w.quantityKg) || 0), 0) +
-      productProduction
-        .filter((e) => inWindow(e.date, e.createdAt))
-        .reduce((sum, e) => sum + kgToTons((Number(e.bags) || 0) * bagKgOf(e.meshId)), 0)
+    const wastageTon = productWastage
+      .filter((w) => inWindow(w.date))
+      .reduce((sum, w) => sum + kgToTons(Number(w.quantityKg) || 0), 0)
 
-    const receivedTon = kgToTons(netWeightKg(shipment.grossWeightKg, shipment.tareWeightKg))
+    const consumedTon = productProduction
+      .filter((e) => inWindow(e.date))
+      .reduce((sum, e) => sum + kgToTons((Number(e.bags) || 0) * bagKgOf(e.meshId)), 0)
+
+    const receivedTon = imports
+      .filter((i) => i.shipmentId === cycle.id)
+      .reduce((sum, i) => sum + kgToTons(netWeightKg(i.grossWeightKg, i.tareWeightKg)), 0)
+
     const openingTon = runningOpening
     const availableTon = openingTon + receivedTon
-    const closingTon = availableTon - consumedTon
+    const closingTon = availableTon - consumedTon - wastageTon
 
-    rows.push({ ...meta, receivedTon, openingTon, availableTon, consumedTon, closingTon, status: 'open' })
+    rows.push({ ...meta, receivedTon, openingTon, availableTon, consumedTon, wastageTon, closingTon, status: 'open' })
     runningOpening = closingTon
   })
 
@@ -388,12 +390,13 @@ export function buildShipmentCycles(
 /** Every material's shipment cycles, in one flat list — the shipment history table's rows. */
 export function allShipmentCycles(
   products: Product[],
+  shipmentCycles: ShipmentCycle[],
   imports: RawMaterialImport[],
   wastage: WastageEntry[],
   productionEntries: ProductionEntry[],
   bagKgOf: (meshId: ID) => number,
 ): ShipmentCycleRow[] {
-  return products.flatMap((p) => buildShipmentCycles(p.id, products, imports, wastage, productionEntries, bagKgOf))
+  return products.flatMap((p) => buildShipmentCycles(p.id, products, shipmentCycles, imports, wastage, productionEntries, bagKgOf))
 }
 
 /**
@@ -406,13 +409,13 @@ export function allShipmentCycles(
  * (§10): landing inside a *closed* cycle is refused, the same way `SaleForm`
  * refuses a sale that would exceed available stock.
  */
-export function cycleStatusForDate(productId: ID, date: ISODate, imports: RawMaterialImport[]): ShipmentStatus | undefined {
-  const shipments = imports.filter((i) => i.productId === productId).sort(chronological)
-  if (shipments.length === 0 || date < shipments[0]!.date) return undefined
+export function cycleStatusForDate(productId: ID, date: ISODate, shipmentCycles: ShipmentCycle[]): ShipmentStatus | undefined {
+  const cycles = shipmentCycles.filter((c) => c.productId === productId).sort(chronologicalCycle)
+  if (cycles.length === 0 || date < cycles[0]!.openedOn) return undefined
 
-  let match = shipments[0]!
-  for (const shipment of shipments) {
-    if (shipment.date <= date) match = shipment
+  let match = cycles[0]!
+  for (const cycle of cycles) {
+    if (cycle.openedOn <= date) match = cycle
     else break
   }
   return match.status ?? 'open'

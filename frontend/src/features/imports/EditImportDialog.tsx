@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
+import { ReusableValueField } from '@/features/imports/ReusableValueField'
 import { netWeightKg, kgToTons } from '@/utils/imports'
 import { formatNumber, formatTons, todayISO } from '@/utils/format'
 
@@ -52,11 +53,15 @@ type FormValues = z.input<typeof schema>
 export function EditImportDialog({
   row,
   products,
+  shipNames,
+  truckNos,
   onOpenChange,
   onSubmit,
 }: {
   row: ImportRow | null
   products: Product[]
+  shipNames: string[]
+  truckNos: string[]
   onOpenChange: (open: boolean) => void
   onSubmit: (values: ShipmentInput) => Promise<void>
 }) {
@@ -164,15 +169,25 @@ export function EditImportDialog({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Ship name (optional)" htmlFor="edit-imp-ship">
-              <Input id="edit-imp-ship" {...register('shipName')} />
-            </Field>
+            <ReusableValueField
+              id="edit-imp-ship"
+              label="Ship name (optional)"
+              value={watch('shipName') ?? ''}
+              options={shipNames}
+              placeholder="Select or add a ship"
+              onChange={(v) => setValue('shipName', v)}
+            />
             <Field label="Serial / SL No. (optional)" htmlFor="edit-imp-serial">
               <Input id="edit-imp-serial" {...register('serialNo')} />
             </Field>
-            <Field label="Truck No. (optional)" htmlFor="edit-imp-truck">
-              <Input id="edit-imp-truck" {...register('truckNo')} />
-            </Field>
+            <ReusableValueField
+              id="edit-imp-truck"
+              label="Truck No. (optional)"
+              value={watch('truckNo') ?? ''}
+              options={truckNos}
+              placeholder="Select or add a truck"
+              onChange={(v) => setValue('truckNo', v)}
+            />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

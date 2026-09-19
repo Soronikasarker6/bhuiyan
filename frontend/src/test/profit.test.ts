@@ -19,7 +19,7 @@ describe('monthlyProfit — §6 worked example', () => {
   //     Company costs  =                            ৳8,000
   //     Net profit     = 20,000 − 8,000           = ৳12,000
   const rawMaterialImports: RawMaterialImport[] = [
-    { id: 'i1', date: '2026-09-01', productId: 'p1', grossWeightKg: 10_000, tareWeightKg: 0, pricePerTon: 10_000, createdAt: '' },
+    { id: 'i1', shipmentId: 's1', date: '2026-09-01', productId: 'p1', grossWeightKg: 10_000, tareWeightKg: 0, pricePerTon: 10_000, createdAt: '' },
   ]
 
   // 60 bags × 50kg = 3,000 kg = 3 ton, sold for exactly ৳50,000.
@@ -109,7 +109,7 @@ describe('monthlyProfit — Company Costs only counts categories explicitly sele
 describe('monthlyProfit — cost of goods sold reflects only what was sold, not what was imported', () => {
   it('a business that imports 10,000kg but sells nothing has zero COGS', () => {
     const rawMaterialImports: RawMaterialImport[] = [
-      { id: 'i1', date: '2026-09-01', productId: 'p1', grossWeightKg: 10_000, tareWeightKg: 0, pricePerTon: 10_000, createdAt: '' },
+      { id: 'i1', shipmentId: 's1', date: '2026-09-01', productId: 'p1', grossWeightKg: 10_000, tareWeightKg: 0, pricePerTon: 10_000, createdAt: '' },
     ]
 
     const result = monthlyProfit(2026, 8, {

@@ -7,18 +7,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * One row = one shipment = one inventory cycle for its product. See
- * App\Services\InventoryService for the opening/received/consumed/closing chain.
+ * One weighbridge receipt of raw material — gross in, tare out. Belongs to
+ * exactly one `Shipment` (the inventory cycle it accumulated into); see
+ * App\Services\InventoryService for how imports join an open shipment, and
+ * `Shipment` for the opening/received/consumed/closing chain itself.
  */
 class RawMaterialImport extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'date', 'product_id', 'ship_name', 'serial_no', 'truck_no',
-        'gross_weight_kg', 'tare_weight_kg', 'price_per_ton', 'notes', 'status',
-        'closing_opening_ton', 'closing_received_ton', 'closing_consumed_ton',
-        'closing_closing_ton', 'closing_closed_at',
+        'shipment_id', 'date', 'product_id', 'ship_name', 'serial_no', 'truck_no',
+        'gross_weight_kg', 'tare_weight_kg', 'price_per_ton', 'notes',
     ];
 
     protected function casts(): array
@@ -28,11 +28,6 @@ class RawMaterialImport extends Model
             'gross_weight_kg' => 'float',
             'tare_weight_kg' => 'float',
             'price_per_ton' => 'float',
-            'closing_opening_ton' => 'float',
-            'closing_received_ton' => 'float',
-            'closing_consumed_ton' => 'float',
-            'closing_closing_ton' => 'float',
-            'closing_closed_at' => 'datetime',
         ];
     }
 
@@ -41,9 +36,14 @@ class RawMaterialImport extends Model
         return $this->belongsTo(Product::class);
     }
 
+    public function shipment(): BelongsTo
+    {
+        return $this->belongsTo(Shipment::class);
+    }
+
     public function isClosed(): bool
     {
-        return $this->status === 'closed';
+        return $this->shipment?->isClosed() ?? false;
     }
 
     /** Never negative — a mis-keyed tare heavier than gross reads as zero net weight. */
@@ -67,27 +67,20 @@ class RawMaterialImport extends Model
     }
 
     /**
-     * Shapes this shipment like the frontend's ImportRow/RawMaterialImport —
-     * the frozen closing_* columns nested under `closing` (null while open),
-     * used by every endpoint that returns shipments (bootstrap included) so
-     * the frontend's mapper sees one consistent shape everywhere.
+     * Shapes this import like the frontend's ImportRow/RawMaterialImport,
+     * used by every endpoint that returns import entries (bootstrap
+     * included) so the frontend's mapper sees one consistent shape
+     * everywhere. Cycle status/closing figures live on the parent
+     * `Shipment` now — see `ShipmentCycleController` / `AppDataController`
+     * for the `shipmentCycles` collection those come from.
      */
     public function toPresentedArray(): array
     {
-        $closing = $this->isClosed() ? [
-            'opening_ton' => (float) $this->closing_opening_ton,
-            'received_ton' => (float) $this->closing_received_ton,
-            'consumed_ton' => (float) $this->closing_consumed_ton,
-            'closing_ton' => (float) $this->closing_closing_ton,
-            'closed_at' => optional($this->closing_closed_at)->toIso8601String(),
-        ] : null;
-
         return array_merge($this->toArray(), [
             'product_name' => $this->product?->name,
             'net_weight_kg' => $this->netWeightKg(),
             'net_weight_ton' => $this->netWeightTon(),
             'value' => $this->value(),
-            'closing' => $closing,
         ]);
     }
 }

@@ -1,29 +1,51 @@
 import type { ID, ISODate } from './common'
 
 /**
- * A shipment's inventory cycle status (§3).
+ * A shipment cycle's status.
  *
  * "Open" means its closing balance is still live-computed from whatever
- * consumption is dated within its cycle window. "Closed" means that balance
- * has been frozen in `RawMaterialImport.closing` — later entries, anywhere in
- * the system, can never move a closed shipment's numbers again.
+ * consumption is dated within its cycle window, and any new import for this
+ * raw material accumulates into it. "Closed" means that balance has been
+ * frozen in `ShipmentCycle.closing` — later entries, anywhere in the system,
+ * can never move a closed shipment's numbers again, and the next import for
+ * this raw material opens a new cycle instead of joining this one.
  */
 export type ShipmentStatus = 'open' | 'closed'
 
 /**
- * The frozen snapshot taken the moment a shipment is closed.
+ * The frozen snapshot taken the moment a shipment cycle is closed.
  *
- * Stored rather than left to be recomputed on demand — a closed shipment's
+ * Stored rather than left to be recomputed on demand — a closed cycle's
  * whole reason to exist is that a later back-dated wastage or production
  * entry, or a future shipment inserted out of order, must never quietly
  * change what was already reported as this cycle's closing balance.
+ * Consumed (production) and wastage are frozen as two separate figures —
+ * the Shipment History screen reports them apart, never blended.
  */
 export interface ShipmentClosing {
   openingTon: number
   receivedTon: number
   consumedTon: number
+  wastageTon: number
   closingTon: number
   closedAt: string
+}
+
+/**
+ * One raw material's inventory cycle. At most one cycle per `productId` is
+ * ever `open` at a time (§3) — every import received while it's open
+ * belongs to it (`RawMaterialImport.shipmentId`); closing freezes it
+ * permanently and the next import opens a new cycle with a new id (§6/§7).
+ * This id is the "Shipment ID" shown on screen.
+ */
+export interface ShipmentCycle {
+  id: ID
+  productId: ID
+  /** Set once, from the first import that opened this cycle — never moved by a later one joining it. */
+  openedOn: ISODate
+  status: ShipmentStatus
+  /** Present only once this cycle has been closed. */
+  closing?: ShipmentClosing
 }
 
 /**
@@ -31,13 +53,12 @@ export interface ShipmentClosing {
  * net worked out. This is upstream of Production: it says how much raw
  * material arrived, not how much finished, bagged stock exists.
  *
- * Each import is also one shipment-wise inventory cycle (§2/§3) for its
- * `productId` — its opening balance is the previous shipment's closing
- * balance for that *same* raw material, never another material's, and never
- * the historical sum of every shipment ever received.
+ * Belongs to exactly one `ShipmentCycle` (`shipmentId`) — the inventory
+ * cycle it accumulated into, never one of its own (§1/§2).
  */
 export interface RawMaterialImport {
   id: ID
+  shipmentId: ID
   date: ISODate
   productId: ID
   shipName?: string
@@ -49,10 +70,6 @@ export interface RawMaterialImport {
   pricePerTon?: number
   notes?: string
   createdAt: string
-  /** Missing/undefined on legacy records — treated as `'open'` everywhere this is read. */
-  status?: ShipmentStatus
-  /** Present only once this shipment has been closed. */
-  closing?: ShipmentClosing
 }
 
 /** One import entry with its net weight (and value, if priced) resolved. Derived, never stored. */
@@ -116,10 +133,12 @@ export interface RawMaterialStock {
   availableTon: number
   /** This material's current cycle — the latest shipment's opening balance, or 0 with no shipments yet. */
   openingTon: number
-  /** Net tons received on the current (latest) shipment. */
+  /** Net tons received on the current (latest, possibly still-accumulating) shipment. */
   receivedTon: number
-  /** Consumed (production + wastage) within the current cycle's window. */
+  /** Production consumption within the current cycle's window — never includes wastage. */
   consumedTon: number
+  /** Wastage within the current cycle's window — see `wastageTon` above for the all-time figure. */
+  cycleWastageTon: number
   /** = `availableTon`; kept alongside it because "Closing" is the label used on screen. */
   closingTon: number
   shipmentCount: number
@@ -157,24 +176,30 @@ export interface RawStockSummary {
   shipmentCount: number
 }
 
-/** One shipment's inventory cycle (§2/§4) — a single row of the shipment history table. */
+/**
+ * One shipment cycle — a single summarized row of the Shipment History
+ * table (§8). Never one row per import; see `RawMaterialImport.shipmentId`
+ * for how several imports fold into one of these while it stays open. Ship
+ * name/truck/serial live on the individual imports, not here — see the
+ * cycle's full import history (the "Download" action) for those.
+ */
 export interface ShipmentCycleRow {
   id: ID
   productId: ID
   productName: string
-  date: ISODate
-  shipName?: string
-  serialNo?: string
-  truckNo?: string
-  /** Net tons this shipment brought in. */
+  /** Set once, from the first import that opened this cycle. */
+  openedOn: ISODate
+  /** Net tons received across every import folded into this cycle so far. */
   receivedTon: number
   /** The previous shipment's closing balance for this same material — 0 for the first. */
   openingTon: number
   /** `openingTon + receivedTon`, before this cycle's consumption. */
   availableTon: number
-  /** Production + wastage dated within this cycle's window. */
+  /** Production consumption dated within this cycle's window — never includes wastage. */
   consumedTon: number
-  /** `availableTon − consumedTon`; frozen once the shipment is closed. */
+  /** Wastage dated within this cycle's window. */
+  wastageTon: number
+  /** `availableTon − consumedTon − wastageTon`; frozen once the shipment is closed. */
   closingTon: number
   status: ShipmentStatus
   closedAt?: string

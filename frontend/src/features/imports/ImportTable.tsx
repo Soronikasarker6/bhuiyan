@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Factory, Lock, Pencil, Search, Trash2 } from 'lucide-react'
-import type { ImportRow } from '@/types'
+import type { ImportRow, ShipmentStatus } from '@/types'
 import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Input } from '@/components/ui/input'
@@ -26,10 +26,13 @@ import { DEFAULT_TABLE_PAGE_SIZE as PAGE_SIZE } from '@/constants/table'
 
 export function ImportTable({
   rows,
+  cycleStatusOf,
   onDelete,
   onEdit,
 }: {
   rows: ImportRow[]
+  /** The status of the shipment cycle this import belongs to — an import inside a closed cycle can't be edited/deleted. */
+  cycleStatusOf: (shipmentId: string) => ShipmentStatus | undefined
   onDelete: (id: string) => void | Promise<void>
   onEdit: (row: ImportRow) => void
 }) {
@@ -106,7 +109,9 @@ export function ImportTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pageRows.map((row) => (
+              {pageRows.map((row) => {
+                const status = cycleStatusOf(row.shipmentId)
+                return (
                 <TableRow key={row.id}>
                   <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.date)}</TableCell>
                   <TableCell className="font-medium">{row.productName}</TableCell>
@@ -128,7 +133,7 @@ export function ImportTable({
                     {row.value ? formatCurrency(row.value) : '—'}
                   </TableCell>
                   <TableCell>
-                    {row.status === 'closed' ? (
+                    {status === 'closed' ? (
                       <Badge variant="success">
                         <Lock className="h-2.5 w-2.5" aria-hidden />
                         Closed
@@ -145,9 +150,9 @@ export function ImportTable({
                           variant="ghost"
                           className="text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground"
                           onClick={() => onEdit(row)}
-                          disabled={row.status === 'closed'}
-                          aria-label={row.status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : 'Edit entry'}
-                          title={row.status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : undefined}
+                          disabled={status === 'closed'}
+                          aria-label={status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : 'Edit entry'}
+                          title={status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : undefined}
                         >
                           <Pencil />
                         </Button>
@@ -158,9 +163,9 @@ export function ImportTable({
                           variant="ghost"
                           className="text-muted-foreground hover:text-destructive disabled:hover:text-muted-foreground"
                           onClick={() => setPendingDelete(row)}
-                          disabled={row.status === 'closed'}
-                          aria-label={row.status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : 'Delete entry'}
-                          title={row.status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : undefined}
+                          disabled={status === 'closed'}
+                          aria-label={status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : 'Delete entry'}
+                          title={status === 'closed' ? 'Shipment closed — reopen it in Shipment History first' : undefined}
                         >
                           <Trash2 />
                         </Button>
@@ -168,7 +173,8 @@ export function ImportTable({
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                )
+              })}
             </TableBody>
             <TableFooter>
               <TableRow className="hover:bg-transparent">

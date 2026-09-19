@@ -22,7 +22,7 @@ const PRODUCTS: Product[] = [
 ]
 
 function entry(id: string, date: string, productId: string, grossWeightKg: number, tareWeightKg: number): RawMaterialImport {
-  return { id, date, productId, grossWeightKg, tareWeightKg, createdAt: `${date}T08:00:00.000Z` }
+  return { id, shipmentId: `${id}-shipment`, date, productId, grossWeightKg, tareWeightKg, createdAt: `${date}T08:00:00.000Z` }
 }
 
 describe('net weight', () => {

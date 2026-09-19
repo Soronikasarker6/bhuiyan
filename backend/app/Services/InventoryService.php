@@ -12,6 +12,7 @@ use App\Models\ProductionEntry;
 use App\Models\RawMaterialImport;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\Shipment;
 use App\Models\WastageEntry;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -38,15 +39,19 @@ class InventoryService
      * A closed shipment always returns its frozen closing_* snapshot verbatim,
      * never recomputed — so later (including back-dated) entries can't move it.
      *
+     * `received_ton` sums every import that has accumulated into the cycle —
+     * one, or several, while it stays open (see `receiveStock()`) — never one
+     * row per import the way this used to work.
+     *
      * @return Collection<int, array{
-     *   shipment: RawMaterialImport, opening_ton: float, received_ton: float,
-     *   available_ton: float, consumed_ton: float, closing_ton: float,
+     *   shipment: Shipment, opening_ton: float, received_ton: float,
+     *   available_ton: float, consumed_ton: float, wastage_ton: float, closing_ton: float,
      * }>
      */
     public function shipmentCycles(int $productId): Collection
     {
-        $shipments = RawMaterialImport::with('product')->where('product_id', $productId)
-            ->orderBy('date')->orderBy('created_at')->orderBy('id')
+        $shipments = Shipment::with(['product', 'imports'])->where('product_id', $productId)
+            ->orderBy('opened_on')->orderBy('id')
             ->get();
 
         $wastage = WastageEntry::where('product_id', $productId)
@@ -65,24 +70,24 @@ class InventoryService
                 $opening = (float) $shipment->closing_opening_ton;
                 $received = (float) $shipment->closing_received_ton;
                 $consumed = (float) $shipment->closing_consumed_ton;
+                $wastageTon = (float) $shipment->closing_wastage_ton;
                 $closing = (float) $shipment->closing_closing_ton;
             } else {
-                $lowerBound = $index === 0 ? null : $this->momentOf($shipment);
+                $lowerBound = $index === 0 ? null : $this->momentOf($shipment, 'opened_on');
                 $next = $shipments->get($index + 1);
-                $upperBound = $next ? $this->momentOf($next) : null;
+                $upperBound = $next ? $this->momentOf($next, 'opened_on') : null;
 
-                $consumedWastageTon = $wastage
+                $wastageTon = $wastage
                     ->filter(fn (WastageEntry $w) => $this->inWindow($this->momentOf($w), $lowerBound, $upperBound))
                     ->sum(fn (WastageEntry $w) => $w->quantityTon());
 
-                $consumedProductionTon = $production
+                $consumed = $production
                     ->filter(fn (ProductionEntry $p) => $this->inWindow($this->momentOf($p), $lowerBound, $upperBound))
                     ->sum(fn (ProductionEntry $p) => ((float) $p->bags * (float) $p->mesh->bag_kg) / 1000);
 
                 $opening = $runningOpening;
-                $received = $shipment->netWeightTon();
-                $consumed = $consumedWastageTon + $consumedProductionTon;
-                $closing = $opening + $received - $consumed;
+                $received = $shipment->imports->sum(fn (RawMaterialImport $i) => $i->netWeightTon());
+                $closing = $opening + $received - $consumed - $wastageTon;
             }
 
             $cycles->push([
@@ -91,6 +96,7 @@ class InventoryService
                 'received_ton' => $this->round($received),
                 'available_ton' => $this->round($opening + $received),
                 'consumed_ton' => $this->round($consumed),
+                'wastage_ton' => $this->round($wastageTon),
                 'closing_ton' => $this->round($closing),
             ]);
 
@@ -256,8 +262,8 @@ class InventoryService
     public function cycleStatusForDate(int $productId, string $date): ?string
     {
         $target = Carbon::parse($date);
-        $shipments = RawMaterialImport::where('product_id', $productId)
-            ->orderBy('date')->orderBy('created_at')->orderBy('id')
+        $shipments = Shipment::where('product_id', $productId)
+            ->orderBy('opened_on')->orderBy('id')
             ->get();
 
         if ($shipments->isEmpty()) {
@@ -267,8 +273,8 @@ class InventoryService
         foreach ($shipments as $index => $shipment) {
             $next = $shipments->get($index + 1);
             $isLast = $next === null;
-            $startsWindow = $target->greaterThanOrEqualTo(Carbon::parse($shipment->date));
-            $beforeNext = $isLast || $target->lessThan(Carbon::parse($next->date));
+            $startsWindow = $target->greaterThanOrEqualTo(Carbon::parse($shipment->opened_on));
+            $beforeNext = $isLast || $target->lessThan(Carbon::parse($next->opened_on));
 
             if ($startsWindow && $beforeNext) {
                 return $shipment->status ?? 'open';
@@ -276,7 +282,7 @@ class InventoryService
         }
 
         // Date precedes the first shipment entirely.
-        return $target->lessThan(Carbon::parse($shipments->first()->date)) ? null : 'open';
+        return $target->lessThan(Carbon::parse($shipments->first()->opened_on)) ? null : 'open';
     }
 
     /**
@@ -308,15 +314,17 @@ class InventoryService
 
         $latest = $cycles->last();
         if ($latest) {
-            [$opening, $received, $consumed, $closing] = [
-                $latest['opening_ton'], $latest['received_ton'], $latest['consumed_ton'], $latest['closing_ton'],
+            [$opening, $received, $consumed, $cycleWastage, $closing] = [
+                $latest['opening_ton'], $latest['received_ton'], $latest['consumed_ton'],
+                $latest['wastage_ton'], $latest['closing_ton'],
             ];
         } else {
             // No shipment at all yet — still report a number (matches the frontend fallback).
             $opening = 0.0;
             $received = 0.0;
-            $consumed = $wastageTon + $producedTon;
-            $closing = -$consumed;
+            $consumed = $producedTon;
+            $cycleWastage = $wastageTon;
+            $closing = -($consumed + $cycleWastage);
         }
 
         return [
@@ -330,6 +338,8 @@ class InventoryService
             'opening_ton' => $this->round($opening),
             'received_ton' => $this->round($received),
             'consumed_ton' => $this->round($consumed),
+            /** Wastage within the *current shipment cycle* only — see `wastage_ton` above for the all-time figure. */
+            'cycle_wastage_ton' => $this->round($cycleWastage),
             'closing_ton' => $this->round($closing),
             'shipment_count' => $cycles->count(),
             'open_shipment_count' => $cycles->filter(fn ($c) => $c['shipment']->status !== 'closed')->count(),
@@ -371,26 +381,47 @@ class InventoryService
         return $totalTon > 0 ? $tonWeighted / $totalTon : null;
     }
 
-    /** Receive a new shipment; writes the audit-log IN row alongside it. */
+    /**
+     * Receive a new import, writing the audit-log IN row alongside it.
+     *
+     * Joins the product's current *open* shipment cycle if one exists —
+     * every import received while a cycle is open accumulates into it,
+     * never starting a new one. Only when there is no open cycle (the
+     * first-ever import for this product, or the last one was closed) is a
+     * new `Shipment` created first, with this import as its first entry.
+     */
     public function receiveStock(array $attributes): RawMaterialImport
     {
         return DB::transaction(function () use ($attributes) {
-            $shipment = RawMaterialImport::create($attributes + ['status' => 'open']);
+            $productId = (int) $attributes['product_id'];
 
-            $receivedTon = $shipment->netWeightTon();
-            $lifetimeBalance = $this->lifetimeBalance((int) $shipment->product_id) + $receivedTon;
+            $shipment = Shipment::where('product_id', $productId)->where('status', 'open')
+                ->lockForUpdate()->first();
+
+            if (! $shipment) {
+                $shipment = Shipment::create([
+                    'product_id' => $productId,
+                    'opened_on' => $attributes['date'],
+                    'status' => 'open',
+                ]);
+            }
+
+            $import = RawMaterialImport::create($attributes + ['shipment_id' => $shipment->id]);
+
+            $receivedTon = $import->netWeightTon();
+            $lifetimeBalance = $this->lifetimeBalance($productId) + $receivedTon;
 
             InventoryTransaction::create([
-                'product_id' => $shipment->product_id,
+                'product_id' => $productId,
                 'direction' => 'in',
                 'source_type' => 'shipment',
-                'source_id' => $shipment->id,
+                'source_id' => $import->id,
                 'quantity_ton' => $receivedTon,
                 'balance_after_ton' => $lifetimeBalance,
-                'occurred_at' => $shipment->created_at,
+                'occurred_at' => $import->created_at,
             ]);
 
-            return $shipment->fresh();
+            return $import->fresh();
         });
     }
 
@@ -452,20 +483,22 @@ class InventoryService
      * before a new entry, since the edit itself is what could create the
      * shortfall here.
      */
-    public function updateShipment(int $shipmentId, array $attributes): RawMaterialImport
+    /** Edit one import entry's own fields. Blocked while its shipment cycle is closed — reopen it first. */
+    public function updateShipment(int $importId, array $attributes): RawMaterialImport
     {
-        return DB::transaction(function () use ($shipmentId, $attributes) {
-            $shipment = RawMaterialImport::lockForUpdate()->findOrFail($shipmentId);
+        return DB::transaction(function () use ($importId, $attributes) {
+            $import = RawMaterialImport::with('shipment')->lockForUpdate()->findOrFail($importId);
 
-            if ($shipment->isClosed()) {
+            if ($import->isClosed()) {
                 throw new BusinessRuleException('This shipment is closed. Reopen it first, then edit.');
             }
 
-            $productId = $shipment->product_id;
-            $shipment->update($attributes);
+            $productId = $import->product_id;
+            unset($attributes['shipment_id']); // an import never moves to a different cycle via a plain edit
+            $import->update($attributes);
 
-            $receivedTon = $shipment->netWeightTon();
-            InventoryTransaction::where('source_type', 'shipment')->where('source_id', $shipment->id)
+            $receivedTon = $import->netWeightTon();
+            InventoryTransaction::where('source_type', 'shipment')->where('source_id', $import->id)
                 ->update(['quantity_ton' => $receivedTon]);
 
             $availableAfterEdit = $this->currentRawStock($productId);
@@ -477,25 +510,29 @@ class InventoryService
                 );
             }
 
-            return $shipment->fresh();
+            return $import->fresh();
         });
     }
 
     /**
-     * Delete a shipment (only when open) and its audit-log IN row. Blocked while
-     * closed — reopen it first, matching the frontend's "reopen before delete" rule.
+     * Delete one import entry (only while its shipment cycle is open) and its
+     * audit-log IN row. Blocked while closed — reopen the cycle first,
+     * matching the frontend's "reopen before delete" rule. The shipment
+     * cycle itself is left in place even if this was its last import — a
+     * still-open, now-empty cycle is exactly where the next import for this
+     * product belongs, never a reason to create another one.
      */
-    public function deleteShipment(int $shipmentId): void
+    public function deleteShipment(int $importId): void
     {
-        DB::transaction(function () use ($shipmentId) {
-            $shipment = RawMaterialImport::lockForUpdate()->findOrFail($shipmentId);
+        DB::transaction(function () use ($importId) {
+            $import = RawMaterialImport::with('shipment')->lockForUpdate()->findOrFail($importId);
 
-            if ($shipment->isClosed()) {
+            if ($import->isClosed()) {
                 throw new BusinessRuleException('This shipment is closed. Reopen it first, then delete.');
             }
 
-            InventoryTransaction::where('source_type', 'shipment')->where('source_id', $shipment->id)->delete();
-            $shipment->delete();
+            InventoryTransaction::where('source_type', 'shipment')->where('source_id', $import->id)->delete();
+            $import->delete();
         });
     }
 
@@ -512,10 +549,10 @@ class InventoryService
         });
     }
 
-    public function closeShipment(int $shipmentId): RawMaterialImport
+    public function closeShipment(int $shipmentId): Shipment
     {
         return DB::transaction(function () use ($shipmentId) {
-            $shipment = RawMaterialImport::lockForUpdate()->findOrFail($shipmentId);
+            $shipment = Shipment::lockForUpdate()->findOrFail($shipmentId);
 
             if ($shipment->isClosed()) {
                 throw new BusinessRuleException('This shipment is already closed.');
@@ -529,6 +566,7 @@ class InventoryService
                 'closing_opening_ton' => $cycle['opening_ton'],
                 'closing_received_ton' => $cycle['received_ton'],
                 'closing_consumed_ton' => $cycle['consumed_ton'],
+                'closing_wastage_ton' => $cycle['wastage_ton'],
                 'closing_closing_ton' => $cycle['closing_ton'],
                 'closing_closed_at' => now(),
             ]);
@@ -537,9 +575,9 @@ class InventoryService
         });
     }
 
-    public function reopenShipment(int $shipmentId): RawMaterialImport
+    public function reopenShipment(int $shipmentId): Shipment
     {
-        $shipment = RawMaterialImport::findOrFail($shipmentId);
+        $shipment = Shipment::findOrFail($shipmentId);
 
         if (! $shipment->isClosed()) {
             throw new BusinessRuleException('This shipment is not closed.');
@@ -550,6 +588,7 @@ class InventoryService
             'closing_opening_ton' => null,
             'closing_received_ton' => null,
             'closing_consumed_ton' => null,
+            'closing_wastage_ton' => null,
             'closing_closing_ton' => null,
             'closing_closed_at' => null,
         ]);
@@ -567,9 +606,9 @@ class InventoryService
         return $last ? (float) $last->balance_after_ton : 0.0;
     }
 
-    private function momentOf($model): Carbon
+    private function momentOf($model, string $dateField = 'date'): Carbon
     {
-        return Carbon::parse($model->date)->setTimeFromTimeString(
+        return Carbon::parse($model->{$dateField})->setTimeFromTimeString(
             optional($model->created_at)->format('H:i:s.u') ?? '00:00:00'
         );
     }

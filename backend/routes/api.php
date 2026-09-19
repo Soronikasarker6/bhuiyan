@@ -97,16 +97,19 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('raw-materials/{product}/stock', [RawMaterialController::class, 'stock']);
         Route::get('shipment-cycles', [ShipmentCycleController::class, 'index']);
     });
+    // Cycle-level actions — close/reopen act on the shipment cycle itself,
+    // not on one import entry, so they live apart from the `shipments`
+    // (import entry) CRUD below.
+    Route::post('shipment-cycles/{shipment}/close', [ShipmentCycleController::class, 'close'])
+        ->middleware('permission:'.P::RAW_MATERIAL_EDIT);
+    Route::post('shipment-cycles/{shipment}/reopen', [ShipmentCycleController::class, 'reopen'])
+        ->middleware('permission:'.P::RAW_MATERIAL_EDIT);
 
     Route::apiResource('shipments', ShipmentController::class)->except('show')
         ->middlewareFor('index', 'permission:'.P::RAW_MATERIAL_VIEW)
         ->middlewareFor('store', 'permission:'.P::RAW_MATERIAL_CREATE)
         ->middlewareFor('update', 'permission:'.P::RAW_MATERIAL_EDIT)
         ->middlewareFor('destroy', 'permission:'.P::RAW_MATERIAL_DELETE);
-    Route::post('shipments/{shipment}/close', [ShipmentController::class, 'close'])
-        ->middleware('permission:'.P::RAW_MATERIAL_EDIT);
-    Route::post('shipments/{shipment}/reopen', [ShipmentController::class, 'reopen'])
-        ->middleware('permission:'.P::RAW_MATERIAL_EDIT);
 
     Route::apiResource('wastage-entries', WastageEntryController::class)->only(['index', 'store', 'destroy'])
         ->middlewareFor('index', 'permission:'.P::RAW_MATERIAL_VIEW)

@@ -26,6 +26,7 @@ const KEYS = {
   meshSizes: 'mesh-sizes',
   unitsOfMeasure: 'units-of-measure',
   rawMaterialImports: 'production-entries',
+  shipmentCycles: 'shipment-cycles',
   productionEntries: 'mesh-production-entries',
   customers: 'customers',
   sales: 'sales',
@@ -67,6 +68,7 @@ export const repository = {
       meshSizes: storageService.get(KEYS.meshSizes) ?? fallback.meshSizes,
       unitsOfMeasure: storageService.get(KEYS.unitsOfMeasure) ?? fallback.unitsOfMeasure,
       rawMaterialImports: storageService.get(KEYS.rawMaterialImports) ?? [],
+      shipmentCycles: storageService.get(KEYS.shipmentCycles) ?? [],
       productionEntries: storageService.get(KEYS.productionEntries) ?? [],
       customers: storageService.get(KEYS.customers) ?? [],
       sales: storageService.get(KEYS.sales) ?? [],
@@ -106,6 +108,7 @@ export const repository = {
     const cleared: AppData = {
       ...current,
       rawMaterialImports: [],
+      shipmentCycles: [],
       productionEntries: [],
       sales: [],
       saleItems: [],

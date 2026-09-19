@@ -15,6 +15,7 @@ use App\Models\ProductionEntry;
 use App\Models\RawMaterialImport;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\Shipment;
 use App\Models\Transaction;
 use App\Models\UnitOfMeasure;
 use App\Models\WastageEntry;
@@ -42,6 +43,8 @@ class AppDataController extends Controller
             'categories' => Category::orderBy('name')->get(),
             'rawMaterialImports' => RawMaterialImport::with('product')->orderByDesc('date')->orderByDesc('id')
                 ->get()->map(fn (RawMaterialImport $i) => $i->toPresentedArray()),
+            'shipmentCycles' => Shipment::with('product')->orderByDesc('opened_on')->orderByDesc('id')
+                ->get()->map(fn (Shipment $s) => $s->toPresentedArray()),
             'wastageEntries' => WastageEntry::orderByDesc('date')->orderByDesc('id')->get(),
             'productionEntries' => ProductionEntry::orderByDesc('date')->orderByDesc('id')->get(),
             'sales' => Sale::orderByDesc('date')->orderByDesc('id')->get(),

@@ -1,4 +1,4 @@
-import type { RawMaterialImport, ShipmentCycleRow, ShipmentStatus, ID } from '@/types'
+import type { RawMaterialImport, ShipmentCycle, ShipmentCycleRow, ShipmentStatus, ID } from '@/types'
 import { http } from './httpClient'
 import { mapEntities, mapEntity, toQuery } from './mappers'
 
@@ -42,11 +42,12 @@ export const shipmentService = {
   async remove(id: ID): Promise<void> {
     await http.delete(`/shipments/${id}`)
   },
-  async close(id: ID): Promise<RawMaterialImport> {
-    return mapEntity<RawMaterialImport>(await http.post(`/shipments/${id}/close`))
+  /** Closes/reopens the shipment *cycle* itself — not one import entry. */
+  async closeCycle(id: ID): Promise<ShipmentCycle> {
+    return mapEntity<ShipmentCycle>(await http.post(`/shipment-cycles/${id}/close`))
   },
-  async reopen(id: ID): Promise<RawMaterialImport> {
-    return mapEntity<RawMaterialImport>(await http.post(`/shipments/${id}/reopen`))
+  async reopenCycle(id: ID): Promise<ShipmentCycle> {
+    return mapEntity<ShipmentCycle>(await http.post(`/shipment-cycles/${id}/reopen`))
   },
   async cycles(productId?: ID): Promise<ShipmentCycleRow[]> {
     const qs = toQuery({ product_id: productId })

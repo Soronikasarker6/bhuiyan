@@ -21,7 +21,8 @@ class ShipmentController extends Controller
             $query->where('product_id', $request->integer('product_id'));
         }
         if ($request->filled('status')) {
-            $query->where('status', $request->string('status'));
+            $status = $request->string('status');
+            $query->whereHas('shipment', fn ($q) => $q->where('status', $status));
         }
         if ($request->filled('from')) {
             $query->where('date', '>=', $request->string('from'));
@@ -60,28 +61,6 @@ class ShipmentController extends Controller
         }
 
         return response()->json(null, 204);
-    }
-
-    public function close(RawMaterialImport $shipment)
-    {
-        try {
-            $shipment = $this->inventory->closeShipment($shipment->id);
-        } catch (BusinessRuleException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return $this->present($shipment);
-    }
-
-    public function reopen(RawMaterialImport $shipment)
-    {
-        try {
-            $shipment = $this->inventory->reopenShipment($shipment->id);
-        } catch (BusinessRuleException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return $this->present($shipment);
     }
 
     private function present(RawMaterialImport $shipment): array

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Lock, LockOpen, Search, Ship } from 'lucide-react'
+import { Download, Lock, LockOpen, Search, Ship } from 'lucide-react'
 import type { ShipmentCycleRow } from '@/types'
 import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -32,25 +32,26 @@ function Ton({ value, tone = 'neutral', bold = false }: { value: number; tone?: 
 }
 
 /**
- * The shipment history (§3/§7) — every raw material shipment as one
- * inventory cycle, oldest received first inside each material but newest
- * overall on top, with its opening balance, what it received, what has been
- * used against it, and where that leaves its closing balance.
- *
- * Closing a shipment freezes those four figures (`useConfirm` below asks
- * first, the same way a cash month is closed in `ClosingPage`) and hands the
- * closing balance forward as the *next* shipment of the same material's
- * opening balance. Reopening removes the freeze — an explicit, confirmed
- * action, never an accidental edit.
+ * The shipment history (§1–§8) — one row per raw material's inventory
+ * *cycle*, never one per import. Every import received while a cycle is
+ * open (see `RawMaterialImport.shipmentId`) folds into its "Total Received"
+ * here; closing freezes opening/received/consumed/wastage/closing
+ * permanently (`ConfirmDialog` below asks first, the same way a cash month
+ * is closed in `ClosingPage`) and hands the closing balance forward as the
+ * *next* cycle of the same material's opening balance. Reopening removes
+ * the freeze — an explicit, confirmed action, never an accidental edit.
  */
 export function ShipmentTable({
   rows,
   onClose,
   onReopen,
+  onDownload,
 }: {
   rows: ShipmentCycleRow[]
   onClose: (row: ShipmentCycleRow) => void | Promise<void>
   onReopen: (row: ShipmentCycleRow) => void | Promise<void>
+  /** The full import history behind one cycle, as a printable/downloadable document (§9). */
+  onDownload: (row: ShipmentCycleRow) => void
 }) {
   const canEdit = usePermission(PERMISSIONS.RAW_MATERIAL_EDIT)
   const [page, setPage] = useState(0)
@@ -59,13 +60,14 @@ export function ShipmentTable({
 
   const { search, setSearch, sortKey, direction, toggleSort, rows: sorted } = useSortableSearch({
     rows,
-    searchText: (r) => `${r.productName} ${r.shipName ?? ''} ${r.truckNo ?? ''} ${r.serialNo ?? ''} ${r.id}`,
+    searchText: (r) => `${r.productName} ${r.id}`,
     sorters: {
-      date: (a, b) => (a.date === b.date ? 0 : a.date < b.date ? -1 : 1),
+      date: (a, b) => (a.openedOn === b.openedOn ? 0 : a.openedOn < b.openedOn ? -1 : 1),
       product: (a, b) => a.productName.localeCompare(b.productName),
       received: (a, b) => a.receivedTon - b.receivedTon,
       opening: (a, b) => a.openingTon - b.openingTon,
       consumed: (a, b) => a.consumedTon - b.consumedTon,
+      wastage: (a, b) => a.wastageTon - b.wastageTon,
       closing: (a, b) => a.closingTon - b.closingTon,
     },
     defaultSortKey: 'date',
@@ -77,7 +79,7 @@ export function ShipmentTable({
   return (
     <Section
       title="Shipment history"
-      description={`${rows.length} shipment${rows.length === 1 ? '' : 's'} · each one its own inventory cycle`}
+      description={`${rows.length} shipment cycle${rows.length === 1 ? '' : 's'} · every import while one is open counts toward it`}
       actions={
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -87,7 +89,7 @@ export function ShipmentTable({
               setSearch(e.target.value)
               setPage(0)
             }}
-            placeholder="Search shipment, ship, truck…"
+            placeholder="Search shipment, material…"
             className="h-8 w-52 pl-8 text-xs"
           />
         </div>
@@ -110,11 +112,12 @@ export function ShipmentTable({
               <TableRow>
                 <TableHead>Shipment ID</TableHead>
                 <SortableHead label="Raw Material" sortKey="product" activeKey={sortKey} direction={direction} onSort={toggleSort} />
-                <SortableHead label="Received Date" sortKey="date" activeKey={sortKey} direction={direction} onSort={toggleSort} />
-                <SortableHead label="Received (Ton)" sortKey="received" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
+                <SortableHead label="Opened / Received Date" sortKey="date" activeKey={sortKey} direction={direction} onSort={toggleSort} />
+                <SortableHead label="Total Received (Ton)" sortKey="received" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
                 <SortableHead label="Opening (Ton)" sortKey="opening" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
                 <SortableHead label="Consumed (Ton)" sortKey="consumed" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
-                <SortableHead label="Closing (Ton)" sortKey="closing" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
+                <SortableHead label="Wastage (Ton)" sortKey="wastage" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
+                <SortableHead label="Closing / Current Balance (Ton)" sortKey="closing" activeKey={sortKey} direction={direction} onSort={toggleSort} numeric />
                 <TableHead>Status</TableHead>
                 <TableHead />
               </TableRow>
@@ -122,9 +125,9 @@ export function ShipmentTable({
             <TableBody>
               {pageRows.map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell className="whitespace-nowrap font-mono text-2xs text-muted-foreground">{row.id.slice(0, 8)}</TableCell>
+                  <TableCell className="whitespace-nowrap font-mono text-2xs text-muted-foreground">#{row.id}</TableCell>
                   <TableCell className="font-medium">{row.productName}</TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.date)}</TableCell>
+                  <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.openedOn)}</TableCell>
                   <TableCell numeric>
                     <Ton value={row.receivedTon} tone="positive" />
                   </TableCell>
@@ -133,6 +136,9 @@ export function ShipmentTable({
                   </TableCell>
                   <TableCell numeric>
                     <Ton value={row.consumedTon} tone={row.consumedTon > 0 ? 'negative' : 'neutral'} />
+                  </TableCell>
+                  <TableCell numeric>
+                    <Ton value={row.wastageTon} tone={row.wastageTon > 0 ? 'negative' : 'neutral'} />
                   </TableCell>
                   <TableCell numeric>
                     <Ton value={row.closingTon} tone={row.closingTon < 0 ? 'negative' : 'neutral'} bold />
@@ -148,18 +154,24 @@ export function ShipmentTable({
                     )}
                   </TableCell>
                   <TableCell numeric>
-                    {canEdit &&
-                      (row.status === 'closed' ? (
-                        <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={() => setReopening(row)}>
-                          <LockOpen />
-                          Reopen
-                        </Button>
-                      ) : (
-                        <Button variant="outline" size="sm" onClick={() => setClosing(row)}>
-                          <Lock />
-                          Close
-                        </Button>
-                      ))}
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={() => onDownload(row)}>
+                        <Download />
+                        Download
+                      </Button>
+                      {canEdit &&
+                        (row.status === 'closed' ? (
+                          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={() => setReopening(row)}>
+                            <LockOpen />
+                            Reopen
+                          </Button>
+                        ) : (
+                          <Button variant="outline" size="sm" onClick={() => setClosing(row)}>
+                            <Lock />
+                            Close
+                          </Button>
+                        ))}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -187,9 +199,9 @@ export function ShipmentTable({
       <ConfirmDialog
         open={closing !== null}
         onOpenChange={(open) => !open && setClosing(null)}
-        title={closing ? `Close this ${closing.productName} shipment?` : ''}
-        description="This freezes its opening, received, consumed and closing balance permanently. The closing balance becomes the next shipment of this same material's opening balance — later entries, including back-dated ones, will not change these figures again."
-        confirmLabel="Close shipment"
+        title={closing ? `Close Shipment #${closing.id}?` : ''}
+        description="Closing this shipment will finalize this inventory cycle. Future imports of this raw material will create a new shipment cycle, with a new id — never added to this one again."
+        confirmLabel="Close Shipment"
         variant="default"
         onConfirm={async () => {
           if (closing) await onClose(closing)
@@ -198,13 +210,17 @@ export function ShipmentTable({
         {closing && (
           <dl className="rounded-lg border border-border bg-secondary/50 px-3 py-2.5 text-xs">
             <div className="flex justify-between gap-4 py-0.5">
-              <dt className="text-muted-foreground">Opening + Received − Consumed</dt>
+              <dt className="text-muted-foreground">{closing.productName}</dt>
+              <dd className="font-mono tabular font-medium">Shipment #{closing.id}</dd>
+            </div>
+            <div className="flex justify-between gap-4 py-0.5">
+              <dt className="text-muted-foreground">Opening + Received − Consumed − Wastage</dt>
               <dd className="font-mono tabular font-medium">
-                {closing.openingTon.toFixed(2)} + {closing.receivedTon.toFixed(2)} − {closing.consumedTon.toFixed(2)}
+                {closing.openingTon.toFixed(2)} + {closing.receivedTon.toFixed(2)} − {closing.consumedTon.toFixed(2)} − {closing.wastageTon.toFixed(2)}
               </dd>
             </div>
             <div className="flex justify-between gap-4 py-0.5">
-              <dt className="text-muted-foreground">Closing balance</dt>
+              <dt className="text-muted-foreground">Current balance</dt>
               <dd>
                 <Ton value={closing.closingTon} tone={closing.closingTon < 0 ? 'negative' : 'neutral'} bold />
               </dd>
@@ -216,8 +232,8 @@ export function ShipmentTable({
       <ConfirmDialog
         open={reopening !== null}
         onOpenChange={(open) => !open && setReopening(null)}
-        title={reopening ? `Reopen this ${reopening.productName} shipment?` : ''}
-        description="Its closing balance will be recomputed live again from the production and wastage logs, and the next shipment's opening balance will move with it. Use this only to correct a mistake."
+        title={reopening ? `Reopen Shipment #${reopening.id}?` : ''}
+        description="Its balance will be recomputed live again from the production and wastage logs, and the next shipment's opening balance will move with it. Use this only to correct a mistake."
         confirmLabel="Reopen shipment"
         onConfirm={async () => {
           if (reopening) await onReopen(reopening)

@@ -105,8 +105,8 @@ export default function ProductionPage() {
   )
 
   const rawMaterialCycleClosed = useCallback(
-    (productId: string, date: string) => cycleStatusForDate(productId, date, data.rawMaterialImports) === 'closed',
-    [data.rawMaterialImports],
+    (productId: string, date: string) => cycleStatusForDate(productId, date, data.shipmentCycles) === 'closed',
+    [data.shipmentCycles],
   )
 
   const addEntry = useCallback(

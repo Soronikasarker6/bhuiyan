@@ -1,6 +1,6 @@
 import type { Product, MeshSize } from './product'
 import type { UnitOfMeasure } from './unitOfMeasure'
-import type { RawMaterialImport, WastageEntry } from './rawMaterialImport'
+import type { RawMaterialImport, ShipmentCycle, WastageEntry } from './rawMaterialImport'
 import type { ProductionEntry } from './production'
 import type { Customer } from './customer'
 import type { Sale, SaleItem } from './sale'
@@ -14,6 +14,8 @@ export interface AppData {
   unitsOfMeasure: UnitOfMeasure[]
   /** Raw material received from ships — gross/tare/net at the yard, priced. */
   rawMaterialImports: RawMaterialImport[]
+  /** Each raw material's open/closed inventory cycles — see `RawMaterialImport.shipmentId`. */
+  shipmentCycles: ShipmentCycle[]
   /** Raw material lost during processing or handling. */
   wastageEntries: WastageEntry[]
   /** Bag-wise production, mesh by mesh. */

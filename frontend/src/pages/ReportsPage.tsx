@@ -196,13 +196,15 @@ export default function ReportsPage() {
     const importProductTotals = importsByProduct(importsInRange, data.products)
     const rawStock = allRawMaterialStock(
       data.products,
+      data.shipmentCycles,
       data.rawMaterialImports,
       data.wastageEntries,
       data.productionEntries,
       (meshId) => bagKgOf(data.meshSizes, meshId),
     )
-    const shipmentCycles = allShipmentCycles(
+    const shipmentCycleRows = allShipmentCycles(
       data.products,
+      data.shipmentCycles,
       data.rawMaterialImports,
       data.wastageEntries,
       data.productionEntries,
@@ -450,31 +452,35 @@ export default function ReportsPage() {
         id: 'shipment-history',
         group: 'Production',
         name: 'Shipment History',
-        description: 'Every raw material shipment as its own inventory cycle, with status — open or closed.',
+        description: 'Every raw material inventory cycle — one row per shipment, not per import — with status: open or closed.',
         icon: Ship,
-        count: shipmentCycles.filter((c) => productFilter === ALL || c.productId === productFilter).length,
+        count: shipmentCycleRows.filter((c) => productFilter === ALL || c.productId === productFilter).length,
         build: () => {
-          const cycles = shipmentCycles.filter((c) => productFilter === ALL || c.productId === productFilter)
+          const cycles = shipmentCycleRows.filter((c) => productFilter === ALL || c.productId === productFilter)
           return {
             title: 'Shipment History',
             subtitle: rangeLabel,
             columns: [
-              { key: 'date', label: 'Received Date' },
+              { key: 'id', label: 'Shipment ID' },
               { key: 'product', label: 'Raw Material' },
-              { key: 'received', label: 'Received (Ton)', align: 'right' },
+              { key: 'date', label: 'Opened / Received Date' },
+              { key: 'received', label: 'Total Received (Ton)', align: 'right' },
               { key: 'opening', label: 'Opening (Ton)', align: 'right' },
               { key: 'consumed', label: 'Consumed (Ton)', align: 'right' },
+              { key: 'wastage', label: 'Wastage (Ton)', align: 'right' },
               { key: 'closing', label: 'Closing (Ton)', align: 'right' },
               { key: 'status', label: 'Status' },
             ],
             rows: cycles
-              .filter((c) => isWithin(c.date, from, to))
+              .filter((c) => isWithin(c.openedOn, from, to))
               .map((c) => ({
-                date: formatDate(c.date),
+                id: `#${c.id}`,
+                date: formatDate(c.openedOn),
                 product: c.productName,
                 received: formatTons(c.receivedTon),
                 opening: formatTons(c.openingTon),
                 consumed: formatTons(c.consumedTon),
+                wastage: formatTons(c.wastageTon),
                 closing: formatTons(c.closingTon),
                 status: c.status === 'closed' ? 'Closed' : 'Open',
               })),

@@ -7,6 +7,7 @@ import type {
   Product,
   ProductionEntry,
   RawMaterialImport,
+  ShipmentCycle,
   Transaction,
   UnitOfMeasure,
   WastageEntry,
@@ -129,7 +130,13 @@ const syncProductionEntries = createOnly<ProductionEntry>(
   (id) => productionService.remove(id),
 )
 
-/** A shipment "update" is either a regular field edit, or a close/reopen — told apart by what changed. */
+/**
+ * A raw material import entry — create/edit/delete only. Which shipment
+ * cycle it belongs to is never sent: the backend's `receiveStock()` decides
+ * that (join the product's open cycle, or start a new one) and the id this
+ * optimistic `created` object carries is discarded once `refresh()` pulls
+ * back the real one.
+ */
 async function syncRawMaterialImports(current: RawMaterialImport[], next: RawMaterialImport[]): Promise<void> {
   const { created, updated, removed } = diff(current, next)
 
@@ -147,27 +154,41 @@ async function syncRawMaterialImports(current: RawMaterialImport[], next: RawMat
     })
   }
 
-  for (const { before, after } of updated) {
-    if (after.status === 'closed' && before.status !== 'closed') {
-      await shipmentService.close(after.id)
-    } else if (after.status !== 'closed' && before.status === 'closed') {
-      await shipmentService.reopen(after.id)
-    } else {
-      await shipmentService.update(after.id, {
-        date: after.date,
-        productId: after.productId,
-        shipName: after.shipName,
-        serialNo: after.serialNo,
-        truckNo: after.truckNo,
-        grossWeightKg: after.grossWeightKg,
-        tareWeightKg: after.tareWeightKg,
-        pricePerTon: after.pricePerTon,
-        notes: after.notes,
-      })
-    }
+  for (const { after } of updated) {
+    await shipmentService.update(after.id, {
+      date: after.date,
+      productId: after.productId,
+      shipName: after.shipName,
+      serialNo: after.serialNo,
+      truckNo: after.truckNo,
+      grossWeightKg: after.grossWeightKg,
+      tareWeightKg: after.tareWeightKg,
+      pricePerTon: after.pricePerTon,
+      notes: after.notes,
+    })
   }
 
   for (const item of removed) await shipmentService.remove(item.id)
+}
+
+/**
+ * A shipment *cycle*'s only ever-changing field, from here, is its status —
+ * closing or reopening it. A cycle is otherwise created implicitly by
+ * `syncRawMaterialImports` above (via `receiveStock()`), never directly, so
+ * a "created" entry in this diff is always the optimistic local cycle
+ * `ImportPage` adds alongside a first import — a no-op here, since the
+ * import's own create call is what makes the real one exist.
+ */
+async function syncShipmentCycles(current: ShipmentCycle[], next: ShipmentCycle[]): Promise<void> {
+  const { updated } = diff(current, next)
+
+  for (const { before, after } of updated) {
+    if (after.status === 'closed' && before.status !== 'closed') {
+      await shipmentService.closeCycle(after.id)
+    } else if (after.status !== 'closed' && before.status === 'closed') {
+      await shipmentService.reopenCycle(after.id)
+    }
+  }
 }
 
 /** A transfer is two rows sharing `transferId` — grouped so it becomes one API call, not two. */
@@ -266,6 +287,8 @@ export async function syncSlice<K extends keyof AppData>(
       return syncProductionEntries(current as ProductionEntry[], next as ProductionEntry[])
     case 'rawMaterialImports':
       return syncRawMaterialImports(current as RawMaterialImport[], next as RawMaterialImport[])
+    case 'shipmentCycles':
+      return syncShipmentCycles(current as ShipmentCycle[], next as ShipmentCycle[])
     case 'transactions':
       return syncTransactions(current as Transaction[], next as Transaction[], data.categories)
     case 'ledgerClosings':

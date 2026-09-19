@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
+import { ReusableValueField } from '@/features/imports/ReusableValueField'
 import { netWeightKg, kgToTons } from '@/utils/imports'
 import { formatCurrency, formatNumber, formatTons, todayISO } from '@/utils/format'
 
@@ -61,11 +62,16 @@ export type ImportSubmit = z.output<typeof schema>
 export function ImportEntryForm({
   products,
   pricesForProduct,
+  shipNames,
+  truckNos,
   onSubmit,
 }: {
   products: Product[]
   /** Every distinct price/ton previously used for this product, newest first. */
   pricesForProduct: (productId: string) => number[]
+  /** Every distinct Ship Name / Truck No. previously used, newest first (§14–§16) — never product-scoped. */
+  shipNames: string[]
+  truckNos: string[]
   onSubmit: (values: ImportSubmit) => void | Promise<void>
 }) {
   const {
@@ -172,15 +178,25 @@ export function ImportEntryForm({
         </div>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          <Field label="Ship name (optional)" htmlFor="imp-ship">
-            <Input id="imp-ship" placeholder="MV Sea Falcon" {...register('shipName')} />
-          </Field>
+          <ReusableValueField
+            id="imp-ship"
+            label="Ship name (optional)"
+            value={watch('shipName') ?? ''}
+            options={shipNames}
+            placeholder="Select or add a ship"
+            onChange={(v) => setValue('shipName', v)}
+          />
           <Field label="Serial / SL No. (optional)" htmlFor="imp-serial">
             <Input id="imp-serial" placeholder="SL-014" {...register('serialNo')} />
           </Field>
-          <Field label="Truck No. (optional)" htmlFor="imp-truck">
-            <Input id="imp-truck" placeholder="DHA-1234" {...register('truckNo')} />
-          </Field>
+          <ReusableValueField
+            id="imp-truck"
+            label="Truck No. (optional)"
+            value={watch('truckNo') ?? ''}
+            options={truckNos}
+            placeholder="Select or add a truck"
+            onChange={(v) => setValue('truckNo', v)}
+          />
         </div>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">

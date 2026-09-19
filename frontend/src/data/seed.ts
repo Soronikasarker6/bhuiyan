@@ -5,6 +5,7 @@ import type {
   CustomerTransaction,
   ExpenseType,
   MeshSize,
+  ShipmentCycle,
   Product,
   ProductionEntry,
   RawMaterialImport,
@@ -166,18 +167,26 @@ export function seedData(): AppData {
   ]
 
   // ---------------------------------------------------------------- raw material import
-  // imp-1 reproduces this system's own worked example exactly:
-  // 28,480 kg gross − 7,820 kg tare = 20,660 kg net = 20.66 Ton.
-  // Prices vary slightly per shipment, so the average-cost math is genuinely
+  // One open shipment cycle per product — every import for that product
+  // accumulates into it (§1/§2), never one cycle per import.
+  const shipmentCycles: ShipmentCycle[] = [
+    { id: 'ship-1', productId: 'product-1', openedOn: daysAgo(14), status: 'open' },
+    { id: 'ship-2', productId: 'product-2', openedOn: daysAgo(16), status: 'open' },
+    { id: 'ship-3', productId: 'product-3', openedOn: daysAgo(19), status: 'open' },
+  ]
+
+  // imp-2 reproduces this system's own worked example exactly:
+  // 32,000 kg gross − 9,000 kg tare = 23,000 kg net = 23 Ton.
+  // Prices vary slightly per import, so the average-cost math is genuinely
   // being exercised rather than just one constant repeated.
   const rawMaterialImports: RawMaterialImport[] = [
-    { id: 'imp-1', date: daysAgo(12), productId: 'product-1', shipName: 'MV Sea Falcon', serialNo: 'SL-001', truckNo: 'DHA-1001', grossWeightKg: 28_480, tareWeightKg: 7_820, pricePerTon: 4_200, createdAt: stampAgo(12) },
-    { id: 'imp-2', date: daysAgo(14), productId: 'product-1', shipName: 'MV Sea Falcon', serialNo: 'SL-002', truckNo: 'DHA-1002', grossWeightKg: 32_000, tareWeightKg: 9_000, pricePerTon: 4_100, createdAt: stampAgo(14) },
-    { id: 'imp-3', date: daysAgo(9), productId: 'product-1', shipName: 'MV Coral Star', serialNo: 'SL-003', truckNo: 'DHA-1003', grossWeightKg: 30_000, tareWeightKg: 9_200, pricePerTon: 4_350, createdAt: stampAgo(9) },
-    { id: 'imp-4', date: daysAgo(16), productId: 'product-2', shipName: 'MV Gulf Pearl', serialNo: 'SL-004', truckNo: 'DHA-2001', grossWeightKg: 27_000, tareWeightKg: 8_200, pricePerTon: 3_900, createdAt: stampAgo(16) },
-    { id: 'imp-5', date: daysAgo(8), productId: 'product-2', shipName: 'MV Gulf Pearl', serialNo: 'SL-005', truckNo: 'DHA-2002', grossWeightKg: 26_500, tareWeightKg: 8_300, pricePerTon: 4_050, createdAt: stampAgo(8) },
-    { id: 'imp-6', date: daysAgo(19), productId: 'product-3', shipName: 'MV Delta Wave', serialNo: 'SL-006', truckNo: 'DHA-3001', grossWeightKg: 31_000, tareWeightKg: 9_300, pricePerTon: 3_500, createdAt: stampAgo(19) },
-    { id: 'imp-7', date: daysAgo(11), productId: 'product-3', shipName: 'MV Delta Wave', serialNo: 'SL-007', truckNo: 'DHA-3002', grossWeightKg: 24_000, tareWeightKg: 7_800, pricePerTon: 3_650, createdAt: stampAgo(11) },
+    { id: 'imp-1', shipmentId: 'ship-1', date: daysAgo(12), productId: 'product-1', shipName: 'MV Sea Falcon', serialNo: 'SL-001', truckNo: 'DHA-1001', grossWeightKg: 28_480, tareWeightKg: 7_820, pricePerTon: 4_200, createdAt: stampAgo(12) },
+    { id: 'imp-2', shipmentId: 'ship-1', date: daysAgo(14), productId: 'product-1', shipName: 'MV Sea Falcon', serialNo: 'SL-002', truckNo: 'DHA-1002', grossWeightKg: 32_000, tareWeightKg: 9_000, pricePerTon: 4_100, createdAt: stampAgo(14) },
+    { id: 'imp-3', shipmentId: 'ship-1', date: daysAgo(9), productId: 'product-1', shipName: 'MV Coral Star', serialNo: 'SL-003', truckNo: 'DHA-1003', grossWeightKg: 30_000, tareWeightKg: 9_200, pricePerTon: 4_350, createdAt: stampAgo(9) },
+    { id: 'imp-4', shipmentId: 'ship-2', date: daysAgo(16), productId: 'product-2', shipName: 'MV Gulf Pearl', serialNo: 'SL-004', truckNo: 'DHA-2001', grossWeightKg: 27_000, tareWeightKg: 8_200, pricePerTon: 3_900, createdAt: stampAgo(16) },
+    { id: 'imp-5', shipmentId: 'ship-2', date: daysAgo(8), productId: 'product-2', shipName: 'MV Gulf Pearl', serialNo: 'SL-005', truckNo: 'DHA-2002', grossWeightKg: 26_500, tareWeightKg: 8_300, pricePerTon: 4_050, createdAt: stampAgo(8) },
+    { id: 'imp-6', shipmentId: 'ship-3', date: daysAgo(19), productId: 'product-3', shipName: 'MV Delta Wave', serialNo: 'SL-006', truckNo: 'DHA-3001', grossWeightKg: 31_000, tareWeightKg: 9_300, pricePerTon: 3_500, createdAt: stampAgo(19) },
+    { id: 'imp-7', shipmentId: 'ship-3', date: daysAgo(11), productId: 'product-3', shipName: 'MV Delta Wave', serialNo: 'SL-007', truckNo: 'DHA-3002', grossWeightKg: 24_000, tareWeightKg: 7_800, pricePerTon: 3_650, createdAt: stampAgo(11) },
   ]
 
   // ---------------------------------------------------------------- wastage
@@ -272,6 +281,7 @@ export function seedData(): AppData {
     categories,
     transactions,
     companyCostSelections: [],
+    shipmentCycles,
     wastageEntries,
     ledgerClosings: [],
     seeded: true,

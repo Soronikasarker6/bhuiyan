@@ -121,6 +121,7 @@ const EMPTY: AppData = {
   meshSizes: [],
   unitsOfMeasure: [],
   rawMaterialImports: [],
+  shipmentCycles: [],
   productionEntries: [],
   customers: [],
   sales: [],

@@ -25,9 +25,9 @@ import { useAppData } from '@/hooks/useAppData'
 import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
-import type { ImportRow, RawMaterialImport, ShipmentCycleRow, WastageEntry } from '@/types'
+import type { ImportRow, RawMaterialImport, ShipmentCycle, ShipmentCycleRow, WastageEntry } from '@/types'
 import { activeProducts, bagKgOf } from '@/utils/products'
-import { buildImportRows, importTotals, todaysImports } from '@/utils/imports'
+import { buildImportRows, importTotals, kgToTons, netWeightKg, todaysImports } from '@/utils/imports'
 import {
   allRawMaterialStock,
   allRawStockSummaries,
@@ -52,7 +52,7 @@ const ALL = '__all__'
  * the product filter below is how it is narrowed to one type at a time.
  */
 export default function ImportPage() {
-  const { data, loading, update, updateRawMaterialImport } = useAppData()
+  const { data, loading, update, updateMany, updateRawMaterialImport } = useAppData()
   const { print } = usePrint()
   const canCreate = usePermission(PERMISSIONS.RAW_MATERIAL_CREATE)
   const [productFilter, setProductFilter] = useState(ALL)
@@ -107,51 +107,54 @@ export default function ImportPage() {
     () =>
       allRawMaterialStock(
         data.products,
+        data.shipmentCycles,
         data.rawMaterialImports,
         data.wastageEntries,
         data.productionEntries,
         (meshId) => bagKgOf(data.meshSizes, meshId),
       ),
-    [data.products, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes],
+    [data.products, data.shipmentCycles, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes],
   )
 
-  // §2/§3 — every shipment as its own inventory cycle, never a lifetime sum.
+  // §2/§3 — one row per shipment cycle, never one per import.
   const allCycles = useMemo(
     () =>
       allShipmentCycles(
         data.products,
+        data.shipmentCycles,
         data.rawMaterialImports,
         data.wastageEntries,
         data.productionEntries,
         (meshId) => bagKgOf(data.meshSizes, meshId),
       ),
-    [data.products, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes],
+    [data.products, data.shipmentCycles, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes],
   )
   const shipmentRows = useMemo(
-    () => allCycles.filter((c) => (productFilter === ALL || c.productId === productFilter) && inWindow(c.date)),
+    () => allCycles.filter((c) => (productFilter === ALL || c.productId === productFilter) && inWindow(c.openedOn)),
     [allCycles, productFilter, inWindow],
   )
 
   const closeShipment = useCallback(
     async (row: ShipmentCycleRow) => {
-      const entry = data.rawMaterialImports.find((i) => i.id === row.id)
-      if (!entry || entry.status === 'closed') return
+      const cycle = data.shipmentCycles.find((c) => c.id === row.id)
+      if (!cycle || cycle.status === 'closed') return
 
-      const updated: RawMaterialImport = {
-        ...entry,
+      const updated: ShipmentCycle = {
+        ...cycle,
         status: 'closed',
         closing: {
           openingTon: row.openingTon,
           receivedTon: row.receivedTon,
           consumedTon: row.consumedTon,
+          wastageTon: row.wastageTon,
           closingTon: row.closingTon,
           closedAt: now(),
         },
       }
 
       const ok = await update(
-        'rawMaterialImports',
-        data.rawMaterialImports.map((i) => (i.id === entry.id ? updated : i)),
+        'shipmentCycles',
+        data.shipmentCycles.map((c) => (c.id === cycle.id ? updated : c)),
       )
       if (ok) {
         toast.success('Shipment closed', {
@@ -159,24 +162,24 @@ export default function ImportPage() {
         })
       }
     },
-    [data.rawMaterialImports, update],
+    [data.shipmentCycles, update],
   )
 
   const reopenShipment = useCallback(
     async (row: ShipmentCycleRow) => {
-      const entry = data.rawMaterialImports.find((i) => i.id === row.id)
-      if (!entry) return
+      const cycle = data.shipmentCycles.find((c) => c.id === row.id)
+      if (!cycle) return
 
-      const { closing: _closing, ...rest } = entry
-      const updated: RawMaterialImport = { ...rest, status: 'open' }
+      const { closing: _closing, ...rest } = cycle
+      const updated: ShipmentCycle = { ...rest, status: 'open' }
 
       const ok = await update(
-        'rawMaterialImports',
-        data.rawMaterialImports.map((i) => (i.id === entry.id ? updated : i)),
+        'shipmentCycles',
+        data.shipmentCycles.map((c) => (c.id === cycle.id ? updated : c)),
       )
-      if (ok) toast.success('Shipment reopened', { description: 'Its balance is live again, and later shipments will recompute from it.' })
+      if (ok) toast.success('Shipment reopened', { description: 'Its balance is live again, and later imports of this material will join it again.' })
     },
-    [data.rawMaterialImports, update],
+    [data.shipmentCycles, update],
   )
 
   const pricesForProduct = useCallback(
@@ -196,6 +199,28 @@ export default function ImportPage() {
     [data.rawMaterialImports],
   )
 
+  // §14–§16 — reusable Ship Name / Truck No. values, derived straight from
+  // import history (never a fixed master list) — same idea as the Price
+  // per Ton dropdown above, just not scoped to one product: a ship or
+  // truck isn't tied to one limestone type. Newest use first.
+  const distinctValues = useCallback(
+    (field: 'shipName' | 'truckNo') => {
+      const seen = new Set<string>()
+      const values: string[] = []
+      for (const entry of [...data.rawMaterialImports].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))) {
+        const value = entry[field]?.trim()
+        if (value && !seen.has(value)) {
+          seen.add(value)
+          values.push(value)
+        }
+      }
+      return values
+    },
+    [data.rawMaterialImports],
+  )
+  const shipNames = useMemo(() => distinctValues('shipName'), [distinctValues])
+  const truckNos = useMemo(() => distinctValues('truckNo'), [distinctValues])
+
   const wastageRows = useMemo(
     () =>
       buildWastageRows(data.wastageEntries, data.products).filter(
@@ -206,8 +231,22 @@ export default function ImportPage() {
 
   const addEntry = useCallback(
     async (values: ImportSubmit) => {
+      // §2/§4 — join the product's current open cycle if one exists; only
+      // start a new one when there isn't (first-ever import, or the last
+      // one was closed). Mirrors InventoryService::receiveStock() exactly —
+      // on the API build this optimistic id/cycle is discarded the moment
+      // `refresh()` pulls back what the backend actually decided.
+      const openCycle = data.shipmentCycles.find((c) => c.productId === values.productId && c.status === 'open')
+      const cycle: ShipmentCycle = openCycle ?? {
+        id: uid(),
+        productId: values.productId,
+        openedOn: values.date,
+        status: 'open',
+      }
+
       const entry: RawMaterialImport = {
         id: uid(),
+        shipmentId: cycle.id,
         date: values.date,
         productId: values.productId,
         shipName: values.shipName?.trim() || undefined,
@@ -220,7 +259,12 @@ export default function ImportPage() {
         createdAt: now(),
       }
 
-      const ok = await update('rawMaterialImports', [entry, ...data.rawMaterialImports])
+      const ok = openCycle
+        ? await update('rawMaterialImports', [entry, ...data.rawMaterialImports])
+        : await updateMany({
+            shipmentCycles: [cycle, ...data.shipmentCycles],
+            rawMaterialImports: [entry, ...data.rawMaterialImports],
+          })
 
       if (ok) {
         const net = values.grossWeightKg - values.tareWeightKg
@@ -229,7 +273,7 @@ export default function ImportPage() {
         })
       }
     },
-    [data.rawMaterialImports, update],
+    [data.rawMaterialImports, data.shipmentCycles, update, updateMany],
   )
 
   const editEntry = useCallback(
@@ -254,7 +298,8 @@ export default function ImportPage() {
   const deleteEntry = useCallback(
     async (id: string) => {
       const entry = data.rawMaterialImports.find((i) => i.id === id)
-      if (entry?.status === 'closed') {
+      const cycle = entry && data.shipmentCycles.find((c) => c.id === entry.shipmentId)
+      if (cycle?.status === 'closed') {
         toast.error('This shipment is closed', { description: 'Reopen it in Shipment History first if it needs to be removed.' })
         return
       }
@@ -265,7 +310,7 @@ export default function ImportPage() {
       )
       if (ok) toast.success('Entry deleted')
     },
-    [data.rawMaterialImports, update],
+    [data.rawMaterialImports, data.shipmentCycles, update],
   )
 
   // §10 — a wastage entry cannot take a material's current raw stock negative,
@@ -276,8 +321,8 @@ export default function ImportPage() {
     [liveStock],
   )
   const wastageCycleClosed = useCallback(
-    (productId: string, date: string) => cycleStatusForDate(productId, date, data.rawMaterialImports) === 'closed',
-    [data.rawMaterialImports],
+    (productId: string, date: string) => cycleStatusForDate(productId, date, data.shipmentCycles) === 'closed',
+    [data.shipmentCycles],
   )
 
   const addWastage = useCallback(
@@ -348,6 +393,55 @@ export default function ImportPage() {
   )
 
   const printRegister = useCallback(() => print(buildRegisterPayload()), [buildRegisterPayload, print])
+
+  // §9 — the one cycle's complete import history, on demand. The summary
+  // row a visitor sees in Shipment History is one line; this is every
+  // weighbridge receipt that fed it, plus the same cycle totals, so nothing
+  // about how "Total Received" was reached is ever hidden.
+  const downloadShipmentHistory = useCallback(
+    (row: ShipmentCycleRow) => {
+      const cycleImports = [...data.rawMaterialImports]
+        .filter((i) => i.shipmentId === row.id)
+        .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.createdAt < b.createdAt ? -1 : 1))
+      const cycleTotals = importTotals(cycleImports)
+
+      print({
+        title: `Shipment History · ${row.productName}`,
+        subtitle: `Shipment #${row.id} — ${row.status === 'closed' ? 'Closed' : 'Open'}`,
+        meta: [
+          { label: 'Opening', value: `${formatTons(row.openingTon)} Ton` },
+          { label: 'Total received', value: `${formatTons(row.receivedTon)} Ton` },
+          { label: 'Consumed (production)', value: `${formatTons(row.consumedTon)} Ton` },
+          { label: 'Wastage', value: `${formatTons(row.wastageTon)} Ton` },
+          { label: row.status === 'closed' ? 'Closing balance' : 'Current balance', value: `${formatTons(row.closingTon)} Ton` },
+        ],
+        columns: [
+          { key: 'date', label: 'Date' },
+          { key: 'ship', label: 'Ship' },
+          { key: 'truck', label: 'Truck' },
+          { key: 'gross', label: 'Gross (kg)', align: 'right' },
+          { key: 'tare', label: 'Tare (kg)', align: 'right' },
+          { key: 'net', label: 'Net (kg)', align: 'right' },
+          { key: 'ton', label: 'Ton', align: 'right' },
+        ],
+        rows: cycleImports.map((i) => ({
+          date: formatDate(i.date),
+          ship: i.shipName ?? '',
+          truck: i.truckNo ?? '',
+          gross: formatNumber(i.grossWeightKg),
+          tare: formatNumber(i.tareWeightKg),
+          net: formatNumber(netWeightKg(i.grossWeightKg, i.tareWeightKg)),
+          ton: formatTons(kgToTons(netWeightKg(i.grossWeightKg, i.tareWeightKg))),
+        })),
+        totals: {
+          date: 'Total Imported',
+          net: formatNumber(cycleTotals.netWeightKg),
+          ton: formatTons(cycleTotals.netWeightTon),
+        },
+      })
+    },
+    [data.rawMaterialImports, print],
+  )
 
   const exportRegisterCsv = useCallback(() => {
     downloadTextFile(`import-register-${todayISO()}.csv`, printPayloadToCsv(buildRegisterPayload()), 'text/csv;charset=utf-8;')
@@ -494,8 +588,21 @@ export default function ImportPage() {
         </div>
 
         <TabsContent value="imports" className="space-y-4">
-          {canCreate && <ImportEntryForm products={products} pricesForProduct={pricesForProduct} onSubmit={addEntry} />}
-          <ImportTable rows={rows} onDelete={deleteEntry} onEdit={setEditingImport} />
+          {canCreate && (
+            <ImportEntryForm
+              products={products}
+              pricesForProduct={pricesForProduct}
+              shipNames={shipNames}
+              truckNos={truckNos}
+              onSubmit={addEntry}
+            />
+          )}
+          <ImportTable
+            rows={rows}
+            cycleStatusOf={(shipmentId) => data.shipmentCycles.find((c) => c.id === shipmentId)?.status}
+            onDelete={deleteEntry}
+            onEdit={setEditingImport}
+          />
         </TabsContent>
 
         <TabsContent value="wastage" className="space-y-4">
@@ -511,13 +618,20 @@ export default function ImportPage() {
         </TabsContent>
 
         <TabsContent value="history">
-          <ShipmentTable rows={shipmentRows} onClose={closeShipment} onReopen={reopenShipment} />
+          <ShipmentTable
+            rows={shipmentRows}
+            onClose={closeShipment}
+            onReopen={reopenShipment}
+            onDownload={downloadShipmentHistory}
+          />
         </TabsContent>
       </Tabs>
 
       <EditImportDialog
         row={editingImport}
         products={products}
+        shipNames={shipNames}
+        truckNos={truckNos}
         onOpenChange={(open) => !open && setEditingImport(null)}
         onSubmit={editEntry}
       />

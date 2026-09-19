@@ -269,7 +269,7 @@ class RawStockTest extends TestCase
             'date' => '2026-01-01', 'product_id' => $product->id,
             'gross_weight_kg' => 10_000, 'tare_weight_kg' => 0,
         ]);
-        $this->inventory->closeShipment($shipment->id);
+        $this->inventory->closeShipment($shipment->shipment_id);
 
         $this->expectException(\App\Exceptions\BusinessRuleException::class);
         $this->inventory->updateShipment($shipment->id, [

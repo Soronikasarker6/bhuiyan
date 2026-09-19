@@ -24,7 +24,7 @@ const products: Product[] = [
 const bagKg50 = () => 50
 
 function imported(id: string, productId: string, tons: number, date = '2026-01-01'): RawMaterialImport {
-  return { id, date, productId, grossWeightKg: tons * 1000, tareWeightKg: 0, createdAt: '' }
+  return { id, shipmentId: `${id}-shipment`, date, productId, grossWeightKg: tons * 1000, tareWeightKg: 0, createdAt: '' }
 }
 
 function produced(id: string, productId: string, bags: number, date = '2026-01-05'): ProductionEntry {
