@@ -167,6 +167,24 @@ class CompanyProfileTest extends TestCase
         $this->postJson('/api/company-profile', ['name' => 'Hijacked Co'])->assertUnauthorized();
     }
 
+    /** The public landing page's Contact section reads this — deliberately open, unlike the route above. */
+    public function test_a_guest_can_read_the_public_profile_endpoint(): void
+    {
+        CompanyProfile::current()->update(['phone' => '+880 1711-000000']);
+
+        $this->getJson('/api/public/company-profile')
+            ->assertSuccessful()
+            ->assertJsonPath('name', 'BHUIYAN INDUSTRY')
+            ->assertJsonPath('phone', '+880 1711-000000');
+    }
+
+    public function test_the_public_profile_endpoint_never_leaks_the_logo_storage_path(): void
+    {
+        $this->getJson('/api/public/company-profile')
+            ->assertSuccessful()
+            ->assertJsonMissingPath('logo_path');
+    }
+
     public function test_the_name_field_is_required(): void
     {
         $this->actingAsAdmin();

@@ -41,6 +41,10 @@ export const companyProfileService = {
   async get(): Promise<CompanyProfile> {
     return normalize(mapEntity<CompanyProfile>(await http.get('/company-profile')))
   },
+  /** No auth required — the public landing page's Contact section reads this. */
+  async getPublic(): Promise<CompanyProfile> {
+    return normalize(mapEntity<CompanyProfile>(await http.get('/public/company-profile')))
+  },
   async update(input: CompanyProfileInput): Promise<CompanyProfile> {
     const form = new FormData()
     form.set('name', input.name)

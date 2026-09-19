@@ -38,7 +38,7 @@ export interface NavItem {
 export const navigation: NavItem[] = [
   {
     label: 'Dashboard',
-    path: '/',
+    path: '/dashboard',
     icon: LayoutDashboard,
     hint: 'Production, sales and balances at a glance',
     permission: PERMISSIONS.DASHBOARD_VIEW,

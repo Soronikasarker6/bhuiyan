@@ -30,6 +30,15 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login']);
 
+// Unauthenticated on purpose — the public landing page's Contact section
+// reads this. Every field CompanyProfile carries (name, tagline, owner,
+// phone/email/address/website, logo) is business identity meant to be
+// public; nothing confidential ever lives on this model. The authenticated
+// `company-profile` route below is untouched — this is a second, public
+// door onto the exact same `CompanyProfile::current()` record, not a
+// duplicate of it.
+Route::get('/public/company-profile', [CompanyProfileController::class, 'show']);
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
