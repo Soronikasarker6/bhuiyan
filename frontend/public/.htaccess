@@ -1,0 +1,18 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # The Laravel API bridge lives under /api and has its own .htaccess —
+  # leave those requests alone.
+  RewriteCond %{REQUEST_URI} ^/api/ [NC]
+  RewriteRule ^ - [L]
+
+  # Serve real files/directories (assets, favicon, etc.) as-is.
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Everything else is a client-side route (react-router BrowserRouter) —
+  # hand it to the SPA so a hard reload on e.g. /dashboard doesn't 404.
+  RewriteRule ^ index.html [L]
+</IfModule>
