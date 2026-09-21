@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-
   workflow_dispatch:
 
 jobs:
@@ -12,11 +11,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      # 2. Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
@@ -24,27 +21,23 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # 3. Install frontend dependencies
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
 
-      # 4. Build frontend
-      - name: Build frontend
+      - name: Verify and build frontend
         working-directory: frontend
         env:
           VITE_API_URL: https://bhuiyanindustry.com/api
-        run: npm run build
+        run: npm run verify
 
-      # 5. Verify build output
-      - name: Verify build
+      - name: Verify build output
         run: |
-          echo "Checking frontend/dist..."
           test -d frontend/dist
-          echo "Build directory exists."
+          test -f frontend/dist/index.html
+          echo "Frontend build verified."
           find frontend/dist -maxdepth 2 -type f | head -50
 
-      # 6. Configure SSH
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
@@ -58,7 +51,6 @@ jobs:
 
           chmod 644 ~/.ssh/known_hosts
 
-      # 7. Test SSH connection
       - name: Test Hostinger SSH connection
         run: |
           ssh \
@@ -69,8 +61,7 @@ jobs:
             "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" \
             "echo 'SSH connection successful'"
 
-      # 8. Deploy frontend/dist
-      - name: Deploy to Hostinger
+      - name: Deploy frontend to Hostinger
         run: |
           rsync -avz \
             --delete \
@@ -78,7 +69,6 @@ jobs:
             frontend/dist/ \
             "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}:/home/${{ secrets.HOSTINGER_USERNAME }}/domains/bhuiyanindustry.com/public_html/"
 
-      # 9. Verify deployment
       - name: Verify deployment
         run: |
           ssh \
@@ -87,4 +77,4 @@ jobs:
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
             "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" \
-            "cd /home/${{ secrets.HOSTINGER_USERNAME }}/domains/bhuiyanindustry.com/public_html && echo 'Deployment completed' && ls -la"
+            "cd /home/${{ secrets.HOSTINGER_USERNAME }}/domains/bhuiyanindustry.com/public_html && test -f index.html && echo 'Deployment successful' && ls -la"
