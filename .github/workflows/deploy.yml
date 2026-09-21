@@ -104,7 +104,11 @@ jobs:
           composer install \
             --no-dev \
             --optimize-autoloader \
-            --no-interaction
+            --no-interaction \
+            --no-scripts
+
+          echo "Discovering Laravel packages..."
+          php artisan package:discover --ansi
 
           echo "Clearing Laravel caches..."
           php artisan optimize:clear
