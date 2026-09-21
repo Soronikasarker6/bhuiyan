@@ -51,8 +51,7 @@ jobs:
         working-directory: frontend
         run: npm run build
         env:
-          GH_PAGES: 'true'
-          VITE_API_URL: 'https://bhuiyan-industry-api.onrender.com/api'
+          VITE_API_URL: 'https://bhuiyanindustry.com/api'
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
