@@ -1,70 +1,90 @@
-name: Deploy to GitHub Pages
+name: Deploy Frontend to Hostinger
 
-# GitHub Pages is set to deploy from "GitHub Actions" (Settings → Pages), which
-# means nothing is ever published until a workflow like this one exists and
-# runs — there is no default build/deploy behaviour to fall back on.
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-# Only one deployment at a time; a push that lands mid-deploy should win over
-# whatever is still in flight, not queue behind it.
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+    steps:
+      # 1. Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      # 2. Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      # 3. Install frontend dependencies
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
 
-      - name: Build
-        # GH_PAGES=true switches vite.config.ts to an absolute '/bhuiyan/'
-        # base — this is a *project* Pages site, not a user/org site at the
-        # domain root, so every asset URL and the router's basename both need
-        # that prefix. See vite.config.ts and src/main.tsx.
-        #
-        # VITE_API_URL points the built site at the deployed Laravel API (see
-        # render.yaml) — without it, httpClient.ts falls back to
-        # http://localhost:8000/api, which only exists on a developer's own
-        # machine, not a visitor's. Update this if the Render service is ever
-        # renamed (its onrender.com URL changes with it).
+      # 4. Build frontend
+      - name: Build frontend
         working-directory: frontend
-        run: npm run build
         env:
-          VITE_API_URL: 'https://bhuiyanindustry.com/api'
+          VITE_API_URL: https://bhuiyanindustry.com/api
+        run: npm run build
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: frontend/dist
+      # 5. Verify build output
+      - name: Verify build
+        run: |
+          echo "Checking frontend/dist..."
+          test -d frontend/dist
+          echo "Build directory exists."
+          find frontend/dist -maxdepth 2 -type f | head -50
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      # 6. Configure SSH
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/bhuiyan_github_actions
+          chmod 600 ~/.ssh/bhuiyan_github_actions
+
+          ssh-keyscan -p "${{ secrets.HOSTINGER_PORT }}" \
+            "${{ secrets.HOSTINGER_HOST }}" >> ~/.ssh/known_hosts
+
+          chmod 644 ~/.ssh/known_hosts
+
+      # 7. Test SSH connection
+      - name: Test Hostinger SSH connection
+        run: |
+          ssh \
+            -i ~/.ssh/bhuiyan_github_actions \
+            -p "${{ secrets.HOSTINGER_PORT }}" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" \
+            "echo 'SSH connection successful'"
+
+      # 8. Deploy frontend/dist
+      - name: Deploy to Hostinger
+        run: |
+          rsync -avz \
+            --delete \
+            -e "ssh -i ~/.ssh/bhuiyan_github_actions -p ${{ secrets.HOSTINGER_PORT }} -o StrictHostKeyChecking=yes" \
+            frontend/dist/ \
+            "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}:/home/${{ secrets.HOSTINGER_USERNAME }}/domains/bhuiyanindustry.com/public_html/"
+
+      # 9. Verify deployment
+      - name: Verify deployment
+        run: |
+          ssh \
+            -i ~/.ssh/bhuiyan_github_actions \
+            -p "${{ secrets.HOSTINGER_PORT }}" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" \
+            "cd /home/${{ secrets.HOSTINGER_USERNAME }}/domains/bhuiyanindustry.com/public_html && echo 'Deployment completed' && ls -la"
