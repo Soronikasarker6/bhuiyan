@@ -1,9 +1,10 @@
-name: Deploy Frontend to Hostinger
+name: Deploy Frontend and Backend to Hostinger
 
 on:
   push:
     branches:
       - main
+
   workflow_dispatch:
 
 jobs:
@@ -11,9 +12,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      # 2. Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
@@ -21,36 +24,46 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
+      # 3. Install frontend dependencies
+      - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
+      # 4. Test and build frontend
       - name: Verify and build frontend
         working-directory: frontend
         env:
           VITE_API_URL: https://bhuiyanindustry.com/api
         run: npm run verify
 
-      - name: Verify build output
+      # 5. Verify frontend build output
+      - name: Verify frontend build output
         run: |
           test -d frontend/dist
           test -f frontend/dist/index.html
+
           echo "Frontend build verified."
+
           find frontend/dist -maxdepth 2 -type f | head -50
 
+      # 6. Configure SSH
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          printf '%s\n' "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/bhuiyan_github_actions
+          printf '%s\n' "${{ secrets.HOSTINGER_SSH_KEY }}" \
+            > ~/.ssh/bhuiyan_github_actions
+
           chmod 600 ~/.ssh/bhuiyan_github_actions
 
           ssh-keyscan -p "${{ secrets.HOSTINGER_PORT }}" \
-            "${{ secrets.HOSTINGER_HOST }}" >> ~/.ssh/known_hosts
+            "${{ secrets.HOSTINGER_HOST }}" \
+            >> ~/.ssh/known_hosts
 
           chmod 644 ~/.ssh/known_hosts
 
+      # 7. Test SSH connection
       - name: Test Hostinger SSH connection
         run: |
           ssh \
@@ -61,20 +74,132 @@ jobs:
             "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" \
             "echo 'SSH connection successful'"
 
-      - name: Deploy frontend to Hostinger
-        run: |
-          rsync -avz \
-            --delete \
-            -e "ssh -i ~/.ssh/bhuiyan_github_actions -p ${{ secrets.HOSTINGER_PORT }} -o StrictHostKeyChecking=yes" \
-            frontend/dist/ \
-            "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}:/home/${{ secrets.HOSTINGER_USERNAME }}/domains/bhuiyanindustry.com/public_html/"
-
-      - name: Verify deployment
+      # 8. Deploy Laravel backend
+      - name: Deploy backend to Hostinger
         run: |
           ssh \
             -i ~/.ssh/bhuiyan_github_actions \
             -p "${{ secrets.HOSTINGER_PORT }}" \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
-            "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" \
-            "cd /home/${{ secrets.HOSTINGER_USERNAME }}/domains/bhuiyanindustry.com/public_html && test -f index.html && echo 'Deployment successful' && ls -la"
+            "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" <<'EOF'
+
+          set -e
+
+          echo "========================================"
+          echo "Updating Laravel backend"
+          echo "========================================"
+
+          cd /home/${{ secrets.HOSTINGER_USERNAME }}/domains/bhuiyanindustry.com/bhuiyan
+
+          echo "Fetching latest main branch..."
+          git fetch origin main
+
+          echo "Resetting backend source to origin/main..."
+          git reset --hard origin/main
+
+          cd backend
+
+          echo "Installing production Composer dependencies..."
+          composer install \
+            --no-dev \
+            --optimize-autoloader \
+            --no-interaction
+
+          echo "Clearing Laravel caches..."
+          php artisan optimize:clear
+
+          echo "Caching Laravel configuration..."
+          php artisan config:cache
+
+          echo "Caching Laravel routes..."
+          php artisan route:cache
+
+          echo "Caching Laravel views..."
+          php artisan view:cache
+
+          echo "========================================"
+          echo "Laravel backend deployment completed"
+          echo "========================================"
+
+          EOF
+
+      # 9. Deploy React frontend
+      #
+      # IMPORTANT:
+      # --exclude 'api/' preserves the manually configured
+      # public_html/api/ Laravel bridge.
+      #
+      - name: Deploy frontend to Hostinger
+        run: |
+          rsync -avz \
+            --delete \
+            --exclude 'api/' \
+            -e "ssh -i ~/.ssh/bhuiyan_github_actions -p ${{ secrets.HOSTINGER_PORT }} -o StrictHostKeyChecking=yes" \
+            frontend/dist/ \
+            "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}:/home/${{ secrets.HOSTINGER_USERNAME }}/domains/bhuiyanindustry.com/public_html/"
+
+      # 10. Verify deployed files
+      - name: Verify deployment files
+        run: |
+          ssh \
+            -i ~/.ssh/bhuiyan_github_actions \
+            -p "${{ secrets.HOSTINGER_PORT }}" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}" <<'EOF'
+
+          set -e
+
+          PUBLIC_HTML="/home/${{ secrets.HOSTINGER_USERNAME }}/domains/bhuiyanindustry.com/public_html"
+
+          echo "Checking frontend..."
+          test -f "$PUBLIC_HTML/index.html"
+
+          echo "Checking API bridge..."
+          test -f "$PUBLIC_HTML/api/index.php"
+          test -f "$PUBLIC_HTML/api/.htaccess"
+
+          echo "Checking Laravel backend..."
+          test -f "/home/${{ secrets.HOSTINGER_USERNAME }}/domains/bhuiyanindustry.com/bhuiyan/backend/artisan"
+
+          echo "========================================"
+          echo "Deployment files verified successfully"
+          echo "========================================"
+
+          EOF
+
+      # 11. Verify production frontend and API
+      - name: Verify production URLs
+        run: |
+          echo "Checking production frontend..."
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --retry 3 \
+            --retry-delay 2 \
+            --output /dev/null \
+            https://bhuiyanindustry.com/
+
+          echo "Frontend is responding."
+
+          echo "Checking production API..."
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --retry 3 \
+            --retry-delay 2 \
+            --output /dev/null \
+            https://bhuiyanindustry.com/api/public/company-profile
+
+          echo "API is responding."
+
+          echo "========================================"
+          echo "Production deployment verification passed"
+          echo "========================================"
