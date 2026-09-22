@@ -9,8 +9,10 @@ import {
   Menu,
   Receipt,
   ShieldCheck,
+  Tractor,
   Truck,
   Warehouse,
+  Wheat,
   X,
 } from 'lucide-react'
 import { StoneMark } from '@/components/StoneMark'
@@ -79,7 +81,12 @@ const WHY_US = [
   'Customer-Oriented Service',
 ]
 
-const WORKFLOW_STEPS = ['Raw Material', 'Production', 'Finished Products', 'Sales & Distribution']
+const WORKFLOW_STEPS = [
+  { label: 'Raw Material', icon: Warehouse },
+  { label: 'Production', icon: Factory },
+  { label: 'Finished Products', icon: Boxes },
+  { label: 'Sales & Distribution', icon: Truck },
+]
 
 function Nav() {
   const [open, setOpen] = useState(false)
@@ -168,7 +175,7 @@ function Nav() {
 
 function Hero() {
   return (
-    <section id="top" className="landing-hero relative overflow-hidden px-4 py-20 sm:px-6 sm:py-28">
+    <section id="top" className="landing-hero relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-20 sm:px-6">
       <div className="landing-fade-in mx-auto max-w-[900px] text-center">
         <p className="text-2xs font-semibold uppercase tracking-[0.2em] text-brass-300">
           Bhuiyan Industry
@@ -300,11 +307,13 @@ function Workflow() {
       <div className="mx-auto max-w-[1100px]">
         <SectionHeading eyebrow="How it works" title="Business Operations" />
         <div className="mt-10 flex flex-col items-center gap-2 sm:flex-row sm:justify-center sm:gap-2">
-          {WORKFLOW_STEPS.map((step, index) => (
-            <div key={step} className="flex flex-col items-center gap-2 sm:flex-row">
-              <div className="flex w-40 flex-col items-center gap-2 rounded-xl border border-border bg-card px-4 py-5 text-center shadow-card">
-                <Truck className="h-5 w-5 text-primary-700" aria-hidden />
-                <span className="text-[0.8125rem] font-semibold leading-tight text-foreground">{step}</span>
+          {WORKFLOW_STEPS.map(({ label, icon: Icon }, index) => (
+            <div key={label} className="flex flex-col items-center gap-2 sm:flex-row">
+              <div className="landing-3d-card group flex w-40 flex-col items-center gap-3 rounded-xl border border-border bg-card px-4 py-5 text-center transition-transform duration-300 ease-out hover:-translate-y-1.5">
+                <span className="grid h-11 w-11 place-items-center rounded-full bg-primary-100 text-primary-700 shadow-sm transition-transform duration-300 group-hover:-translate-y-0.5">
+                  <Icon className="h-5 w-5" aria-hidden />
+                </span>
+                <span className="text-[0.8125rem] font-semibold leading-tight text-foreground">{label}</span>
               </div>
               {index < WORKFLOW_STEPS.length - 1 && (
                 <ChevronRight className="landing-flow-arrow hidden h-6 w-6 sm:block" aria-hidden />
@@ -349,7 +358,13 @@ function Footer() {
   return (
     <footer id="contact" className="landing-hero no-print px-4 py-10 sm:px-6">
       <div className="mx-auto max-w-[1100px] text-center">
-        <p className="font-display text-lg text-sidebar-foreground">{profile.name}</p>
+        <div className="flex items-center justify-center gap-3 text-brass-300/60">
+          <Wheat className="h-5 w-5" />
+          <Tractor className="h-7 w-7" />
+          <Wheat className="h-5 w-5" />
+        </div>
+
+        <p className="mt-4 font-display text-lg text-sidebar-foreground">{profile.name}</p>
         <p className="mt-1 text-sm text-sidebar-muted">Agro-Based Limestone Manufacturing Company</p>
 
         <a
@@ -364,12 +379,6 @@ function Footer() {
         <p className="mt-5 text-2xs text-sidebar-muted">
           © {new Date().getFullYear()} {profile.name}. All rights reserved.
         </p>
-        <Link
-          to="/login"
-          className="mt-2 inline-block text-2xs font-medium text-brass-300 hover:underline"
-        >
-          Management Login
-        </Link>
       </div>
     </footer>
   )
