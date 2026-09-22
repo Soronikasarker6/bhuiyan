@@ -352,6 +352,13 @@ function Footer() {
         <p className="font-display text-lg text-sidebar-foreground">{profile.name}</p>
         <p className="mt-1 text-sm text-sidebar-muted">Agro-Based Limestone Manufacturing Company</p>
 
+        <a
+          href="mailto:admin@bhuiyanindustry.com"
+          className="mt-3 inline-block text-xs text-sidebar-muted hover:text-sidebar-foreground hover:underline"
+        >
+          admin@bhuiyanindustry.com
+        </a>
+
         <div className="mx-auto mt-6 h-px w-16 bg-sidebar-border" />
 
         <p className="mt-5 text-2xs text-sidebar-muted">
