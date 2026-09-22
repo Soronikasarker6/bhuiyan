@@ -123,7 +123,7 @@ export function WastageForm({
 
           <Field label="Limestone / Product" error={errors.productId?.message} htmlFor="wst-product">
             <Select value={productId} onValueChange={(value) => setValue('productId', value)}>
-              <SelectTrigger id="wst-product">
+              <SelectTrigger id="wst-product" className="field-highlight">
                 <SelectValue placeholder="Choose a product" />
               </SelectTrigger>
               <SelectContent>

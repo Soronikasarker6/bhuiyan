@@ -146,7 +146,7 @@ export function ProductionEntryForm({
 
           <Field label="Limestone / Product" error={errors.productId?.message} htmlFor="prodstk-product">
             <Select value={productId} onValueChange={(value) => setValue('productId', value)}>
-              <SelectTrigger id="prodstk-product">
+              <SelectTrigger id="prodstk-product" className="field-highlight">
                 <SelectValue placeholder="Choose a product" />
               </SelectTrigger>
               <SelectContent>
@@ -161,7 +161,7 @@ export function ProductionEntryForm({
 
           <Field label="Mesh" error={errors.meshId?.message} htmlFor="prodstk-mesh">
             <Select value={meshId} onValueChange={(value) => setValue('meshId', value)}>
-              <SelectTrigger id="prodstk-mesh">
+              <SelectTrigger id="prodstk-mesh" className="field-highlight">
                 <SelectValue placeholder="Choose a mesh" />
               </SelectTrigger>
               <SelectContent>

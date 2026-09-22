@@ -345,22 +345,12 @@ function ManagementCta() {
 
 function Footer() {
   const { profile } = useCompanyProfile()
-  const contactBits = [profile.address, profile.phone, profile.email].filter(Boolean)
 
   return (
     <footer id="contact" className="landing-hero no-print px-4 py-10 sm:px-6">
       <div className="mx-auto max-w-[1100px] text-center">
         <p className="font-display text-lg text-sidebar-foreground">{profile.name}</p>
         <p className="mt-1 text-sm text-sidebar-muted">Agro-Based Limestone Manufacturing Company</p>
-        {profile.ownerName && (
-          <p className="mt-1 text-2xs uppercase tracking-wide text-sidebar-muted">
-            {[profile.designation, profile.ownerName].filter(Boolean).join(': ')}
-          </p>
-        )}
-
-        {contactBits.length > 0 && (
-          <p className="mt-4 text-xs text-sidebar-muted">{contactBits.join(' · ')}</p>
-        )}
 
         <div className="mx-auto mt-6 h-px w-16 bg-sidebar-border" />
 

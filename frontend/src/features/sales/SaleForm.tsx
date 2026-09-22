@@ -284,7 +284,7 @@ export function SaleForm({
                       name={`items.${index}.productId`}
                       render={({ field: f }) => (
                         <Select value={f.value} onValueChange={f.onChange}>
-                          <SelectTrigger>
+                          <SelectTrigger className="field-highlight">
                             <SelectValue placeholder="Product" />
                           </SelectTrigger>
                           <SelectContent>
@@ -305,7 +305,7 @@ export function SaleForm({
                       name={`items.${index}.meshSizeId`}
                       render={({ field: f }) => (
                         <Select value={f.value} onValueChange={f.onChange}>
-                          <SelectTrigger>
+                          <SelectTrigger className="field-highlight">
                             <SelectValue placeholder="Mesh" />
                           </SelectTrigger>
                           <SelectContent>

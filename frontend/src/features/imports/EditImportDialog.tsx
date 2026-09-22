@@ -154,7 +154,7 @@ export function EditImportDialog({
 
             <Field label="Limestone / Product" error={errors.productId?.message} htmlFor="edit-imp-product">
               <Select value={watch('productId')} onValueChange={(value) => setValue('productId', value)}>
-                <SelectTrigger id="edit-imp-product">
+                <SelectTrigger id="edit-imp-product" className="field-highlight">
                   <SelectValue placeholder="Choose a product" />
                 </SelectTrigger>
                 <SelectContent>

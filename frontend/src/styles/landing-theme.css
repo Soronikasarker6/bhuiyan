@@ -22,15 +22,15 @@
 
 /*
  * The very first thing a visitor sees, so this is the one band that gets a
- * real photograph rather than the plain gradient — river pebbles, the same
- * quarried-stone language as the rest of the site. The gradient stays, now
- * as a translucent scrim laid over the photo instead of a solid fill, so the
- * white heading text above it is still comfortably readable.
+ * real photograph rather than the plain gradient — the agro village and
+ * fields the "agro-based" side of the business comes from. The gradient
+ * stays, now as a translucent scrim laid over the photo instead of a solid
+ * fill, so the white heading text above it is still comfortably readable.
  */
 #top.landing-hero {
   background-image:
     linear-gradient(178deg, hsl(88 18% 20% / 0.82) 0%, hsl(88 20% 15% / 0.85) 55%, hsl(90 24% 9% / 0.9) 100%),
-    url('../assets/hero-pebbles.jpg');
+    url('../assets/hero-village.jpg');
   background-size: cover, cover;
   background-position: center, center;
 }

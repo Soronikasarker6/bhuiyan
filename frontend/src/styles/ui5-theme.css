@@ -84,3 +84,18 @@
   --sapCriticalColor: hsl(var(--brass)) !important;
   --sapInformativeColor: hsl(var(--primary)) !important;
 }
+
+/*
+ * The Limestone/Product and Mesh pickers — the one choice on an import,
+ * production or sale form that decides what the rest of the row's numbers
+ * mean, so it shouldn't blend into the plain-bordered fields around it. A
+ * soft brass tint rather than a loud one: something the eye lands on, not
+ * something that fights the row for attention. Scoped to `.field-highlight`
+ * (applied via `SelectTrigger`'s className, which `Select` forwards onto
+ * the real `ui5-select` host) rather than `--sapField_*` on `:root`, so it
+ * highlights only these pickers and leaves every other field alone.
+ */
+ui5-select.field-highlight {
+  --sapField_Background: hsl(var(--brass) / 0.08) !important;
+  --sapField_BorderColor: hsl(var(--brass) / 0.55) !important;
+}

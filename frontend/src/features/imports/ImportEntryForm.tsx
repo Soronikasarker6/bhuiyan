@@ -163,7 +163,7 @@ export function ImportEntryForm({
 
           <Field label="Limestone / Product" error={errors.productId?.message} htmlFor="imp-product">
             <Select value={productId} onValueChange={(value) => setValue('productId', value)}>
-              <SelectTrigger id="imp-product">
+              <SelectTrigger id="imp-product" className="field-highlight">
                 <SelectValue placeholder="Choose a product" />
               </SelectTrigger>
               <SelectContent>
