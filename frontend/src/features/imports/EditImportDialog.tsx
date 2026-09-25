@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -14,8 +14,9 @@ import { Input, Textarea } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
 import { ReusableValueField } from '@/features/imports/ReusableValueField'
+import { PricePerTonField } from '@/features/imports/PricePerTonField'
 import { netWeightKg, kgToTons } from '@/utils/imports'
-import { formatNumber, formatTons, todayISO } from '@/utils/format'
+import { formatCurrency, formatNumber, formatTons, todayISO } from '@/utils/format'
 
 const schema = z
   .object({
@@ -53,6 +54,7 @@ type FormValues = z.input<typeof schema>
 export function EditImportDialog({
   row,
   products,
+  pricesForProduct,
   shipNames,
   truckNos,
   onOpenChange,
@@ -60,6 +62,8 @@ export function EditImportDialog({
 }: {
   row: ImportRow | null
   products: Product[]
+  /** Every distinct price/ton previously used for this product, newest first — the same source the create form offers. */
+  pricesForProduct: (productId: string) => number[]
   shipNames: string[]
   truckNos: string[]
   onOpenChange: (open: boolean) => void
@@ -108,6 +112,10 @@ export function EditImportDialog({
   const tare = Number(watch('tareWeightKg')) || 0
   const net = netWeightKg(gross, tare)
   const oversized = tare > 0 && gross > 0 && tare >= gross
+
+  const productId = watch('productId')
+  const price = Number(watch('pricePerTon')) || 0
+  const previousPrices = useMemo(() => pricesForProduct(productId), [pricesForProduct, productId])
 
   const submit = handleSubmit(async (values) => {
     await onSubmit({
@@ -219,9 +227,24 @@ export function EditImportDialog({
             </MessageStrip>
           )}
 
-          <Field label="Price per Ton (optional)" htmlFor="edit-imp-price">
-            <Input id="edit-imp-price" type="number" min={0} step="0.01" inputMode="decimal" {...register('pricePerTon')} />
-          </Field>
+          {/* Seeded per row, not per product: changing the product on an
+              entry being corrected should not throw away the price that was
+              actually paid for it. The saved figure stays selected either
+              way — PricePerTonField keeps it in the list even when the new
+              product has never been priced at it. */}
+          <PricePerTonField
+            idPrefix="edit-imp"
+            seedKey={row.id}
+            value={price || undefined}
+            previousPrices={previousPrices}
+            onChange={(next) => setValue('pricePerTon', next)}
+          />
+
+          {price > 0 && (
+            <p className="-mt-2 text-2xs text-muted-foreground">
+              Value of this receipt: {formatCurrency(kgToTons(net) * price)} ({formatCurrency(price)} / Ton)
+            </p>
+          )}
 
           <Field label="Notes (optional)" htmlFor="edit-imp-notes">
             <Textarea id="edit-imp-notes" rows={2} {...register('notes')} />

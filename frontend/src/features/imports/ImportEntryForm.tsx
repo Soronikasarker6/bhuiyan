@@ -12,6 +12,7 @@ import { Input, Textarea } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
 import { ReusableValueField } from '@/features/imports/ReusableValueField'
+import { PricePerTonField } from '@/features/imports/PricePerTonField'
 import { netWeightKg, kgToTons } from '@/utils/imports'
 import { formatCurrency, formatNumber, formatTons, todayISO } from '@/utils/format'
 
@@ -31,9 +32,6 @@ import { formatCurrency, formatNumber, formatTons, todayISO } from '@/utils/form
  * toggle lets it be typed either per kg or per ton; one canonical per-ton
  * number is what gets saved either way.
  */
-
-const CUSTOM_PRICE = '__custom__'
-const NO_PRICE = '__none__'
 
 const schema = z
   .object({
@@ -111,30 +109,16 @@ export function ImportEntryForm({
 
   const previousPrices = useMemo(() => pricesForProduct(productId), [pricesForProduct, productId])
 
-  const [priceChoice, setPriceChoice] = useState<string>(NO_PRICE)
-  const [priceUnit, setPriceUnit] = useState<'ton' | 'kg'>('ton')
-  const [customPrice, setCustomPrice] = useState('')
+  // Bumped to put PricePerTonField back to its default shape after a save;
+  // a product change reseeds it through `productId` in the same key.
+  const [priceSeed, setPriceSeed] = useState(0)
 
-  // Selecting a product resets which price is picked — a price that made
-  // sense for White limestone should never silently carry over to Grey.
+  // Selecting a product clears the price — one that made sense for White
+  // limestone should never silently carry over to Grey.
   useEffect(() => {
-    setPriceChoice(NO_PRICE)
-    setCustomPrice('')
     setValue('pricePerTon', undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId])
-
-  useEffect(() => {
-    if (priceChoice === NO_PRICE) {
-      setValue('pricePerTon', undefined)
-    } else if (priceChoice === CUSTOM_PRICE) {
-      const typed = Number(customPrice) || 0
-      setValue('pricePerTon', priceUnit === 'kg' ? typed * 1000 : typed)
-    } else {
-      setValue('pricePerTon', Number(priceChoice))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [priceChoice, customPrice, priceUnit])
 
   const submit = handleSubmit(async (values) => {
     await onSubmit(values as ImportSubmit)
@@ -149,8 +133,7 @@ export function ImportEntryForm({
       pricePerTon: undefined,
       notes: '',
     })
-    setPriceChoice(NO_PRICE)
-    setCustomPrice('')
+    setPriceSeed((n) => n + 1)
   })
 
   return (
@@ -245,51 +228,16 @@ export function ImportEntryForm({
           </MessageStrip>
         )}
 
-        <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_auto_1fr]">
-          <Field label="Price per Ton (optional)" htmlFor="imp-price-choice">
-            <Select value={priceChoice} onValueChange={setPriceChoice}>
-              <SelectTrigger id="imp-price-choice">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_PRICE}>Not priced yet</SelectItem>
-                {previousPrices.map((price) => (
-                  <SelectItem key={price} value={String(price)}>
-                    {formatCurrency(price)} / Ton (previously used)
-                  </SelectItem>
-                ))}
-                <SelectItem value={CUSTOM_PRICE}>Custom price…</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-
-          {priceChoice === CUSTOM_PRICE && (
-            <>
-              <Field label="Unit" htmlFor="imp-price-unit">
-                <Select value={priceUnit} onValueChange={(v) => setPriceUnit(v as 'ton' | 'kg')}>
-                  <SelectTrigger id="imp-price-unit" className="w-28">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ton">৳ / Ton</SelectItem>
-                    <SelectItem value="kg">৳ / KG</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-
-              <Field label={`Price (৳ / ${priceUnit === 'ton' ? 'Ton' : 'KG'})`} htmlFor="imp-price-custom">
-                <Input
-                  id="imp-price-custom"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  inputMode="decimal"
-                  value={customPrice}
-                  onChange={(e) => setCustomPrice(e.target.value)}
-                />
-              </Field>
-            </>
-          )}
+        <div className="mt-4">
+          <PricePerTonField
+            idPrefix="imp"
+            // Reseeded on a product change and after each save, so a custom
+            // price typed for one receipt is not left half-open on the next.
+            seedKey={`${productId}:${priceSeed}`}
+            value={Number(watch('pricePerTon')) || undefined}
+            previousPrices={previousPrices}
+            onChange={(next) => setValue('pricePerTon', next)}
+          />
         </div>
 
         {watch('pricePerTon') ? (

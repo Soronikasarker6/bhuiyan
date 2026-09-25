@@ -630,6 +630,7 @@ export default function ImportPage() {
       <EditImportDialog
         row={editingImport}
         products={products}
+        pricesForProduct={pricesForProduct}
         shipNames={shipNames}
         truckNos={truckNos}
         onOpenChange={(open) => !open && setEditingImport(null)}
