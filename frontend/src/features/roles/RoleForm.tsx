@@ -91,7 +91,7 @@ export function RoleForm({
 
         <div>
           <p className="mb-1.5 text-[0.8125rem] font-medium text-foreground/90">Permissions</p>
-          <div className="max-h-[22rem] space-y-3 overflow-y-auto rounded-lg border border-border p-3">
+          <div className="max-h-[min(22rem,calc(100dvh_-_16rem))] space-y-3 overflow-y-auto rounded-lg border border-border p-3">
             {PERMISSION_GROUPS.map((group) => {
               const allChecked = group.permissions.every((p) => selected.has(p))
               return (

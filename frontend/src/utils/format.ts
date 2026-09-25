@@ -129,9 +129,10 @@ export function formatDateTime(value: string | null | undefined): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
 
-  return `${formatDate(toISODate(date))}, ${date.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
+  return `${formatDate(toISODate(date))}, ${date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
     minute: '2-digit',
+    hour12: true,
   })}`
 }
 
