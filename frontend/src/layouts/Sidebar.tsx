@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { activePath, navigationSegments, type NavItem } from '@/router/navigation'
@@ -49,46 +49,45 @@ function NavItemLink({
   collapsed: boolean
   onNavigate?: () => void
 }) {
+  // Longest-prefix match rather than NavLink's own prefix match — otherwise
+  // /customers/internal-ledger also lights up Customers, and
+  // /settings/audit-history also lights up Settings.
+  const isActive = activePath(useLocation().pathname) === item.path
+
   const link = (
-    <NavLink
+    <Link
       to={item.path}
-      end={item.path === '/'}
       onClick={onNavigate}
+      aria-current={isActive ? 'page' : undefined}
       aria-label={collapsed ? item.label : undefined}
-      className={({ isActive }) =>
-        cn(
-          'group flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400',
-          collapsed && 'justify-center px-0 py-2.5',
-          isActive
-            ? 'stone-nav-active text-sidebar-accent-foreground'
-            : 'text-sidebar-foreground hover:bg-white/[0.08] hover:text-sidebar-foreground',
-        )
-      }
-    >
-      {({ isActive }) => (
-        <>
-          <item.icon
-            className={cn(
-              'h-[1.05rem] w-[1.05rem] shrink-0 transition-colors',
-              !collapsed && 'mt-0.5',
-              isActive ? 'text-brass-300' : 'text-sidebar-muted group-hover:text-brass-200',
-            )}
-            aria-hidden
-          />
-          {!collapsed && (
-            <span className="min-w-0">
-              <span className="block text-[0.8125rem] font-medium leading-tight">{item.label}</span>
-              {/* The hint reads the same whether or not the item is active —
-                  it sits on stone either way, so it never gets faded back. */}
-              <span className="mt-0.5 block truncate text-2xs leading-tight text-sidebar-muted">
-                {item.hint}
-              </span>
-            </span>
-          )}
-        </>
+      className={cn(
+        'group flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400',
+        collapsed && 'justify-center px-0 py-2.5',
+        isActive
+          ? 'stone-nav-active text-sidebar-accent-foreground'
+          : 'text-sidebar-foreground hover:bg-white/[0.08] hover:text-sidebar-foreground',
       )}
-    </NavLink>
+    >
+      <item.icon
+        className={cn(
+          'h-[1.05rem] w-[1.05rem] shrink-0 transition-colors',
+          !collapsed && 'mt-0.5',
+          isActive ? 'text-brass-300' : 'text-sidebar-muted group-hover:text-brass-200',
+        )}
+        aria-hidden
+      />
+      {!collapsed && (
+        <span className="min-w-0">
+          <span className="block text-[0.8125rem] font-medium leading-tight">{item.label}</span>
+          {/* The hint reads the same whether or not the item is active —
+              it sits on stone either way, so it never gets faded back. */}
+          <span className="mt-0.5 block truncate text-2xs leading-tight text-sidebar-muted">
+            {item.hint}
+          </span>
+        </span>
+      )}
+    </Link>
   )
 
   if (!collapsed) return link
