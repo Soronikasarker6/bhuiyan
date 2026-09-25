@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CompanyCostSelectionController;
 use App\Http\Controllers\Api\CompanyProfileController;
 use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\CustomerInternalLedgerController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\LedgerClosingController;
 use App\Http\Controllers\Api\MeshSizeController;
@@ -100,6 +101,26 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('permission:'.P::CASH_IN_EDIT);
     Route::delete('customers/{customer}/payments/{transaction}', [CustomerController::class, 'destroyPayment'])
         ->middleware('permission:'.P::CASH_IN_DELETE);
+
+    // ------------------------------------- Customer Ledger (Private)
+    //
+    // The owner's own bookkeeping — Admin only, enforced here rather than
+    // anywhere in the frontend. One section-level permission covers the whole
+    // section (§4 of the brief): reading this book and writing in it are the
+    // same question for the one person it belongs to.
+    //
+    // Entirely separate from the operational `customers/{customer}/ledger`
+    // route above, which Managers keep. Nothing on these routes reads or
+    // writes sales, payments, cash, bank, stock or P&L.
+    Route::middleware('permission:'.P::CUSTOMER_INTERNAL_LEDGER_VIEW)
+        ->prefix('customer-internal-ledger')
+        ->group(function () {
+            Route::get('/', [CustomerInternalLedgerController::class, 'index']);
+            Route::post('/', [CustomerInternalLedgerController::class, 'store']);
+            Route::put('entries/{internalLedgerEntry}', [CustomerInternalLedgerController::class, 'update']);
+            Route::delete('entries/{internalLedgerEntry}', [CustomerInternalLedgerController::class, 'destroy']);
+            Route::put('openings/{customer}', [CustomerInternalLedgerController::class, 'setOpening']);
+        });
 
     Route::middleware('permission:'.P::RAW_MATERIAL_VIEW)->group(function () {
         Route::get('raw-materials', [RawMaterialController::class, 'index']);

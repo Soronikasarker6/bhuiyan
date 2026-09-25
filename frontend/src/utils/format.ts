@@ -57,6 +57,24 @@ export function formatCurrency(value: number | null | undefined): string {
 }
 
 /**
+ * `50000.5` → `৳ 50,000.50`. Two decimals, always.
+ *
+ * The operational screens round to whole Taka on purpose — a yard deals in
+ * truckloads, and paisa on a ৳2,00,000 invoice is noise. A bookkeeping ledger
+ * is the one place that isn't true: a book that silently rounds what was
+ * typed into it does not balance against the paper it was copied from.
+ *
+ * Deliberately a second function rather than a change to `formatCurrency`, so
+ * every existing screen keeps the format it has always had.
+ */
+export function formatCurrencyExact(value: number | null | undefined): string {
+  const n = safe(value)
+  const grouped = GROUPED_2.format(Math.abs(n))
+
+  return n < 0 ? `−৳ ${grouped}` : `৳ ${grouped}`
+}
+
+/**
  * Compact form for dashboard tiles: crore and lakh, not million and billion.
  * A manager here thinks in crore; converting for them is the same discourtesy
  * as quoting an American in lakh.

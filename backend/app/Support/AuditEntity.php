@@ -23,6 +23,11 @@ class AuditEntity
 
     public const CUSTOMER = 'Customer';
 
+    /** The owner's private bookkeeping ledger — never the operational receivables one. */
+    public const CUSTOMER_INTERNAL_LEDGER = 'CustomerInternalLedgerEntry';
+
+    public const CUSTOMER_INTERNAL_LEDGER_OPENING = 'CustomerInternalLedgerOpening';
+
     public const SALE = 'Sale';
 
     public const RAW_MATERIAL_IMPORT = 'RawMaterialImport';
@@ -55,6 +60,8 @@ class AuditEntity
         self::TRANSFER => 'Cash & Bank Ledger',
         self::CUSTOMER_PAYMENT => 'Customer Payment',
         self::CUSTOMER => 'Customers',
+        self::CUSTOMER_INTERNAL_LEDGER => 'Customer Internal Ledger',
+        self::CUSTOMER_INTERNAL_LEDGER_OPENING => 'Customer Internal Ledger',
         self::SALE => 'Sales',
         self::RAW_MATERIAL_IMPORT => 'Raw Material Import',
         self::SHIPMENT_CYCLE => 'Shipment Cycle',

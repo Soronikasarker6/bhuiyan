@@ -40,6 +40,18 @@ class Permissions
 
     public const CUSTOMER_LEDGER_VIEW = 'CUSTOMER_LEDGER_VIEW';
 
+    /**
+     * The owner's *private* bookkeeping ledger — a different thing entirely
+     * from CUSTOMER_LEDGER_VIEW above, which is the operational receivables
+     * ledger everyone working the yard needs.
+     *
+     * Deliberately one section-level permission covering view/create/edit/
+     * delete rather than four: this is one person's own book, so "can open
+     * it" and "can write in it" are the same question. Admin-only, like
+     * AUDIT_VIEW, and excluded from Manager and Staff in RoleSeeder.
+     */
+    public const CUSTOMER_INTERNAL_LEDGER_VIEW = 'CUSTOMER_INTERNAL_LEDGER_VIEW';
+
     public const CASH_IN_VIEW = 'CASH_IN_VIEW';
     public const CASH_IN_CREATE = 'CASH_IN_CREATE';
     public const CASH_IN_EDIT = 'CASH_IN_EDIT';

@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  BookLock,
   BookText,
   Boxes,
   Factory,
@@ -80,6 +81,21 @@ export const navigation: NavItem[] = [
     icon: BookText,
     hint: 'Every sale and payment, running balance included',
     permission: PERMISSIONS.CUSTOMER_LEDGER_VIEW,
+  },
+  {
+    // The owner's private book, under Customers alongside the operational
+    // ledger above — a different thing with a deliberately different name, so
+    // nobody confuses "what this customer owes us" with "what I wrote in my
+    // own book".
+    //
+    // CUSTOMER_INTERNAL_LEDGER_VIEW is Admin's alone, so this row simply does
+    // not exist for a Manager. That is a courtesy on top of the server-side
+    // check, never the control itself.
+    label: 'Customer Ledger (Private)',
+    path: '/customers/internal-ledger',
+    icon: BookLock,
+    hint: 'Your own bookkeeping — admin only',
+    permission: PERMISSIONS.CUSTOMER_INTERNAL_LEDGER_VIEW,
   },
   {
     label: 'Cash In',

@@ -1,6 +1,13 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react'
 import { cn } from '@/utils/cn'
-import { formatBags, formatCurrency, formatNumber, formatPercent, formatTons } from '@/utils/format'
+import {
+  formatBags,
+  formatCurrency,
+  formatCurrencyExact,
+  formatNumber,
+  formatPercent,
+  formatTons,
+} from '@/utils/format'
 
 /**
  * Every figure in the system is drawn by one of these.
@@ -35,12 +42,20 @@ export function Money({
   className,
   size = 'base',
   weight = 'medium',
+  exact = false,
 }: {
   value: number
   tone?: Tone
   className?: string
   size?: 'xs' | 'sm' | 'base' | 'lg' | 'xl' | '2xl'
   weight?: 'normal' | 'medium' | 'semibold' | 'bold'
+  /**
+   * Show paisa. Off everywhere by default — a yard deals in truckloads and
+   * paisa on a ৳2,00,000 invoice is noise — and on only in the private
+   * bookkeeping ledger, where a figure that silently rounds what was typed
+   * would stop the book balancing against the paper it was copied from.
+   */
+  exact?: boolean
 }) {
   const sizes = {
     xs: 'text-xs',
@@ -68,7 +83,7 @@ export function Money({
         className,
       )}
     >
-      {formatCurrency(value)}
+      {exact ? formatCurrencyExact(value) : formatCurrency(value)}
     </span>
   )
 }

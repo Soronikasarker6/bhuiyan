@@ -32,6 +32,16 @@ export const PERMISSIONS = {
 
   CUSTOMER_LEDGER_VIEW: 'CUSTOMER_LEDGER_VIEW',
 
+  /**
+   * The owner's *private* bookkeeping ledger — a different thing entirely
+   * from CUSTOMER_LEDGER_VIEW above, which is the operational receivables
+   * ledger everyone working the yard needs. One section-level permission
+   * covers view/create/edit/delete: for a book belonging to one person,
+   * "can open it" and "can write in it" are the same question. Admin-only,
+   * and enforced server-side on every route.
+   */
+  CUSTOMER_INTERNAL_LEDGER_VIEW: 'CUSTOMER_INTERNAL_LEDGER_VIEW',
+
   CASH_IN_VIEW: 'CASH_IN_VIEW',
   CASH_IN_CREATE: 'CASH_IN_CREATE',
   CASH_IN_EDIT: 'CASH_IN_EDIT',
@@ -149,4 +159,8 @@ export const PERMISSION_GROUPS: Array<{ label: string; permissions: Permission[]
   },
   { label: 'Roles', permissions: [PERMISSIONS.ROLES_VIEW, PERMISSIONS.ROLES_EDIT] },
   { label: 'Audit History', permissions: [PERMISSIONS.AUDIT_VIEW] },
+  // Its own group, not folded into Customers: granting it is a much bigger
+  // decision than any of the operational customer permissions, and the role
+  // editor should not let it be ticked by accident alongside them.
+  { label: 'Customer Ledger (Private)', permissions: [PERMISSIONS.CUSTOMER_INTERNAL_LEDGER_VIEW] },
 ]

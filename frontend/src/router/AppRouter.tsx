@@ -43,6 +43,7 @@ const ClosingPage = lazy(() => import('@/pages/ClosingPage'))
 const ReportsPage = lazy(() => import('@/pages/ReportsPage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 const AuditHistoryPage = lazy(() => import('@/pages/AuditHistoryPage'))
+const CustomerInternalLedgerPage = lazy(() => import('@/pages/CustomerInternalLedgerPage'))
 
 function Lazy({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<PageSkeleton />}>{children}</Suspense>
@@ -65,6 +66,17 @@ export function AppRouter() {
       <Route path="/production" element={<Page permission={PERMISSIONS.PRODUCTION_VIEW}><ProductionPage /></Page>} />
       <Route path="/sales" element={<Page permission={PERMISSIONS.SALES_VIEW}><SalesPage /></Page>} />
       <Route path="/customers" element={<Page permission={PERMISSIONS.CUSTOMERS_VIEW}><CustomersPage /></Page>} />
+      {/* Before /customers/:id so the static segment wins the match — and
+          gated on the Admin-only private-ledger permission, not on
+          CUSTOMERS_VIEW, which every Manager holds. */}
+      <Route
+        path="/customers/internal-ledger"
+        element={
+          <Page permission={PERMISSIONS.CUSTOMER_INTERNAL_LEDGER_VIEW}>
+            <CustomerInternalLedgerPage />
+          </Page>
+        }
+      />
       <Route path="/customers/:id" element={<Page permission={PERMISSIONS.CUSTOMERS_VIEW}><CustomerDetailPage /></Page>} />
       <Route path="/customer-ledger" element={<Page permission={PERMISSIONS.CUSTOMER_LEDGER_VIEW}><CustomerLedgerPage /></Page>} />
       <Route path="/payments" element={<Page permission={PERMISSIONS.CASH_IN_VIEW}><PaymentsPage /></Page>} />
