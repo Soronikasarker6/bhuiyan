@@ -24,12 +24,22 @@ export function onTokenChange(listener: () => void): () => void {
 }
 
 export function setToken(token: string | null): void {
+  const previous = getToken()
+
   try {
     if (token) window.localStorage.setItem(TOKEN_KEY, token)
     else window.localStorage.removeItem(TOKEN_KEY)
   } catch {
     // A browser that refuses to persist the token still works for this tab.
   }
+
+  // Only a real change is a change. Clearing an already-absent token used to
+  // notify anyway, and since both `useAppData` and `useCompanyProfile` refetch
+  // on that notification, a single 401 became an endless loop: 401 → clear →
+  // notify → refetch → 401. Listeners exist to hear about a session starting
+  // or ending, not about a no-op write.
+  if (previous === token) return
+
   tokenChangeListeners.forEach((listener) => listener())
 }
 
@@ -61,12 +71,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, { ...init, headers })
 
   if (response.status === 401) {
-    // Only react if the token is still the one this request was sent with.
-    // A request made before login (no token) or with a token that's since
-    // been replaced by a newer login can resolve to a 401 *after* that
-    // newer session is already active — acting on it unconditionally would
-    // log a just-logged-in user straight back out.
-    if (getToken() === token) {
+    // Only react if this request actually carried a token, and it is still
+    // the current one. A request sent with no token has no session to end —
+    // reacting to its 401 would clear nothing and announce it anyway. And a
+    // token that has since been replaced by a newer login can resolve to a
+    // 401 *after* that newer session is active; acting on it unconditionally
+    // would log a just-logged-in user straight back out.
+    if (token && getToken() === token) {
       setToken(null)
       onUnauthorized?.()
     }

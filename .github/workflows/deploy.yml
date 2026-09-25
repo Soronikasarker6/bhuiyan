@@ -113,6 +113,28 @@ jobs:
           echo "Clearing Laravel caches..."
           php artisan optimize:clear
 
+          # Schema first, then the code that depends on it. Without this the
+          # pipeline ships models and queries for columns the live database
+          # has never been given — a soft-deleted ledger asks for
+          # `deleted_at`, the audit trail writes to `audit_logs` — and the
+          # app 500s on the first request that touches them.
+          #
+          # Runs before the caches are rebuilt so it reads the real .env
+          # rather than a stale cached config. `--force` is what makes it
+          # non-interactive in production; `set -e` above means a failed
+          # migration aborts the deploy instead of leaving code and schema
+          # out of step.
+          echo "Running database migrations..."
+          php artisan migrate --force
+
+          # Only creates permission rows that do not exist yet
+          # (firstOrCreate) — it never revokes anything and never touches
+          # roles. RoleSeeder is deliberately NOT run here: it calls
+          # syncPermissions on Admin/Manager/Staff, which would wipe any role
+          # customisation made through the Roles screen on every deploy.
+          echo "Registering any new permissions..."
+          php artisan db:seed --class=PermissionSeeder --force
+
           echo "Caching Laravel configuration..."
           php artisan config:cache
 

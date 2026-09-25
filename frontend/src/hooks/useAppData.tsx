@@ -21,7 +21,7 @@ import { ledgerService } from '@/services/api/ledgerService'
 import { salesService } from '@/services/api/salesService'
 import { shipmentService, type ShipmentInput } from '@/services/api/shipmentService'
 import { syncSlice } from '@/services/api/sync'
-import { ApiError, onTokenChange } from '@/services/api/httpClient'
+import { ApiError, getToken, onTokenChange } from '@/services/api/httpClient'
 
 /**
  * The application's data, in one place.
@@ -681,6 +681,17 @@ function useApiAppData(): AppDataValue {
   dataRef.current = data
 
   const refresh = useCallback(async () => {
+    // Nothing to load without a session. This provider mounts above the
+    // router, so it is alive on the public landing page and the login screen
+    // too — asking an authenticated-only endpoint there is a guaranteed 401,
+    // and dropping whatever the previous session loaded is the right thing to
+    // do on logout anyway.
+    if (!getToken()) {
+      setData(EMPTY)
+      setLoading(false)
+      return
+    }
+
     try {
       const fresh = await appDataService.fetchAll()
       setData(fresh)
