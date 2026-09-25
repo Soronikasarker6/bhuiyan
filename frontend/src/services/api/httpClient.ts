@@ -98,5 +98,7 @@ export const http = {
   post: <T>(path: string, data?: unknown) => request<T>(path, { method: 'POST', body: bodyOf(data) }),
   put: <T>(path: string, data?: unknown) => request<T>(path, { method: 'PUT', body: bodyOf(data) }),
   patch: <T>(path: string, data?: unknown) => request<T>(path, { method: 'PATCH', body: bodyOf(data) }),
-  delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  // A DELETE may carry a body — a void's reason travels with the action
+  // itself rather than as a second request that could fail on its own.
+  delete: <T>(path: string, data?: unknown) => request<T>(path, { method: 'DELETE', body: bodyOf(data) }),
 }

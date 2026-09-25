@@ -9,7 +9,7 @@ import { StatCard, StatGrid } from '@/components/StatCard'
 import { Money } from '@/components/Money'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
-import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { ReasonDialog } from '@/components/ReasonDialog'
 import { PaymentForm, type PaymentSubmit } from '@/features/payments/PaymentForm'
 import { EditPaymentDialog } from '@/features/payments/EditPaymentDialog'
 import { CustomerLedgerTable } from '@/features/customerLedger/CustomerLedgerTable'
@@ -115,15 +115,20 @@ export default function PaymentsPage() {
     }
   }
 
-  const confirmDelete = async () => {
+  /**
+   * A void, not a delete: the payment leaves the active ledgers but the
+   * original receipt — and who removed it, and the reason given — stays in the
+   * Admin-only audit history.
+   */
+  const confirmDelete = async (reason?: string) => {
     if (!pendingDelete) return
     try {
-      await deletePayment(pendingDelete.id)
-      toast.success('Payment deleted', {
-        description: "The amount is back on the customer's due.",
+      await deletePayment(pendingDelete.id, reason)
+      toast.success('Payment removed', {
+        description: "The amount is back on the customer's due. The original receipt is kept in the audit history.",
       })
     } catch (error) {
-      toast.error('Could not delete the payment', {
+      toast.error('Could not remove the payment', {
         description: error instanceof Error ? error.message : undefined,
       })
     } finally {
@@ -172,12 +177,12 @@ export default function PaymentsPage() {
         onSubmit={saveEdit}
       />
 
-      <ConfirmDialog
+      <ReasonDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => !open && setPendingDelete(null)}
-        title="Delete this payment?"
-        description="This removes the payment from the customer's ledger and puts the amount back on their due. If it was deposited into an account, that Cash & Bank entry is removed too."
-        confirmLabel="Delete payment"
+        title="Remove this payment?"
+        description="This takes the payment off the customer's ledger and puts the amount back on their due. If it was deposited into an account, that Cash & Bank entry goes with it. The original receipt is kept in the audit history."
+        confirmLabel="Remove payment"
         onConfirm={confirmDelete}
       >
         {pendingDelete && (
@@ -196,7 +201,7 @@ export default function PaymentsPage() {
             </div>
           </dl>
         )}
-      </ConfirmDialog>
+      </ReasonDialog>
     </div>
   )
 }

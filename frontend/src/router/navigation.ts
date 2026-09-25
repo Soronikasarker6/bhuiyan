@@ -3,6 +3,7 @@ import {
   BookText,
   Boxes,
   Factory,
+  History,
   LayoutDashboard,
   Lock,
   Package,
@@ -132,6 +133,23 @@ export const navigation: NavItem[] = [
     hint: 'Accounts, categories and data',
     group: 'System',
     permission: [PERMISSIONS.SETTINGS_VIEW, PERMISSIONS.USERS_VIEW, PERMISSIONS.ROLES_VIEW],
+  },
+  {
+    // Sits directly under Settings in the System section, which is the
+    // "Settings → Audit History" hierarchy the brief asks for, expressed in
+    // this sidebar's own grouping convention rather than by adding a second
+    // level of nesting for one item.
+    //
+    // AUDIT_VIEW is held by Admin alone, so this row simply does not exist for
+    // a Manager — the sidebar removes an item it has no permission for rather
+    // than showing it disabled. That is a courtesy on top of the server-side
+    // check, never the control itself: every audit endpoint refuses a
+    // non-admin regardless of what the menu shows.
+    label: 'Audit History',
+    path: '/settings/audit-history',
+    icon: History,
+    hint: 'Who changed what, and when',
+    permission: PERMISSIONS.AUDIT_VIEW,
   },
 ]
 

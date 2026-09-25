@@ -10,6 +10,8 @@ use App\Models\CustomerTransaction;
 use App\Models\LedgerClosing;
 use App\Models\LedgerClosingBalance;
 use App\Models\Transaction;
+use App\Support\AuditAction;
+use App\Support\AuditEntity;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -19,9 +21,20 @@ use Illuminate\Support\Str;
  * Ported from src/utils/ledger.ts. The Cash & Bank ledger — separate from the
  * customer receivables ledger. Balance per account = running (in - out), never
  * stored. A transfer between two accounts writes two rows sharing transfer_id.
+ *
+ * Every mutation here records itself through the one central
+ * {@see AuditLogger}, inside the same DB transaction as the change, so a
+ * committed change and its audit row cannot come apart. Nothing in this file
+ * ever takes the acting user from a payload — the logger resolves that from
+ * the authenticated session itself.
  */
 class LedgerService
 {
+    public function __construct(
+        private AuditLogger $audit,
+        private CustomerLedgerService $customerLedger,
+    ) {}
+
     /** @return Collection<int, array> rows for one account (or all), newest-first, with running balance */
     public function ledgerRows(?int $accountId = null): Collection
     {
@@ -192,6 +205,33 @@ class LedgerService
         });
     }
 
+    /**
+     * One plain ledger entry (not a transfer, not a customer payment — both of
+     * those have their own path). Here purely so that creating an entry and
+     * auditing it are one operation rather than two things a controller has to
+     * remember to do in order.
+     */
+    public function createTransaction(array $attributes, ?string $reason = null): Transaction
+    {
+        return DB::transaction(function () use ($attributes, $reason) {
+            $transaction = Transaction::create($attributes);
+
+            $this->audit->record(AuditEntity::CASH_TRANSACTION, $transaction->id, AuditAction::CREATE, [
+                'record' => $transaction->reference,
+                'after' => $this->audit->snapshot($transaction),
+                'reason' => $reason,
+                'summary' => sprintf(
+                    'Recorded %s %s · %s',
+                    $transaction->direction === 'in' ? 'money in' : 'money out',
+                    $this->money((float) $transaction->amount),
+                    $transaction->category_name ?? 'Uncategorised',
+                ),
+            ]);
+
+            return $transaction;
+        });
+    }
+
     /** Two linked rows sharing transfer_id, written atomically. */
     public function transfer(array $payload): array
     {
@@ -225,37 +265,301 @@ class LedgerService
                 'transfer_id' => $transferId,
             ]);
 
+            // One business operation, one audit event — keyed on the transfer,
+            // not on either leg, so "who moved ৳50,000 from Cash to Janata
+            // Bank" reads as the single thing it is (§17). Both leg references
+            // are in the metadata for anyone tracing it back to the register.
+            $this->audit->record(AuditEntity::TRANSFER, $transferId, AuditAction::TRANSFER, [
+                'record' => $this->transferReference($transferId),
+                'after' => $this->transferSnapshot($out, $in, $from, $to),
+                'reason' => $payload['reason'] ?? null,
+                'metadata' => $this->transferMetadata($out, $in),
+                'summary' => "Transferred {$this->money($payload['amount'])} from {$from->name} to {$to->name}",
+            ]);
+
             return [$out, $in];
         });
     }
 
     /**
-     * Removes a ledger entry and whatever else was part of the same event:
-     * both legs of a transfer, or — for the cash half of a customer payment —
-     * the receivables row it was written with, so deleting the receipt puts the
-     * customer's due back rather than leaving them credited for money that is
-     * no longer recorded anywhere. (The customer_transactions row owns the
-     * pairing, so deleting it cascades back to this cash row.)
+     * Edit one ledger entry in place (§13).
+     *
+     * The row is updated, never deleted-and-recreated: TX-000123 stays
+     * TX-000123, every report that already cites it keeps pointing at the same
+     * event, and the audit trail gets one UPDATE with the old and new figures
+     * rather than a DELETE followed by an unrelated-looking CREATE.
+     *
+     * Three kinds of row are refused rather than half-edited here, because
+     * each is one leg of a larger event that has its own edit path:
+     * a transfer leg ({@see updateTransfer}), the cash half of a customer
+     * payment (the Cash In screen, which moves both ledgers together), and the
+     * "paid at sale" row an invoice posted.
      */
-    public function deleteTransaction(int $id): void
+    public function updateTransaction(Transaction $transaction, array $payload, ?string $reason = null): Transaction
     {
-        DB::transaction(function () use ($id) {
+        return DB::transaction(function () use ($transaction, $payload, $reason) {
+            if ($transaction->transfer_id) {
+                throw new BusinessRuleException('This entry is one leg of a transfer — edit the transfer itself so both legs stay in step.');
+            }
+            if ($transaction->customer_transaction_id) {
+                throw new BusinessRuleException('This entry is a customer payment — edit it on the Cash In screen so the customer ledger is updated with it.');
+            }
+            if ($transaction->reference_sale_id) {
+                throw new BusinessRuleException('This entry is the amount paid on an invoice — it can only change by editing that sale.');
+            }
+
+            $before = $this->audit->snapshot($transaction);
+
+            $category = Category::find($payload['category_id'] ?? null);
+            if ($category && $category->direction !== $payload['direction']) {
+                throw new BusinessRuleException('That category is not valid for this direction.');
+            }
+
+            $transaction->update([
+                'date' => $payload['date'],
+                'details' => $payload['details'] ?? null,
+                'account_id' => $payload['account_id'],
+                'direction' => $payload['direction'],
+                'category_id' => $payload['category_id'] ?? null,
+                'category_name' => $category?->name ?? $transaction->category_name,
+                'amount' => $payload['amount'],
+            ]);
+
+            $transaction->refresh();
+
+            $this->audit->recordUpdate(
+                AuditEntity::CASH_TRANSACTION,
+                $transaction->id,
+                $before,
+                $transaction,
+                ['record' => $transaction->reference, 'reason' => $reason],
+            );
+
+            return $transaction;
+        });
+    }
+
+    /**
+     * Edit a transfer as the one operation it is (§17) — both legs move
+     * together or neither does, so the two accounts can never be left
+     * disagreeing about how much was moved.
+     *
+     * @return array{0: Transaction, 1: Transaction} the out leg, then the in leg
+     */
+    public function updateTransfer(Transaction $leg, array $payload, ?string $reason = null): array
+    {
+        return DB::transaction(function () use ($leg, $payload, $reason) {
+            if (! $leg->transfer_id) {
+                throw new BusinessRuleException('That entry is not part of a transfer.');
+            }
+            if ((int) $payload['from_account_id'] === (int) $payload['to_account_id']) {
+                throw new BusinessRuleException('Cannot transfer an account to itself.');
+            }
+
+            $legs = Transaction::where('transfer_id', $leg->transfer_id)->get();
+            $out = $legs->firstWhere('direction', 'out');
+            $in = $legs->firstWhere('direction', 'in');
+
+            if (! $out || ! $in) {
+                throw new BusinessRuleException('This transfer is missing one of its legs and cannot be edited.');
+            }
+
+            $from = Account::findOrFail($payload['from_account_id']);
+            $to = Account::findOrFail($payload['to_account_id']);
+            $before = $this->transferSnapshot($out, $in, $out->account, $in->account);
+            $category = $this->transferCategory($from, $to);
+
+            $out->update([
+                'date' => $payload['date'],
+                'details' => $payload['details'] ?? "Transfer to {$to->name}",
+                'account_id' => $from->id,
+                'category_name' => $category,
+                'amount' => $payload['amount'],
+            ]);
+
+            $in->update([
+                'date' => $payload['date'],
+                'details' => $payload['details'] ?? "Transfer from {$from->name}",
+                'account_id' => $to->id,
+                'category_name' => $category,
+                'amount' => $payload['amount'],
+            ]);
+
+            $this->audit->recordUpdate(
+                AuditEntity::TRANSFER,
+                $leg->transfer_id,
+                $before,
+                $this->transferSnapshot($out->refresh(), $in->refresh(), $from, $to),
+                [
+                    'record' => $this->transferReference($leg->transfer_id),
+                    'reason' => $reason,
+                    'metadata' => $this->transferMetadata($out, $in),
+                ],
+            );
+
+            return [$out, $in];
+        });
+    }
+
+    /**
+     * Voids a ledger entry and whatever else was part of the same event:
+     * both legs of a transfer, or — for the cash half of a customer payment —
+     * the receivables row it was written with, so removing the receipt puts the
+     * customer's due back rather than leaving them credited for money that is
+     * no longer recorded anywhere.
+     *
+     * A void, not a delete (§14): the row leaves the active register but its
+     * original figures survive on the row, behind the VOID audit event that
+     * also carries the full before-snapshot, who voided it and why.
+     *
+     * The pairing used to be maintained by the database
+     * (`transactions.customer_transaction_id` cascades on delete). A cascade
+     * only fires on a hard delete, so both halves are now voided explicitly —
+     * one code path, one audit event, neither half able to survive alone.
+     */
+    public function voidTransaction(int $id, ?string $reason = null): void
+    {
+        DB::transaction(function () use ($id, $reason) {
             $transaction = Transaction::findOrFail($id);
 
             if ($transaction->transfer_id) {
-                Transaction::where('transfer_id', $transaction->transfer_id)->delete();
+                $this->voidTransfer($transaction, $reason);
 
                 return;
             }
 
             if ($transaction->customer_transaction_id) {
-                CustomerTransaction::whereKey($transaction->customer_transaction_id)->delete();
+                $payment = CustomerTransaction::find($transaction->customer_transaction_id);
+                if ($payment) {
+                    $this->customerLedger->voidPayment($payment, $reason);
 
-                return;
+                    return;
+                }
             }
 
-            $transaction->delete();
+            $before = $this->audit->snapshot($transaction);
+            $reference = $transaction->reference;
+            $this->markVoided($transaction, $reason);
+
+            $this->audit->record(AuditEntity::CASH_TRANSACTION, $id, AuditAction::VOID, [
+                'record' => $reference,
+                'before' => $before,
+                'reason' => $reason,
+                'summary' => sprintf(
+                    'Voided %s %s · %s',
+                    $before['direction'] === 'in' ? 'money in' : 'money out',
+                    $this->money((float) $before['amount']),
+                    $before['category_name'] ?? 'Uncategorised',
+                ),
+            ]);
         });
+    }
+
+    /** Puts a voided entry back on the active register, as its own audited event (§3). */
+    public function restoreTransaction(int $id, ?string $reason = null): Transaction
+    {
+        return DB::transaction(function () use ($id, $reason) {
+            $transaction = Transaction::withTrashed()->findOrFail($id);
+
+            if (! $transaction->trashed()) {
+                throw new BusinessRuleException('That entry is not voided.');
+            }
+
+            if ($transaction->transfer_id) {
+                Transaction::withTrashed()->where('transfer_id', $transaction->transfer_id)
+                    ->get()->each(fn (Transaction $leg) => $this->markRestored($leg));
+
+                $this->audit->record(AuditEntity::TRANSFER, $transaction->transfer_id, AuditAction::RESTORE, [
+                    'record' => $this->transferReference($transaction->transfer_id),
+                    'after' => $this->audit->snapshot($transaction->fresh()),
+                    'reason' => $reason,
+                ]);
+
+                return $transaction->fresh();
+            }
+
+            $this->markRestored($transaction);
+
+            $this->audit->record(AuditEntity::CASH_TRANSACTION, $id, AuditAction::RESTORE, [
+                'record' => $transaction->reference,
+                'after' => $this->audit->snapshot($transaction->fresh()),
+                'reason' => $reason,
+            ]);
+
+            return $transaction->fresh();
+        });
+    }
+
+    /** Both legs voided together, audited once against the transfer (§17). */
+    private function voidTransfer(Transaction $leg, ?string $reason): void
+    {
+        $legs = Transaction::where('transfer_id', $leg->transfer_id)->get();
+        $out = $legs->firstWhere('direction', 'out');
+        $in = $legs->firstWhere('direction', 'in');
+        $before = $out && $in ? $this->transferSnapshot($out, $in, $out->account, $in->account) : $this->audit->snapshot($leg);
+
+        $legs->each(fn (Transaction $row) => $this->markVoided($row, $reason));
+
+        $this->audit->record(AuditEntity::TRANSFER, $leg->transfer_id, AuditAction::VOID, [
+            'record' => $this->transferReference($leg->transfer_id),
+            'before' => $before,
+            'reason' => $reason,
+            'metadata' => $out && $in ? $this->transferMetadata($out, $in) : null,
+            'summary' => 'Voided transfer of '.$this->money((float) $leg->amount),
+        ]);
+    }
+
+    private function markVoided(Transaction $transaction, ?string $reason): void
+    {
+        $transaction->forceFill([
+            'voided_by_user_id' => auth()->id(),
+            'void_reason' => $reason,
+        ])->save();
+
+        $transaction->delete();
+    }
+
+    private function markRestored(Transaction $transaction): void
+    {
+        $transaction->restore();
+        $transaction->forceFill(['voided_by_user_id' => null, 'void_reason' => null])->save();
+    }
+
+    /**
+     * A transfer as one object rather than two rows, so before/after in the
+     * audit detail reads the way the operation itself does: an amount moving
+     * from one named account to another.
+     */
+    private function transferSnapshot(Transaction $out, Transaction $in, ?Account $from, ?Account $to): array
+    {
+        return [
+            'date' => $out->date?->toDateString(),
+            'amount' => (float) $out->amount,
+            'from_account' => $from?->name,
+            'to_account' => $to?->name,
+            'category_name' => $out->category_name,
+            'details' => $out->details,
+        ];
+    }
+
+    private function transferMetadata(Transaction $out, Transaction $in): array
+    {
+        return [
+            'out_reference' => $out->reference,
+            'in_reference' => $in->reference,
+            'transfer_id' => $out->transfer_id,
+        ];
+    }
+
+    /** TR-xxxxxxxx — the short, readable handle for a transfer's UUID. */
+    private function transferReference(string $transferId): string
+    {
+        return 'TR-'.strtoupper(substr(str_replace('-', '', $transferId), 0, 8));
+    }
+
+    private function money(float $amount): string
+    {
+        return '৳'.number_format($amount, 2);
     }
 
     private function transferCategory(Account $from, Account $to): string
@@ -325,13 +629,31 @@ class LedgerService
                 ]);
             }
 
+            $this->audit->record(AuditEntity::LEDGER_CLOSING, $closing->id, AuditAction::CLOSE_MONTH, [
+                'record' => $monthKey,
+                'after' => $this->audit->snapshot($closing),
+                'summary' => "Closed {$monthKey} at ".$this->money($cashTotal + $bankTotal),
+            ]);
+
             return $closing->fresh('balances');
         });
     }
 
     public function reopenMonth(int $closingId): void
     {
-        LedgerClosing::findOrFail($closingId)->delete();
+        DB::transaction(function () use ($closingId) {
+            $closing = LedgerClosing::findOrFail($closingId);
+            $before = $this->audit->snapshot($closing);
+            $monthKey = $closing->month_key;
+
+            $closing->delete();
+
+            $this->audit->record(AuditEntity::LEDGER_CLOSING, $closingId, AuditAction::REOPEN_MONTH, [
+                'record' => $monthKey,
+                'before' => $before,
+                'summary' => "Reopened {$monthKey}",
+            ]);
+        });
     }
 
     public function deleteAccount(int $accountId): void

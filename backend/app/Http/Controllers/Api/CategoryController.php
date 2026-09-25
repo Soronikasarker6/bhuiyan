@@ -4,11 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use App\Services\AuditLogger;
+use App\Support\AuditAction;
+use App\Support\AuditEntity;
 use Illuminate\Http\Request;
 
 /** Soft-deleted so a transaction's category_id (+ its category_name snapshot) never dangles. */
 class CategoryController extends Controller
 {
+    public function __construct(private AuditLogger $audit) {}
+
     public function index()
     {
         return Category::orderBy('name')->get();
@@ -23,8 +28,15 @@ class CategoryController extends Controller
         ]);
 
         $data = $this->normalizeExpenseType($data, 'company_expense');
+        $category = Category::create($data);
 
-        return response()->json(Category::create($data), 201);
+        $this->audit->record(AuditEntity::CATEGORY, $category->id, AuditAction::CREATE, [
+            'record' => $category->name,
+            'after' => $this->audit->snapshot($category),
+            'summary' => "Added {$category->direction} category {$category->name}",
+        ]);
+
+        return response()->json($category, 201);
     }
 
     public function update(Request $request, Category $category)
@@ -41,7 +53,16 @@ class CategoryController extends Controller
         // must not silently un-exclude a category someone had marked
         // Excluded.
         $data = $this->normalizeExpenseType($data, $category->expense_type ?? 'company_expense');
+        $before = $this->audit->snapshot($category);
         $category->update($data);
+
+        $this->audit->recordUpdate(
+            AuditEntity::CATEGORY,
+            $category->id,
+            $before,
+            $category->refresh(),
+            ['record' => $category->name],
+        );
 
         return $category;
     }
@@ -65,7 +86,16 @@ class CategoryController extends Controller
 
     public function destroy(Category $category)
     {
+        $before = $this->audit->snapshot($category);
+        $name = $category->name;
+
         $category->delete();
+
+        $this->audit->record(AuditEntity::CATEGORY, $category->id, AuditAction::DELETE, [
+            'record' => $name,
+            'before' => $before,
+            'summary' => "Retired category {$name}",
+        ]);
 
         return response()->json(null, 204);
     }

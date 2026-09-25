@@ -79,6 +79,37 @@ export interface PaymentUpdateInput {
   amount: number
   method?: string
   accountId?: ID
+  /**
+   * Why the correction was made. Recorded on the audit event only — it never
+   * goes onto the ledger row itself, so the register stays clean (§15).
+   */
+  reason?: string
+}
+
+/**
+ * Editing one Cash & Bank entry in place (§13). The entry keeps its id and
+ * its TX- reference; nothing here says who is making the change — the backend
+ * takes that from the authenticated session (§5).
+ */
+export interface TransactionUpdateInput {
+  date: string
+  details?: string
+  accountId: ID
+  direction: 'in' | 'out'
+  /** The category *name*, matching how `Transaction.category` is stored on the frontend. */
+  category: string
+  amount: number
+  reason?: string
+}
+
+/** Editing a transfer as the one operation it is — both legs move together (§17). */
+export interface TransferUpdateInput {
+  date: string
+  fromAccountId: ID
+  toAccountId: ID
+  amount: number
+  details?: string
+  reason?: string
 }
 
 interface AppDataValue {
@@ -105,7 +136,16 @@ interface AppDataValue {
   recordPayment: (input: PaymentInput) => Promise<{ reference: string }>
   /** Edit a Cash In already recorded — never the customer it belongs to, only when/how much/how. */
   updatePayment: (customerTransactionId: ID, input: PaymentUpdateInput) => Promise<void>
-  deletePayment: (customerTransactionId: ID) => Promise<void>
+  deletePayment: (customerTransactionId: ID, reason?: string) => Promise<void>
+  /**
+   * Edit one Cash & Bank entry in place — the entry is updated, never deleted
+   * and re-created, so its reference and every report citing it still point at
+   * the same event (§13). A transfer leg takes `TransferUpdateInput` and moves
+   * both legs at once (§17).
+   */
+  updateTransaction: (id: ID, input: TransactionUpdateInput | TransferUpdateInput) => Promise<void>
+  /** Void an entry — both legs of a transfer, or both halves of a customer payment, together (§14). */
+  voidTransaction: (ids: ID[], reason?: string) => Promise<void>
   /** Selects or clears one Cash Out category as a Profit & Loss "Company Cost" for one month. */
   setCompanyCostSelection: (monthKey: string, categoryId: ID, selected: boolean) => Promise<void>
   /** Replaces the whole set of selected Company Cost categories for one month in a single request. */
@@ -441,6 +481,68 @@ function useLocalAppData(): AppDataValue {
     [updateMany],
   )
 
+  /**
+   * Offline mode has no audit trail (there is no server to record who did
+   * what, and no second user to record it about — see `Header.tsx`'s single
+   * "Office Admin" identity), so the reason is accepted and ignored here
+   * rather than the two builds having different call signatures.
+   */
+  const updateTransaction = useCallback(
+    async (id: ID, input: TransactionUpdateInput | TransferUpdateInput) => {
+      const current = dataRef.current
+      const existing = current.transactions.find((t) => t.id === id)
+      if (!existing) return
+
+      if (existing.transferId && 'fromAccountId' in input) {
+        const legs = current.transactions.filter((t) => t.transferId === existing.transferId)
+        const outId = legs.find((t) => t.direction === 'out')?.id
+        const inId = legs.find((t) => t.direction === 'in')?.id
+
+        update(
+          'transactions',
+          current.transactions.map((t) => {
+            if (t.id === outId) {
+              return { ...t, date: input.date, amount: input.amount, accountId: input.fromAccountId, details: input.details ?? t.details }
+            }
+            if (t.id === inId) {
+              return { ...t, date: input.date, amount: input.amount, accountId: input.toAccountId, details: input.details ?? t.details }
+            }
+            return t
+          }),
+        )
+        return
+      }
+
+      if ('category' in input) {
+        update(
+          'transactions',
+          current.transactions.map((t) =>
+            t.id === id
+              ? {
+                  ...t,
+                  date: input.date,
+                  details: input.details ?? '',
+                  accountId: input.accountId,
+                  direction: input.direction,
+                  category: input.category,
+                  amount: input.amount,
+                }
+              : t,
+          ),
+        )
+      }
+    },
+    [update],
+  )
+
+  const voidTransaction = useCallback(
+    async (ids: ID[]) => {
+      const current = dataRef.current
+      update('transactions', current.transactions.filter((t) => !ids.includes(t.id)))
+    },
+    [update],
+  )
+
   const setCompanyCostSelection = useCallback(
     async (monthKey: string, categoryId: ID, selected: boolean) => {
       const current = dataRef.current
@@ -521,6 +623,8 @@ function useLocalAppData(): AppDataValue {
       recordPayment,
       updatePayment,
       deletePayment,
+      updateTransaction,
+      voidTransaction,
       setCompanyCostSelection,
       setCompanyCostSelections,
       updateRawMaterialImport,
@@ -537,6 +641,8 @@ function useLocalAppData(): AppDataValue {
       recordPayment,
       updatePayment,
       deletePayment,
+      updateTransaction,
+      voidTransaction,
       setCompanyCostSelection,
       setCompanyCostSelections,
       updateRawMaterialImport,
@@ -689,7 +795,12 @@ function useApiAppData(): AppDataValue {
       if (!existing) return
 
       try {
-        await customerService.updatePayment(existing.customerId, transactionId, input)
+        await customerService.updatePayment(existing.customerId, transactionId, {
+          ...input,
+          // What this row looked like when it was loaded. The backend refuses
+          // the save if someone else has changed it since (§28).
+          expectedUpdatedAt: existing.updatedAt,
+        })
         await refresh()
       } catch (error) {
         throw new Error(errorMessage(error) ?? 'Could not update the payment.')
@@ -699,15 +810,70 @@ function useApiAppData(): AppDataValue {
   )
 
   const deletePayment = useCallback(
-    async (transactionId: ID) => {
+    async (transactionId: ID, reason?: string) => {
       const existing = dataRef.current.customerTransactions.find((t) => t.id === transactionId)
       if (!existing) return
 
       try {
-        await customerService.removePayment(existing.customerId, transactionId)
+        await customerService.removePayment(existing.customerId, transactionId, reason)
         await refresh()
       } catch (error) {
         throw new Error(errorMessage(error) ?? 'Could not delete the payment.')
+      }
+    },
+    [refresh],
+  )
+
+  const updateTransaction = useCallback(
+    async (id: ID, input: TransactionUpdateInput | TransferUpdateInput) => {
+      const existing = dataRef.current.transactions.find((t) => t.id === id)
+      if (!existing) return
+
+      try {
+        if ('fromAccountId' in input) {
+          await ledgerService.updateTransfer(id, { ...input, expectedUpdatedAt: existing.updatedAt })
+        } else {
+          // `category` is a name on the frontend but an id on the wire — the
+          // same lookup `sync.ts` does when creating one, and for the same
+          // reason: the register has only ever carried the label.
+          const category =
+            dataRef.current.categories.find((c) => c.name === input.category && c.direction === input.direction) ??
+            dataRef.current.categories.find((c) => c.name === input.category)
+          if (!category) throw new Error(`Unknown category "${input.category}"`)
+
+          await ledgerService.updateTransaction(id, {
+            date: input.date,
+            details: input.details,
+            accountId: input.accountId,
+            direction: input.direction,
+            categoryId: category.id,
+            amount: input.amount,
+            reason: input.reason,
+            expectedUpdatedAt: existing.updatedAt,
+          })
+        }
+        await refresh()
+      } catch (error) {
+        throw new Error(errorMessage(error) ?? 'Could not update the entry.')
+      }
+    },
+    [refresh],
+  )
+
+  /**
+   * Both legs of a transfer share one void on the backend, so only the first
+   * id is sent — passing both would try to void an entry that is already gone
+   * and fail the whole action.
+   */
+  const voidTransaction = useCallback(
+    async (ids: ID[], reason?: string) => {
+      if (ids.length === 0) return
+
+      try {
+        await ledgerService.removeTransaction(ids[0]!, reason)
+        await refresh()
+      } catch (error) {
+        throw new Error(errorMessage(error) ?? 'Could not remove the entry.')
       }
     },
     [refresh],
@@ -764,6 +930,8 @@ function useApiAppData(): AppDataValue {
       recordPayment,
       updatePayment,
       deletePayment,
+      updateTransaction,
+      voidTransaction,
       setCompanyCostSelection,
       setCompanyCostSelections,
       updateRawMaterialImport,
@@ -780,6 +948,8 @@ function useApiAppData(): AppDataValue {
       recordPayment,
       updatePayment,
       deletePayment,
+      updateTransaction,
+      voidTransaction,
       setCompanyCostSelection,
       setCompanyCostSelections,
       updateRawMaterialImport,

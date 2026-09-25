@@ -44,6 +44,12 @@ export interface CustomerTransaction {
   /** How a payment arrived — Cash, Bank Transfer, Cheque, Mobile Banking… — for the Cash In report. Purely descriptive. */
   method?: string
   createdAt: string
+  /**
+   * When the row last changed, as the server saw it. Sent back with an edit so
+   * the backend can refuse a save that would overwrite someone else's newer
+   * one (§28) — absent in the offline build, which is single-user.
+   */
+  updatedAt?: string
 }
 
 /** A transaction with its running balance resolved. Derived, never stored. */

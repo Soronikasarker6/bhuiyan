@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ArrowRightLeft, Link2, Receipt, Search, Trash2, X } from 'lucide-react'
+import { ArrowRightLeft, Link2, Pencil, Receipt, Search, Trash2, X } from 'lucide-react'
 import type { Account, Category, Customer, LedgerRow, Transaction } from '@/types'
 import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -23,7 +23,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Money } from '@/components/Money'
-import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { ReasonDialog } from '@/components/ReasonDialog'
+import { EditTransactionDialog } from '@/features/ledger/EditTransactionDialog'
+import type { TransactionUpdateInput, TransferUpdateInput } from '@/hooks/useAppData'
 import { buildLedgerRows, idsToRemoveWith, summariseRows, type LedgerFilters } from '@/utils/ledger'
 import { customerNameOf } from '@/utils/customerLedger'
 import { usePermission } from '@/hooks/useAuth'
@@ -37,8 +39,14 @@ import { DEFAULT_TABLE_PAGE_SIZE as PAGE_SIZE } from '@/constants/table'
  *
  * A running balance per account, filters that stack, and pagination once the
  * list outgrows a screen. Transfer legs are marked with a link icon so it is
- * obvious that two rows are one event — and deleting either removes both,
+ * obvious that two rows are one event — and removing either removes both,
  * which the confirmation says in as many words.
+ *
+ * Removing an entry is a *void*: it leaves this register, but the original
+ * figures survive in the Audit History along with who removed them and why —
+ * which is what the reason box on the confirmation is for. None of that
+ * history is shown here; the register stays a clean list of what is currently
+ * true (§15).
  */
 export function LedgerTable({
   transactions,
@@ -46,6 +54,7 @@ export function LedgerTable({
   categories,
   customers = [],
   onDelete,
+  onEdit,
   toolbar,
   filters,
   onFiltersChange,
@@ -56,7 +65,9 @@ export function LedgerTable({
   categories: Category[]
   /** Only needed to name the customer on a payment row — optional everywhere else. */
   customers?: Customer[]
-  onDelete: (ids: string[]) => void
+  onDelete: (ids: string[], reason?: string) => void | Promise<unknown>
+  /** Omitted where editing isn't offered (the Reports preview, say) — the pencil then never appears. */
+  onEdit?: (id: string, values: TransactionUpdateInput | TransferUpdateInput) => void | Promise<unknown>
   toolbar?: React.ReactNode
   className?: string
   /**
@@ -69,8 +80,10 @@ export function LedgerTable({
   onFiltersChange: (next: LedgerFilters) => void
 }) {
   const canDelete = usePermission(PERMISSIONS.LEDGER_DELETE)
+  const canEdit = usePermission(PERMISSIONS.LEDGER_EDIT)
   const [page, setPage] = useState(1)
   const [pending, setPending] = useState<LedgerRow | null>(null)
+  const [editing, setEditing] = useState<LedgerRow | null>(null)
 
   const rows = useMemo(
     () => buildLedgerRows(transactions, accounts, filters),
@@ -256,7 +269,7 @@ export function LedgerTable({
                 <TableHead numeric>In</TableHead>
                 <TableHead numeric>Out</TableHead>
                 <TableHead numeric>Balance</TableHead>
-                <TableHead className="w-10" aria-label="Actions" />
+                <TableHead className="w-20" aria-label="Actions" />
               </TableRow>
             </TableHeader>
 
@@ -321,17 +334,34 @@ export function LedgerTable({
                   </TableCell>
 
                   <TableCell>
-                    {canDelete && (
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={() => setPending(row)}
-                        aria-label={`Delete the entry from ${formatDate(row.date)}`}
-                      >
-                        <Trash2 />
-                      </Button>
-                    )}
+                    <span className="flex items-center justify-end gap-0.5">
+                      {/* A customer payment and a "paid at sale" row are each
+                          one half of a larger event with its own edit screen,
+                          so the pencil is not offered on them here — the
+                          backend refuses those edits for the same reason. */}
+                      {canEdit && onEdit && !row.customerTransactionId && !row.referenceSaleId && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground hover:text-foreground"
+                          onClick={() => setEditing(row)}
+                          aria-label={`Edit the entry from ${formatDate(row.date)}`}
+                        >
+                          <Pencil />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => setPending(row)}
+                          aria-label={`Remove the entry from ${formatDate(row.date)}`}
+                        >
+                          <Trash2 />
+                        </Button>
+                      )}
+                    </span>
                   </TableCell>
                 </TableRow>
               ))}
@@ -374,25 +404,26 @@ export function LedgerTable({
         </>
       )}
 
-      <ConfirmDialog
+      <ReasonDialog
         open={pending !== null}
         onOpenChange={(open) => !open && setPending(null)}
-        title={linkedCount > 1 ? 'Delete this transfer?' : 'Delete this entry?'}
+        title={linkedCount > 1 ? 'Remove this transfer?' : 'Remove this entry?'}
         description={
           linkedCount > 1
-            ? 'This is one leg of a transfer. Both legs will be deleted together — removing only one would leave money that had left an account without arriving anywhere.'
+            ? 'This is one leg of a transfer. Both legs go together — removing only one would leave money that had left an account without arriving anywhere.'
             : pending?.customerId
-              ? `This receipt is ${customerNameOf(customers, pending.customerId)}'s payment. Deleting it removes the payment from their ledger too, and puts the amount back on their due — keeping it here while the customer stayed credited would mean crediting money nothing records.`
-              : 'This cannot be undone. The running balance for the account will be recalculated.'
+              ? `This receipt is ${customerNameOf(customers, pending.customerId)}'s payment. Removing it takes the payment off their ledger too and puts the amount back on their due — keeping it here while the customer stayed credited would mean crediting money nothing records.`
+              : 'The entry leaves this register and the account balance is recalculated. The original figures are kept in the audit history.'
         }
-        confirmLabel={linkedCount > 1 ? 'Delete both legs' : 'Delete entry'}
-        onConfirm={() => {
-          if (pending) onDelete(idsToRemoveWith(transactions, pending.id))
+        confirmLabel={linkedCount > 1 ? 'Remove both legs' : 'Remove entry'}
+        onConfirm={async (reason) => {
+          if (pending) await onDelete(idsToRemoveWith(transactions, pending.id), reason)
           setPending(null)
         }}
       >
         {pending && (
           <dl className="rounded-lg border border-border bg-secondary/50 px-3 py-2.5 text-xs">
+            {pending.reference && <SummaryRow label="Reference" value={pending.reference} />}
             <SummaryRow label="Date" value={formatDate(pending.date)} />
             <SummaryRow label="Account" value={pending.accountName} />
             <SummaryRow label="Category" value={pending.category} />
@@ -406,7 +437,22 @@ export function LedgerTable({
             {pending.details && <SummaryRow label="Details" value={pending.details} />}
           </dl>
         )}
-      </ConfirmDialog>
+      </ReasonDialog>
+
+      {onEdit && (
+        <EditTransactionDialog
+          row={editing}
+          accounts={accounts}
+          categories={categories}
+          transactions={transactions}
+          onOpenChange={(open) => !open && setEditing(null)}
+          onSubmit={async (values) => {
+            if (!editing) return
+            await onEdit(editing.id, values)
+            setEditing(null)
+          }}
+        />
+      )}
     </Section>
   )
 }

@@ -4,12 +4,18 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Account;
+use App\Services\AuditLogger;
 use App\Services\LedgerService;
+use App\Support\AuditAction;
+use App\Support\AuditEntity;
 use Illuminate\Http\Request;
 
 class AccountController extends Controller
 {
-    public function __construct(private LedgerService $ledger) {}
+    public function __construct(
+        private LedgerService $ledger,
+        private AuditLogger $audit,
+    ) {}
 
     public function index()
     {
@@ -23,7 +29,15 @@ class AccountController extends Controller
             'kind' => ['required', 'in:cash,bank'],
         ]);
 
-        return response()->json(Account::create($data + ['system' => false]), 201);
+        $account = Account::create($data + ['system' => false]);
+
+        $this->audit->record(AuditEntity::ACCOUNT, $account->id, AuditAction::CREATE, [
+            'record' => $account->name,
+            'after' => $this->audit->snapshot($account),
+            'summary' => "Added {$account->kind} account {$account->name}",
+        ]);
+
+        return response()->json($account, 201);
     }
 
     /** Renaming is safe — transactions reference account_id, not name. */
@@ -34,18 +48,36 @@ class AccountController extends Controller
             'kind' => ['required', 'in:cash,bank'],
         ]);
 
+        $before = $this->audit->snapshot($account);
         $account->update($data);
+
+        $this->audit->recordUpdate(
+            AuditEntity::ACCOUNT,
+            $account->id,
+            $before,
+            $account->refresh(),
+            ['record' => $account->name],
+        );
 
         return $account;
     }
 
     public function destroy(Account $account)
     {
+        $before = $this->audit->snapshot($account);
+        $name = $account->name;
+
         try {
             $this->ledger->deleteAccount($account->id);
         } catch (\App\Exceptions\BusinessRuleException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
+
+        $this->audit->record(AuditEntity::ACCOUNT, $account->id, AuditAction::DELETE, [
+            'record' => $name,
+            'before' => $before,
+            'summary' => "Deleted account {$name}",
+        ]);
 
         return response()->json(null, 204);
     }

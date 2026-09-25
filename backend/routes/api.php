@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AppDataController;
+use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\CategoryController;
@@ -147,9 +148,14 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('permission:'.P::PROFIT_EDIT);
     Route::put('company-cost-selections', [CompanyCostSelectionController::class, 'replace'])
         ->middleware('permission:'.P::PROFIT_EDIT);
-    Route::apiResource('transactions', TransactionController::class)->only(['index', 'store', 'destroy'])
+    // `restore` sits above the apiResource so /transactions/{id}/restore is
+    // not swallowed by the resource's own {transaction} binding.
+    Route::post('transactions/{transaction}/restore', [TransactionController::class, 'restore'])
+        ->middleware('permission:'.P::LEDGER_EDIT);
+    Route::apiResource('transactions', TransactionController::class)->only(['index', 'store', 'update', 'destroy'])
         ->middlewareFor('index', 'permission:'.P::LEDGER_VIEW)
         ->middlewareFor('store', 'permission:'.P::LEDGER_CREATE)
+        ->middlewareFor('update', 'permission:'.P::LEDGER_EDIT)
         ->middlewareFor('destroy', 'permission:'.P::LEDGER_DELETE);
 
     Route::apiResource('ledger-closings', LedgerClosingController::class)->only(['index', 'store', 'destroy'])
@@ -197,4 +203,21 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middlewareFor(['store', 'update', 'destroy'], 'permission:'.P::ROLES_EDIT);
     Route::get('permissions', [PermissionController::class, 'index'])
         ->middleware('permission:'.P::ROLES_VIEW);
+
+    // ------------------------------------------------------ Audit History
+    //
+    // Admin-only, and enforced here rather than anywhere in the frontend: a
+    // Manager with a valid token calling any of these directly is refused by
+    // the same Spatie middleware every other route uses, before the
+    // controller is reached. AUDIT_VIEW is seeded to the Admin role alone
+    // (see Permissions::AUDIT_VIEW and RoleSeeder).
+    //
+    // Reads only. There is no route — for any role — that creates, edits or
+    // deletes an audit record.
+    Route::middleware('permission:'.P::AUDIT_VIEW)->prefix('audit-logs')->group(function () {
+        Route::get('/', [AuditLogController::class, 'index']);
+        Route::get('filters', [AuditLogController::class, 'filters']);
+        Route::get('export', [AuditLogController::class, 'export']);
+        Route::get('{auditLog}', [AuditLogController::class, 'show'])->whereNumber('auditLog');
+    });
 });

@@ -18,6 +18,10 @@ export interface PaymentInput {
   method?: string
   accountId?: string
   description?: string
+  /** The correction's own explanation — kept on the audit event, never on the ledger row. */
+  reason?: string
+  /** The row's `updatedAt` when the form was opened, so a stale save is refused rather than silently winning (§28). */
+  expectedUpdatedAt?: string
 }
 
 export const customerService = {
@@ -74,10 +78,13 @@ export const customerService = {
         amount: data.amount,
         method: data.method,
         account_id: data.accountId,
+        reason: data.reason,
+        expected_updated_at: data.expectedUpdatedAt,
       }),
     )
   },
-  async removePayment(customerId: string, transactionId: string): Promise<void> {
-    await http.delete(`/customers/${customerId}/payments/${transactionId}`)
+  /** Voids the payment and its linked cash row together; `reason` lands on the audit event. */
+  async removePayment(customerId: string, transactionId: string, reason?: string): Promise<void> {
+    await http.delete(`/customers/${customerId}/payments/${transactionId}`, reason ? { reason } : undefined)
   },
 }

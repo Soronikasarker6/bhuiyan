@@ -40,7 +40,13 @@ class LedgerServiceTest extends TestCase
         $this->assertEqualsWithDelta(20000.0, $balances[$bank->id]['balance'], 0.01);
     }
 
-    public function test_deleting_one_transfer_leg_deletes_both(): void
+    /**
+     * Voiding one leg voids both. Removal is a soft delete now (see the
+     * SoftDeletes trait on Transaction), so "gone" means gone from the active
+     * register — `withTrashed()` still finds the original figures, which is
+     * the whole point of a void.
+     */
+    public function test_voiding_one_transfer_leg_voids_both(): void
     {
         $cash = Account::factory()->create(['kind' => 'cash']);
         $bank = Account::factory()->create(['kind' => 'bank']);
@@ -50,9 +56,16 @@ class LedgerServiceTest extends TestCase
             'date' => '2026-01-02', 'from_account_id' => $cash->id, 'to_account_id' => $bank->id, 'amount' => 20000,
         ]);
 
-        $this->ledger->deleteTransaction($out->id);
+        $this->ledger->voidTransaction($out->id, 'Wrong account');
 
         $this->assertSame(0, Transaction::where('transfer_id', $out->transfer_id)->count());
+        $this->assertSame(2, Transaction::withTrashed()->where('transfer_id', $out->transfer_id)->count());
+
+        // Both accounts are back where they started — a half-voided transfer
+        // would leave them disagreeing.
+        $balances = $this->ledger->accountBalances()->keyBy('account_id');
+        $this->assertEqualsWithDelta(50000.0, $balances[$cash->id]['balance'], 0.01);
+        $this->assertEqualsWithDelta(0.0, $balances[$bank->id]['balance'], 0.01);
     }
 
     public function test_cannot_transfer_an_account_to_itself(): void

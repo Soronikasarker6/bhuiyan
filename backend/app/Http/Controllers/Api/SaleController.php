@@ -7,13 +7,19 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreSaleRequest;
 use App\Models\CustomerTransaction;
 use App\Models\Sale;
+use App\Services\AuditLogger;
 use App\Services\SalesService;
+use App\Support\AuditAction;
+use App\Support\AuditEntity;
 use App\Support\Permissions;
 use Illuminate\Http\Request;
 
 class SaleController extends Controller
 {
-    public function __construct(private SalesService $sales) {}
+    public function __construct(
+        private SalesService $sales,
+        private AuditLogger $audit,
+    ) {}
 
     public function index(Request $request)
     {
@@ -52,17 +58,84 @@ class SaleController extends Controller
 
         $sale->load(['customer', 'items.product', 'items.meshSize']);
 
+        // Audited with rates included regardless of the caller's own
+        // SALES_RATE_VIEW: the audit trail is Admin-only anyway, and an
+        // invoice's before/after is meaningless without the rate that drove
+        // the total (§20).
+        $this->audit->record(AuditEntity::SALE, $sale->id, AuditAction::CREATE, [
+            'record' => $sale->invoice_no,
+            'after' => $this->auditSnapshot($sale),
+            'reason' => $request->input('reason'),
+            'summary' => sprintf(
+                'Created sale %s for %s · %s',
+                $sale->invoice_no,
+                $sale->customer?->name ?? 'customer',
+                $this->money((float) $this->present($sale, true)['total_amount']),
+            ),
+        ]);
+
         return response()->json(
             $this->present($sale, (bool) $request->user()?->can(Permissions::SALES_RATE_VIEW)),
             201,
         );
     }
 
-    public function destroy(Sale $sale)
+    public function destroy(Request $request, Sale $sale)
     {
+        $sale->load(['customer', 'items.product', 'items.meshSize']);
+        $before = $this->auditSnapshot($sale);
+        $invoiceNo = $sale->invoice_no;
+        $customerName = $sale->customer?->name;
+
         $this->sales->deleteSale($sale->id);
 
+        $this->audit->record(AuditEntity::SALE, $sale->id, AuditAction::DELETE, [
+            'record' => $invoiceNo,
+            'before' => $before,
+            'reason' => $request->input('reason'),
+            'summary' => sprintf(
+                'Deleted sale %s for %s · %s',
+                $invoiceNo,
+                $customerName ?? 'customer',
+                $this->money((float) ($before['total_amount'] ?? 0)),
+            ),
+        ]);
+
         return response()->json(null, 204);
+    }
+
+    /**
+     * The full invoice — header, every line with its rate and weight, and the
+     * computed totals — flattened so the Audit History's before/after can show
+     * "Billable TON 20.18 → 20.43" rather than an opaque nested blob (§20).
+     */
+    private function auditSnapshot(Sale $sale): array
+    {
+        $presented = $this->present($sale, true);
+
+        return [
+            'invoice_no' => $sale->invoice_no,
+            'date' => $sale->date?->toDateString(),
+            'customer' => $sale->customer?->name,
+            'truck_no' => $sale->truck_no,
+            'notes' => $sale->notes,
+            'paid_at_sale' => (float) $sale->paid_at_sale,
+            'total_weight_ton' => $presented['total_weight_ton'],
+            'total_amount' => $presented['total_amount'],
+            'items' => collect($presented['items'])->map(fn (array $item) => [
+                'product' => $item['product_name'],
+                'mesh_size' => $item['mesh_size_name'],
+                'bags' => $item['bags'],
+                'weight_ton' => $item['weight_ton'],
+                'rate_per_ton' => $item['rate_per_ton'] ?? null,
+                'amount' => $item['amount'],
+            ])->all(),
+        ];
+    }
+
+    private function money(float $amount): string
+    {
+        return '৳'.number_format($amount, 2);
     }
 
     public function nextInvoiceNo(Request $request)

@@ -47,6 +47,7 @@ class Permissions
 
     public const LEDGER_VIEW = 'LEDGER_VIEW';
     public const LEDGER_CREATE = 'LEDGER_CREATE';
+    public const LEDGER_EDIT = 'LEDGER_EDIT';
     public const LEDGER_DELETE = 'LEDGER_DELETE';
 
     public const CLOSING_VIEW = 'CLOSING_VIEW';
@@ -68,6 +69,17 @@ class Permissions
 
     public const ROLES_VIEW = 'ROLES_VIEW';
     public const ROLES_EDIT = 'ROLES_EDIT';
+
+    /**
+     * The system-wide audit trail — Admin only, and deliberately not part of
+     * any single module's permission set. Audit records carry every other
+     * module's before/after values, so holding this is equivalent to read
+     * access across the whole system (confidential sale rates, payroll
+     * amounts, user changes). RoleSeeder grants it to Admin and to nobody
+     * else: a Manager's actions are recorded, but a Manager cannot read the
+     * recording.
+     */
+    public const AUDIT_VIEW = 'AUDIT_VIEW';
 
     /** @return list<string> every permission name, for seeding and the role editor's checklist. */
     public static function all(): array

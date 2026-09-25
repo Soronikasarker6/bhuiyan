@@ -39,6 +39,7 @@ export const PERMISSIONS = {
 
   LEDGER_VIEW: 'LEDGER_VIEW',
   LEDGER_CREATE: 'LEDGER_CREATE',
+  LEDGER_EDIT: 'LEDGER_EDIT',
   LEDGER_DELETE: 'LEDGER_DELETE',
 
   CLOSING_VIEW: 'CLOSING_VIEW',
@@ -60,6 +61,15 @@ export const PERMISSIONS = {
 
   ROLES_VIEW: 'ROLES_VIEW',
   ROLES_EDIT: 'ROLES_EDIT',
+
+  /**
+   * Settings → Audit History. Admin-only: audit records carry every other
+   * module's before/after values, so holding this is effectively read access
+   * across the whole system. Seeded to the Admin role alone (backend
+   * RoleSeeder) and enforced server-side on every audit route — hiding the
+   * menu item here is a courtesy, never the control.
+   */
+  AUDIT_VIEW: 'AUDIT_VIEW',
 } as const
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]
@@ -116,7 +126,12 @@ export const PERMISSION_GROUPS: Array<{ label: string; permissions: Permission[]
   },
   {
     label: 'Cash & Bank Ledger',
-    permissions: [PERMISSIONS.LEDGER_VIEW, PERMISSIONS.LEDGER_CREATE, PERMISSIONS.LEDGER_DELETE],
+    permissions: [
+      PERMISSIONS.LEDGER_VIEW,
+      PERMISSIONS.LEDGER_CREATE,
+      PERMISSIONS.LEDGER_EDIT,
+      PERMISSIONS.LEDGER_DELETE,
+    ],
   },
   { label: 'Monthly Closing', permissions: [PERMISSIONS.CLOSING_VIEW, PERMISSIONS.CLOSING_CREATE] },
   { label: 'Profit & Loss', permissions: [PERMISSIONS.PROFIT_VIEW, PERMISSIONS.PROFIT_EDIT] },
@@ -133,4 +148,5 @@ export const PERMISSION_GROUPS: Array<{ label: string; permissions: Permission[]
     ],
   },
   { label: 'Roles', permissions: [PERMISSIONS.ROLES_VIEW, PERMISSIONS.ROLES_EDIT] },
+  { label: 'Audit History', permissions: [PERMISSIONS.AUDIT_VIEW] },
 ]

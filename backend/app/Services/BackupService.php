@@ -43,8 +43,12 @@ class BackupService
                 'production_entries' => ProductionEntry::all(),
                 'sales' => Sale::all(),
                 'sale_items' => SaleItem::all(),
-                'customer_transactions' => CustomerTransaction::all(),
-                'transactions' => Transaction::all(),
+                // Voided rows included: a backup that silently dropped them
+                // could not restore the ledger as it actually stands, and the
+                // audit trail's VOID events would point at records the backup
+                // does not contain.
+                'customer_transactions' => CustomerTransaction::withTrashed()->get(),
+                'transactions' => Transaction::withTrashed()->get(),
                 'ledger_closings' => LedgerClosing::with('balances')->get(),
             ],
         ];

@@ -13,7 +13,7 @@ import { TransactionForm, NO_CUSTOMER, type TransactionSubmit } from '@/features
 import { LedgerTable } from '@/features/ledger/LedgerTable'
 import { BalanceSummary } from '@/features/dashboard/BalanceSummary'
 import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
-import { useAppData } from '@/hooks/useAppData'
+import { useAppData, type TransactionUpdateInput, type TransferUpdateInput } from '@/hooks/useAppData'
 import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
@@ -40,7 +40,7 @@ import { now, uid } from '@/utils/id'
  * they are the sum of the entries, so the two can never disagree.
  */
 export default function LedgerPage() {
-  const { data, loading, update, recordPayment } = useAppData()
+  const { data, loading, update, recordPayment, updateTransaction, voidTransaction } = useAppData()
   const { print } = usePrint()
   const canCreate = usePermission(PERMISSIONS.LEDGER_CREATE)
 
@@ -138,7 +138,11 @@ export default function LedgerPage() {
           createdAt: stamp,
         })
 
-        update('transactions', [...legs, ...data.transactions])
+        // Awaited so the form's busy state covers the whole round trip —
+        // request, database write, audit record, refetch — rather than
+        // clearing the moment the call is made (§27). `update` resolves false
+        // (having already reported the error) instead of rejecting.
+        if (!(await update('transactions', [...legs, ...data.transactions]))) return
 
         toast.success('Transfer recorded', {
           description: `${formatCurrency(values.amount)} moved from ${from.name} to ${to.name}. Your combined total is unchanged.`,
@@ -157,7 +161,7 @@ export default function LedgerPage() {
         createdAt: stamp,
       }
 
-      update('transactions', [transaction, ...data.transactions])
+      if (!(await update('transactions', [transaction, ...data.transactions]))) return
 
       toast.success(values.mode === 'in' ? 'Money in recorded' : 'Money out recorded', {
         description: `${formatCurrency(values.amount)} · ${values.category}`,
@@ -166,26 +170,59 @@ export default function LedgerPage() {
     [data.accounts, data.customers, data.transactions, update, recordPayment, balanceOfCustomer],
   )
 
-  const deleteTransactions = useCallback(
-    (ids: string[]) => {
+  /**
+   * A void, not a delete (§14): the entry leaves this register but its
+   * original figures — and who removed them, and the reason given — stay in
+   * the audit history. The reason is never written onto the ledger row, so
+   * the register itself is unchanged in shape (§15).
+   */
+  const removeTransactions = useCallback(
+    async (ids: string[], reason?: string) => {
       const wasCustomerPayment = ids.length === 1
         && data.transactions.some((t) => t.id === ids[0] && t.customerId)
 
-      update(
-        'transactions',
-        data.transactions.filter((transaction) => !ids.includes(transaction.id)),
-      )
+      try {
+        await voidTransaction(ids, reason)
+      } catch (error) {
+        toast.error('Could not remove the entry', {
+          description: error instanceof Error ? error.message : undefined,
+        })
+        return
+      }
 
-      toast.success(ids.length > 1 ? 'Transfer deleted' : 'Entry deleted', {
+      toast.success(ids.length > 1 ? 'Transfer removed' : 'Entry removed', {
         description:
           ids.length > 1
             ? 'Both legs were removed so the accounts stay in balance.'
             : wasCustomerPayment
               ? 'The payment was removed from the customer ledger too, and the amount is back on their due.'
-              : 'Balances have been recalculated.',
+              : 'Balances have been recalculated. The original entry is kept in the audit history.',
       })
     },
-    [data.transactions, update],
+    [data.transactions, voidTransaction],
+  )
+
+  /**
+   * Editing corrects the entry in place — it is never deleted and re-entered,
+   * so its reference and every report already citing it still point at the
+   * same event (§13). A transfer leg edits both legs at once (§17).
+   */
+  const editTransaction = useCallback(
+    async (id: string, values: TransactionUpdateInput | TransferUpdateInput) => {
+      try {
+        await updateTransaction(id, values)
+      } catch (error) {
+        toast.error('Could not save the change', {
+          description: error instanceof Error ? error.message : undefined,
+        })
+        return
+      }
+
+      toast.success('Entry updated', {
+        description: `${formatCurrency(values.amount)} · the change is recorded in the audit history.`,
+      })
+    },
+    [updateTransaction],
   )
 
   // ---------------------------------------------------------------- printing
@@ -366,7 +403,8 @@ export default function LedgerPage() {
         accounts={data.accounts}
         categories={data.categories}
         customers={data.customers}
-        onDelete={deleteTransactions}
+        onDelete={removeTransactions}
+        onEdit={editTransaction}
         filters={filters}
         onFiltersChange={setFilters}
         className="mt-4"

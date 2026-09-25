@@ -6,7 +6,10 @@ use App\Exceptions\BusinessRuleException;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Shipment;
+use App\Services\AuditLogger;
 use App\Services\InventoryService;
+use App\Support\AuditAction;
+use App\Support\AuditEntity;
 use Illuminate\Http\Request;
 
 /**
@@ -18,7 +21,10 @@ use Illuminate\Http\Request;
  */
 class ShipmentCycleController extends Controller
 {
-    public function __construct(private InventoryService $inventory) {}
+    public function __construct(
+        private InventoryService $inventory,
+        private AuditLogger $audit,
+    ) {}
 
     public function index(Request $request)
     {
@@ -30,26 +36,67 @@ class ShipmentCycleController extends Controller
             ->values();
     }
 
-    public function close(int $shipment)
+    public function close(Request $request, int $shipment)
     {
+        $before = $this->present($this->cycleFor($shipment));
+
         try {
             $this->inventory->closeShipment($shipment);
         } catch (BusinessRuleException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return $this->present($this->cycleFor($shipment));
+        $after = $this->present($this->cycleFor($shipment));
+
+        // Closing a cycle freezes what that shipment can still be consumed
+        // against, so it is its own audited event, not an UPDATE buried in the
+        // import rows (§18).
+        $this->audit->record(AuditEntity::SHIPMENT_CYCLE, $shipment, AuditAction::CLOSE_SHIPMENT, [
+            'record' => $this->cycleReference($after),
+            'before' => $before,
+            'after' => $after,
+            'reason' => $request->input('reason'),
+            'summary' => sprintf(
+                'Closed %s cycle opened %s · closing stock %s TON',
+                $after['product_name'] ?? 'shipment',
+                $after['opened_on'],
+                number_format((float) $after['closing_ton'], 3),
+            ),
+        ]);
+
+        return $after;
     }
 
-    public function reopen(int $shipment)
+    public function reopen(Request $request, int $shipment)
     {
+        $before = $this->present($this->cycleFor($shipment));
+
         try {
             $this->inventory->reopenShipment($shipment);
         } catch (BusinessRuleException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return $this->present($this->cycleFor($shipment));
+        $after = $this->present($this->cycleFor($shipment));
+
+        $this->audit->record(AuditEntity::SHIPMENT_CYCLE, $shipment, AuditAction::REOPEN_SHIPMENT, [
+            'record' => $this->cycleReference($after),
+            'before' => $before,
+            'after' => $after,
+            'reason' => $request->input('reason'),
+            'summary' => sprintf(
+                'Reopened %s cycle opened %s',
+                $after['product_name'] ?? 'shipment',
+                $after['opened_on'],
+            ),
+        ]);
+
+        return $after;
+    }
+
+    private function cycleReference(array $cycle): string
+    {
+        return 'CYC-'.str_pad((string) $cycle['id'], 4, '0', STR_PAD_LEFT);
     }
 
     private function cycleFor(int $shipmentId): array

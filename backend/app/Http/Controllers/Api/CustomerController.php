@@ -5,13 +5,20 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\CustomerTransaction;
+use App\Services\AuditLogger;
 use App\Services\CustomerLedgerService;
+use App\Support\AuditAction;
+use App\Support\AuditEntity;
+use App\Support\StaleWrite;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class CustomerController extends Controller
 {
-    public function __construct(private CustomerLedgerService $ledger) {}
+    public function __construct(
+        private CustomerLedgerService $ledger,
+        private AuditLogger $audit,
+    ) {}
 
     public function index()
     {
@@ -58,6 +65,12 @@ class CustomerController extends Controller
             return $customer;
         });
 
+        $this->audit->record(AuditEntity::CUSTOMER, $customer->id, AuditAction::CREATE, [
+            'record' => $customer->name,
+            'after' => $this->audit->snapshot($customer),
+            'summary' => "Added customer {$customer->name}",
+        ]);
+
         return response()->json($customer, 201);
     }
 
@@ -73,7 +86,16 @@ class CustomerController extends Controller
             'active' => ['boolean'],
         ]);
 
+        $before = $this->audit->snapshot($customer);
         $customer->update($data);
+
+        $this->audit->recordUpdate(
+            AuditEntity::CUSTOMER,
+            $customer->id,
+            $before,
+            $customer->refresh(),
+            ['record' => $customer->name],
+        );
 
         return $customer;
     }
@@ -81,10 +103,25 @@ class CustomerController extends Controller
     /** Ledger rows referencing this customer are kept, not cascaded, matching the frontend. */
     public function destroy(Customer $customer)
     {
-        return $this->guardedDelete(
+        $before = $this->audit->snapshot($customer);
+        $name = $customer->name;
+
+        $response = $this->guardedDelete(
             fn () => $customer->delete(),
             'This customer has sales recorded against them — their ledger history is kept, but the customer row itself cannot be removed.'
         );
+
+        // Only record it if the delete actually went through — a blocked
+        // delete is not something that happened.
+        if ($response->getStatusCode() === 204) {
+            $this->audit->record(AuditEntity::CUSTOMER, $customer->id, AuditAction::DELETE, [
+                'record' => $name,
+                'before' => $before,
+                'summary' => "Deleted customer {$name}",
+            ]);
+        }
+
+        return $response;
     }
 
     public function ledger(Customer $customer)
@@ -103,6 +140,7 @@ class CustomerController extends Controller
             'method' => ['nullable', 'string', 'max:40'],
             'account_id' => ['nullable', 'exists:accounts,id'],
             'description' => ['nullable', 'string', 'max:255'],
+            'reason' => ['nullable', 'string', 'max:255'],
         ]);
 
         $transaction = $this->ledger->recordPayment($data + ['customer_id' => $customer->id]);
@@ -122,19 +160,27 @@ class CustomerController extends Controller
             'amount' => ['required', 'numeric', 'gt:0'],
             'method' => ['nullable', 'string', 'max:40'],
             'account_id' => ['nullable', 'exists:accounts,id'],
+            'reason' => ['nullable', 'string', 'max:255'],
+            'expected_updated_at' => ['nullable', 'string'],
         ]);
 
-        return $this->ledger->updatePayment($transaction, $data);
+        if ($stale = StaleWrite::check($transaction, $data['expected_updated_at'] ?? null)) {
+            return $stale;
+        }
+
+        return $this->ledger->updatePayment($transaction, $data, $data['reason'] ?? null);
     }
 
-    public function destroyPayment(Customer $customer, CustomerTransaction $transaction)
+    public function destroyPayment(Request $request, Customer $customer, CustomerTransaction $transaction)
     {
         abort_unless(
             $transaction->customer_id === $customer->id && $transaction->type === 'payment' && ! $transaction->reference_sale_id,
             404
         );
 
-        $this->ledger->deletePayment($transaction);
+        $reason = $request->validate(['reason' => ['nullable', 'string', 'max:255']])['reason'] ?? null;
+
+        $this->ledger->voidPayment($transaction, $reason);
 
         return response()->json(null, 204);
     }

@@ -7,7 +7,7 @@ import { Bar } from '@ui5/webcomponents-react/Bar'
 import type { Account, CustomerLedgerRow } from '@/types'
 import { Field } from '@/components/Field'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Input, Textarea } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
 import { todayISO } from '@/utils/format'
@@ -21,6 +21,7 @@ const schema = z.object({
   amount: z.coerce.number({ invalid_type_error: 'Enter an amount.' }).positive('Amount must be more than zero.'),
   method: z.string().optional(),
   accountId: z.string().optional(),
+  reason: z.string().max(255).optional(),
 })
 
 type FormValues = z.input<typeof schema>
@@ -65,6 +66,7 @@ export function EditPaymentDialog({
         amount: row.credit,
         method: row.method ?? PAYMENT_METHODS[0],
         accountId: row.linkedAccountId ?? NONE,
+        reason: '',
       })
     }
   }, [row, reset])
@@ -75,6 +77,7 @@ export function EditPaymentDialog({
       amount: Number(values.amount),
       method: values.method,
       accountId: values.accountId === NONE ? undefined : values.accountId,
+      reason: values.reason?.trim() || undefined,
     })
   })
 
@@ -148,6 +151,14 @@ export function EditPaymentDialog({
                 ))}
               </SelectContent>
             </Select>
+          </Field>
+
+          <Field
+            label="Reason for the change (optional)"
+            htmlFor="edit-pay-reason"
+            hint="Recorded in the audit history next to the old and new figures."
+          >
+            <Textarea id="edit-pay-reason" rows={2} {...register('reason')} placeholder="e.g. Overstated the amount" />
           </Field>
         </form>
       )}

@@ -55,6 +55,14 @@ export interface Transaction {
   customerId?: ID
   customerTransactionId?: ID
   createdAt: string
+  /**
+   * When the row last changed, as the server saw it. Sent back with an edit so
+   * the backend can refuse a save that would overwrite someone else's newer
+   * one (§28) — absent in the offline build, which is single-user.
+   */
+  updatedAt?: string
+  /** The stable human reference — TX-000123. Derived from the id server-side, so it never changes. */
+  reference?: string
 }
 
 /**

@@ -8,12 +8,17 @@ use App\Http\Requests\ResetPasswordRequest;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Models\User;
+use App\Services\AuditLogger;
+use App\Support\AuditAction;
+use App\Support\AuditEntity;
 use App\Support\Permissions;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class UserController extends Controller
 {
+    public function __construct(private AuditLogger $audit) {}
+
     public function index()
     {
         return User::with('roles')->orderBy('name')->get()->map(fn (User $u) => $this->present($u));
@@ -39,6 +44,19 @@ class UserController extends Controller
             return $user;
         });
 
+        // The password never reaches the audit trail — AuditLogger redacts it,
+        // and the snapshot is taken from the model's own serialisation, where
+        // it is already hidden.
+        $this->audit->record(AuditEntity::USER, $user->id, AuditAction::CREATE, [
+            'record' => $user->name,
+            'after' => $this->auditSnapshot($user->load('roles')),
+            'summary' => sprintf(
+                'Created user %s (%s)',
+                $user->name,
+                $user->getRoleNames()->implode(', ') ?: 'no role',
+            ),
+        ]);
+
         return response()->json($this->present($user->load('roles')), 201);
     }
 
@@ -52,6 +70,7 @@ class UserController extends Controller
     public function update(UpdateUserRequest $request, User $user)
     {
         $data = $request->validated();
+        $before = $this->auditSnapshot($user->load('roles'));
 
         DB::transaction(function () use ($request, $user, $data) {
             $user->update([
@@ -65,6 +84,33 @@ class UserController extends Controller
             }
         });
 
+        $after = $this->auditSnapshot($user->fresh('roles'));
+
+        // A role change is a change to what someone is allowed to do, not a
+        // profile edit, so it is recorded as PERMISSION_CHANGE (§21) — it is
+        // the one edit on this screen an admin is most likely to be looking
+        // for later.
+        $rolesChanged = $before['roles'] !== $after['roles'];
+
+        $this->audit->record(
+            AuditEntity::USER,
+            $user->id,
+            $rolesChanged ? AuditAction::PERMISSION_CHANGE : AuditAction::UPDATE,
+            [
+                'record' => $after['name'],
+                'before' => $before,
+                'after' => $after,
+                'summary' => $rolesChanged
+                    ? sprintf(
+                        '%s: role %s → %s',
+                        $after['name'],
+                        implode(', ', $before['roles']) ?: 'none',
+                        implode(', ', $after['roles']) ?: 'none',
+                    )
+                    : null,
+            ],
+        );
+
         return $this->present($user->fresh('roles'));
     }
 
@@ -74,7 +120,16 @@ class UserController extends Controller
             return response()->json(['message' => 'You cannot delete your own account.'], 422);
         }
 
+        $before = $this->auditSnapshot($user->load('roles'));
+        $name = $user->name;
+
         $user->delete();
+
+        $this->audit->record(AuditEntity::USER, $user->id, AuditAction::DELETE, [
+            'record' => $name,
+            'before' => $before,
+            'summary' => "Deleted user {$name}",
+        ]);
 
         return response()->json(null, 204);
     }
@@ -85,7 +140,16 @@ class UserController extends Controller
             return response()->json(['message' => 'You cannot deactivate your own account.'], 422);
         }
 
+        $before = $this->auditSnapshot($user->load('roles'));
         $user->update(['is_active' => ! $user->is_active]);
+        $after = $this->auditSnapshot($user->fresh('roles'));
+
+        $this->audit->record(AuditEntity::USER, $user->id, AuditAction::UPDATE, [
+            'record' => $user->name,
+            'before' => $before,
+            'after' => $after,
+            'summary' => sprintf('%s %s', $user->is_active ? 'Activated' : 'Deactivated', $user->name),
+        ]);
 
         return $this->present($user->fresh('roles'));
     }
@@ -98,6 +162,16 @@ class UserController extends Controller
         // spirit of a real password reset — the user must sign in again.
         $user->tokens()->delete();
 
+        // Recorded as an event only. There is deliberately no before/after
+        // here: neither the old nor the new password belongs in a history
+        // anyone can read, and "it was reset, by whom, when" is the whole of
+        // what an audit needs (§21).
+        $this->audit->record(AuditEntity::USER, $user->id, AuditAction::PASSWORD_CHANGE, [
+            'record' => $user->name,
+            'summary' => "Reset the password for {$user->name}",
+            'metadata' => ['sessions_revoked' => true],
+        ]);
+
         return response()->json(['message' => 'Password reset.']);
     }
 
@@ -106,5 +180,16 @@ class UserController extends Controller
         return array_merge($user->toArray(), [
             'roles' => $user->getRoleNames()->values(),
         ]);
+    }
+
+    /** Profile fields plus the role names — never the password hash or tokens. */
+    private function auditSnapshot(User $user): array
+    {
+        return [
+            'name' => $user->name,
+            'email' => $user->email,
+            'is_active' => (bool) $user->is_active,
+            'roles' => $user->getRoleNames()->sort()->values()->all(),
+        ];
     }
 }

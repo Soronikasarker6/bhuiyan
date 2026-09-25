@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\Transaction;
 use App\Services\CustomerLedgerService;
 use App\Services\LedgerService;
+use App\Support\StaleWrite;
 use Illuminate\Http\Request;
 
 class TransactionController extends Controller
@@ -59,6 +60,7 @@ class TransactionController extends Controller
             'amount' => ['required', 'numeric', 'gt:0'],
             'customer_id' => ['nullable', 'exists:customers,id'],
             'method' => ['nullable', 'string', 'max:40'],
+            'reason' => ['nullable', 'string', 'max:255'],
         ]);
 
         $category = Category::find($data['category_id']);
@@ -78,15 +80,68 @@ class TransactionController extends Controller
                 'account_id' => $data['account_id'],
                 'method' => $data['method'] ?? null,
                 'details' => $data['details'] ?? null,
+                'reason' => $data['reason'] ?? null,
             ]);
 
             return response()->json($payment->cashTransaction, 201);
         }
 
-        unset($data['customer_id'], $data['method']);
-        $transaction = Transaction::create($data + ['category_name' => $category?->name]);
+        $reason = $data['reason'] ?? null;
+        unset($data['customer_id'], $data['method'], $data['reason']);
+        $transaction = $this->ledger->createTransaction($data + ['category_name' => $category?->name], $reason);
 
         return response()->json($transaction, 201);
+    }
+
+    /**
+     * Edit an entry in place (§13) — the reference (TX-000123) is unchanged,
+     * the old row is never deleted and re-created, and the before/after values
+     * land in the audit trail.
+     *
+     * A transfer leg is edited as the whole transfer: both sides move together
+     * or neither does, so the two accounts can never disagree about how much
+     * was moved (§17).
+     */
+    public function update(Request $request, Transaction $transaction)
+    {
+        $isTransfer = $transaction->transfer_id !== null;
+
+        $data = $request->validate($isTransfer ? [
+            'date' => ['required', 'date', 'before_or_equal:today'],
+            'from_account_id' => ['required', 'exists:accounts,id'],
+            'to_account_id' => ['required', 'exists:accounts,id'],
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'details' => ['nullable', 'string', 'max:255'],
+            'reason' => ['nullable', 'string', 'max:255'],
+            'expected_updated_at' => ['nullable', 'string'],
+        ] : [
+            'date' => ['required', 'date', 'before_or_equal:today'],
+            'details' => ['nullable', 'string', 'max:255'],
+            'account_id' => ['required', 'exists:accounts,id'],
+            'direction' => ['required', 'in:in,out'],
+            'category_id' => ['required', 'exists:categories,id'],
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'reason' => ['nullable', 'string', 'max:255'],
+            'expected_updated_at' => ['nullable', 'string'],
+        ]);
+
+        if ($stale = StaleWrite::check($transaction, $data['expected_updated_at'] ?? null)) {
+            return $stale;
+        }
+
+        try {
+            if ($isTransfer) {
+                [$out, $in] = $this->ledger->updateTransfer($transaction, $data, $data['reason'] ?? null);
+
+                return response()->json(['out' => $out, 'in' => $in]);
+            }
+
+            return response()->json(
+                $this->ledger->updateTransaction($transaction, $data, $data['reason'] ?? null)
+            );
+        } catch (BusinessRuleException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
     }
 
     public function transfer(Request $request)
@@ -97,6 +152,7 @@ class TransactionController extends Controller
             'to_account_id' => ['required', 'exists:accounts,id'],
             'amount' => ['required', 'numeric', 'gt:0'],
             'details' => ['nullable', 'string', 'max:255'],
+            'reason' => ['nullable', 'string', 'max:255'],
         ]);
 
         try {
@@ -108,10 +164,29 @@ class TransactionController extends Controller
         return response()->json(['out' => $out, 'in' => $in], 201);
     }
 
-    public function destroy(Transaction $transaction)
+    /**
+     * Void, not delete (§14). The entry leaves the active register; its
+     * original figures stay on the row, behind an audit event that records who
+     * removed it and the reason they gave.
+     */
+    public function destroy(Request $request, Transaction $transaction)
     {
-        $this->ledger->deleteTransaction($transaction->id);
+        $reason = $request->validate(['reason' => ['nullable', 'string', 'max:255']])['reason'] ?? null;
+
+        $this->ledger->voidTransaction($transaction->id, $reason);
 
         return response()->json(null, 204);
+    }
+
+    /** Puts a voided entry back, as its own audited event. */
+    public function restore(Request $request, int $transaction)
+    {
+        $reason = $request->validate(['reason' => ['nullable', 'string', 'max:255']])['reason'] ?? null;
+
+        try {
+            return response()->json($this->ledger->restoreTransaction($transaction, $reason));
+        } catch (BusinessRuleException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
     }
 }

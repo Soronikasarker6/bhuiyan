@@ -20,13 +20,18 @@ class RoleSeeder extends Seeder
         $admin = Role::firstOrCreate(['name' => 'Admin', 'guard_name' => 'api']);
         $admin->syncPermissions($all);
 
-        // Every business-module permission, but none of Settings/Users/Roles.
+        // Every business-module permission, but none of Settings/Users/Roles
+        // — and never AUDIT_VIEW. A Manager's own actions are recorded in the
+        // audit trail (the backend does that regardless of who they are), but
+        // reading that trail means reading every other module's before/after
+        // values, which is Admin-only by design (see Permissions::AUDIT_VIEW).
         $manager = Role::firstOrCreate(['name' => 'Manager', 'guard_name' => 'api']);
         $manager->syncPermissions(array_values(array_filter(
             $all,
             fn (string $name) => ! str_starts_with($name, 'SETTINGS_')
                 && ! str_starts_with($name, 'USERS_')
-                && ! str_starts_with($name, 'ROLES_'),
+                && ! str_starts_with($name, 'ROLES_')
+                && $name !== Permissions::AUDIT_VIEW,
         )));
 
         // View + create only, no edit/delete, no Settings/Users/Roles/Closing.
@@ -40,7 +45,8 @@ class RoleSeeder extends Seeder
                 && ! str_starts_with($name, 'USERS_')
                 && ! str_starts_with($name, 'ROLES_')
                 && ! str_starts_with($name, 'CLOSING_')
-                && $name !== Permissions::SALES_RATE_VIEW,
+                && $name !== Permissions::SALES_RATE_VIEW
+                && $name !== Permissions::AUDIT_VIEW,
         )));
     }
 }

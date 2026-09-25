@@ -42,6 +42,7 @@ const LedgerPage = lazy(() => import('@/pages/LedgerPage'))
 const ClosingPage = lazy(() => import('@/pages/ClosingPage'))
 const ReportsPage = lazy(() => import('@/pages/ReportsPage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
+const AuditHistoryPage = lazy(() => import('@/pages/AuditHistoryPage'))
 
 function Lazy({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<PageSkeleton />}>{children}</Suspense>
@@ -72,6 +73,15 @@ export function AppRouter() {
       <Route path="/ledger" element={<Page permission={PERMISSIONS.LEDGER_VIEW}><LedgerPage /></Page>} />
       <Route path="/closing" element={<Page permission={PERMISSIONS.CLOSING_VIEW}><ClosingPage /></Page>} />
       <Route path="/reports" element={<Page permission={PERMISSIONS.REPORTS_VIEW}><ReportsPage /></Page>} />
+      {/* Declared before /settings so the more specific path wins. */}
+      <Route
+        path="/settings/audit-history"
+        element={
+          <Page permission={PERMISSIONS.AUDIT_VIEW}>
+            <AuditHistoryPage />
+          </Page>
+        }
+      />
       <Route
         path="/settings"
         element={

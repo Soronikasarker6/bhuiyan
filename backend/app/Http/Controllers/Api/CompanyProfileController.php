@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\CompanyProfile;
+use App\Services\AuditLogger;
+use App\Support\AuditEntity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -16,6 +18,8 @@ use Illuminate\Support\Facades\Storage;
  */
 class CompanyProfileController extends Controller
 {
+    public function __construct(private AuditLogger $audit) {}
+
     public function show()
     {
         return CompanyProfile::current();
@@ -37,6 +41,7 @@ class CompanyProfileController extends Controller
         ]);
 
         $profile = CompanyProfile::current();
+        $before = $this->audit->snapshot($profile);
 
         if ($request->hasFile('logo')) {
             if ($profile->logo_path) {
@@ -51,6 +56,17 @@ class CompanyProfileController extends Controller
         unset($data['logo'], $data['remove_logo']);
 
         $profile->update($data);
+
+        // A singleton, so its entity id is a fixed key rather than a row id —
+        // that keeps every change to the company's identity on one timeline in
+        // the Audit History (§22).
+        $this->audit->recordUpdate(
+            AuditEntity::COMPANY_PROFILE,
+            'company-profile',
+            $before,
+            $profile->fresh(),
+            ['record' => $profile->name],
+        );
 
         return $profile->fresh();
     }

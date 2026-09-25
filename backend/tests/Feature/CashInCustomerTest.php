@@ -137,22 +137,33 @@ class CashInCustomerTest extends TestCase
         $this->assertSame(0, Transaction::count());
     }
 
-    /** The mirror case: removing the receivables row takes its cash row with it. */
-    public function test_deleting_the_customer_payment_removes_the_cash_row_too(): void
+    /**
+     * The mirror case: removing the receivables row takes its cash row with
+     * it. The pairing used to be a database cascade; now that both tables
+     * soft-delete (a removal is a void — see the audit trail work), it is
+     * maintained by `voidPayment`, which is the only path either screen takes.
+     */
+    public function test_voiding_the_customer_payment_removes_the_cash_row_too(): void
     {
         $customer = $this->customerOwing(75_000);
+        $ledger = app(CustomerLedgerService::class);
 
-        app(CustomerLedgerService::class)->recordPayment([
+        $ledger->recordPayment([
             'customer_id' => $customer->id,
             'date' => '2026-09-10',
             'amount' => 20_000,
             'account_id' => $this->cash->id,
         ]);
 
-        CustomerTransaction::where('type', 'payment')->firstOrFail()->delete();
+        $ledger->voidPayment(CustomerTransaction::where('type', 'payment')->firstOrFail(), 'Wrong entry');
 
         $this->assertSame(0, Transaction::count());
         $this->assertEqualsWithDelta(75_000.0, $this->totals($customer)['total_due'], 0.001);
+
+        // Voided, not gone: the original receipt is still recoverable and is
+        // what the audit trail's before-snapshot describes.
+        $this->assertSame(1, Transaction::onlyTrashed()->count());
+        $this->assertSame('Wrong entry', Transaction::onlyTrashed()->first()->void_reason);
     }
 
     /** No customer chosen — still a plain, standalone cash receipt, touching no receivables ledger. */
