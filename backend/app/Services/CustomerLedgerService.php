@@ -192,9 +192,19 @@ class CustomerLedgerService
     /**
      * An invoice's status, from figures {@see settlement()} produced.
      *
-     * 'advance' is its own case rather than a flavour of 'paid': both mean
-     * nothing is owed, but 'advance' says the invoice was covered by credit
-     * the customer already held, not by money received for it.
+     * `$coveredByAdvance` separates the two ways credit reaches an invoice:
+     * money received against it, versus credit the customer was already
+     * holding when it was raised. That distinction decides both ends.
+     *
+     * Settled in full: 'advance' when existing credit covered it, 'paid' when
+     * money came in for it.
+     *
+     * Still owing: only money received *for this invoice* makes it part-paid.
+     * An advance that covers a slice and leaves a remainder is still a Due
+     * invoice — nobody has paid anything toward it, the account simply
+     * happened to be ahead.
+     *
+     * Mirrors `paymentStatusOf()` in src/utils/sales.ts; the two must agree.
      */
     public static function statusFor(float $total, float $paid, float $coveredByAdvance = 0): string
     {
@@ -202,7 +212,7 @@ class CustomerLedgerService
             return $coveredByAdvance > self::EPSILON ? 'advance' : 'paid';
         }
 
-        return $paid > self::EPSILON ? 'partial' : 'due';
+        return $paid - $coveredByAdvance > self::EPSILON ? 'partial' : 'due';
     }
 
     public function totals(int $customerId): array

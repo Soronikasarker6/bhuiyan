@@ -141,16 +141,29 @@ describe('TEST 4 — an existing advance covers a new sale', () => {
 })
 
 describe('TEST 5 — an existing advance partly covers a new sale', () => {
-  it('owes only the uncovered remainder', () => {
+  it('owes only the uncovered remainder, and still reads as Due', () => {
     const rows = [payment(1, 20_000), sale(2, 50_000, 'inv1')]
     const { paid, advance, balance } = settle(rows, 'inv1')
 
     expect(paid).toBe(20_000)
     expect(saleAmountDue(50_000, paid)).toBe(30_000)
     expect(advance).toBe(20_000)
-    expect(paymentStatusOf(50_000, paid, advance)).toBe('partial')
+    // Nobody has paid anything toward this invoice — the account simply
+    // happened to be ahead. Partial is reserved for money actually received
+    // against it.
+    expect(paymentStatusOf(50_000, paid, advance)).toBe('due')
     expect(balance).toBe(30_000)
     expect(balanceStatusOf(balance)).toBe('due')
+  })
+
+  it('becomes Partial once real money arrives on top of the advance', () => {
+    const rows = [payment(1, 20_000), sale(2, 50_000, 'inv1'), payment(3, 10_000)]
+    const { paid, advance } = settle(rows, 'inv1')
+
+    expect(paid).toBe(30_000)
+    expect(advance).toBe(20_000)
+    expect(saleAmountDue(50_000, paid)).toBe(20_000)
+    expect(paymentStatusOf(50_000, paid, advance)).toBe('partial')
   })
 })
 

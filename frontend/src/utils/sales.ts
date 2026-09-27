@@ -106,10 +106,16 @@ const EPSILON = 0.005
  * settle which charges — never from a second sum taken here. This function
  * only names the result.
  *
- * `coveredByAdvance` separates the two ways an invoice can end up settled:
- * money received against it, versus credit the customer was already holding
- * when it was raised. Both mean nothing is owed; only the second is worth
- * calling Advance.
+ * `coveredByAdvance` separates the two ways credit reaches an invoice: money
+ * received against it, versus credit the customer was already holding when it
+ * was raised. That distinction decides both ends of the scale.
+ *
+ * Settled in full: 'advance' when the customer's existing credit covered it,
+ * 'paid' when money came in for it.
+ *
+ * Still owing: only money received *for this invoice* makes it part-paid. An
+ * advance that covers a slice and leaves a remainder is still a Due invoice —
+ * nobody has paid anything toward it, the account simply happened to be ahead.
  */
 export function paymentStatusOf(
   totalAmount: number,
@@ -119,8 +125,8 @@ export function paymentStatusOf(
   if (totalAmount > 0 && amountPaid >= totalAmount - EPSILON) {
     return coveredByAdvance > EPSILON ? 'advance' : 'paid'
   }
-  if (amountPaid > EPSILON) return 'partial'
-  return 'due'
+
+  return amountPaid - coveredByAdvance > EPSILON ? 'partial' : 'due'
 }
 
 function chronological(a: Sale, b: Sale): number {

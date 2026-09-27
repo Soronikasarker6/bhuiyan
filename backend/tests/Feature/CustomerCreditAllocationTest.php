@@ -190,8 +190,24 @@ class CustomerCreditAllocationTest extends TestCase
         $sale = $this->sale('2026-09-02', 50_000);
 
         $this->assertEqualsWithDelta(20_000, $this->settled($sale)['paid'], 0.001);
-        $this->assertSame('partial', $this->statusOf($sale, 50_000));
+        // Nobody has paid anything toward this invoice — the account simply
+        // happened to be ahead. Partial is reserved for money actually
+        // received against it.
+        $this->assertSame('due', $this->statusOf($sale, 50_000));
         $this->assertEqualsWithDelta(30_000, $this->ledger()->totals($this->customer->id)['balance'], 0.001);
+    }
+
+    public function test_5b_it_becomes_partial_once_real_money_arrives_on_top_of_the_advance(): void
+    {
+        $this->payment('2026-09-01', 20_000);
+        $sale = $this->sale('2026-09-02', 50_000);
+        $this->payment('2026-09-03', 10_000);
+
+        $settled = $this->settled($sale);
+
+        $this->assertEqualsWithDelta(30_000, $settled['paid'], 0.001);
+        $this->assertEqualsWithDelta(20_000, $settled['covered_by_advance'], 0.001);
+        $this->assertSame('partial', $this->statusOf($sale, 50_000));
     }
 
     public function test_6_editing_a_payment_turns_an_advance_back_into_a_due(): void
