@@ -1,5 +1,6 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react'
 import { cn } from '@/utils/cn'
+import { ADVANCE_TAG, balanceStatusOf, customerBalanceMagnitude } from '@/utils/customerLedger'
 import {
   formatBags,
   formatCurrency,
@@ -84,6 +85,55 @@ export function Money({
       )}
     >
       {exact ? formatCurrencyExact(value) : formatCurrency(value)}
+    </span>
+  )
+}
+
+/**
+ * A customer's balance, drawn the one way this application draws them.
+ *
+ *     ৳ 30,000          owed to us          — maroon, a figure going the wrong way
+ *     ৳ 0               settled             — ink
+ *     ৳ 10,000 (ADV)    paid ahead          — green, and tagged
+ *
+ * Never a minus sign: the amount is a magnitude and the direction is named.
+ * The signed balance is what gets passed in and what every sort and sum still
+ * uses — this only decides how it reads. See `formatCustomerBalance()`, which
+ * does the same job for print and CSV.
+ *
+ * Deliberately not `Money` with a tone passed in at each call site: getting
+ * the colour and the tag to agree is exactly the thing that drifts when it is
+ * decided in ten places.
+ */
+export function CustomerBalance({
+  value,
+  size = 'base',
+  weight = 'medium',
+  className,
+}: {
+  /** Signed: positive is Due, negative is Advance. */
+  value: number
+  size?: 'xs' | 'sm' | 'base' | 'lg' | 'xl' | '2xl'
+  weight?: 'normal' | 'medium' | 'semibold' | 'bold'
+  className?: string
+}) {
+  const status = balanceStatusOf(value)
+  const tone: Tone = status === 'due' ? 'negative' : status === 'advance' ? 'positive' : 'neutral'
+
+  return (
+    <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
+      <Money
+        value={customerBalanceMagnitude(value)}
+        tone={tone}
+        size={size}
+        weight={weight}
+        className={className}
+      />
+      {status === 'advance' && (
+        <span className={cn('font-sans text-[0.75em] font-medium', toneClass.positive)}>
+          {ADVANCE_TAG}
+        </span>
+      )}
     </span>
   )
 }

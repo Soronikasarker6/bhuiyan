@@ -1,6 +1,6 @@
 import type { CustomerLedgerRow } from '@/types'
 import { EmptyState } from '@/components/EmptyState'
-import { Money } from '@/components/Money'
+import { CustomerBalance, Money } from '@/components/Money'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { BookText, Pencil, Trash2 } from 'lucide-react'
@@ -89,7 +89,7 @@ export function CustomerLedgerTable({
               <TableCell numeric>{row.credit > 0 ? <Money value={row.credit} size="sm" tone="positive" /> : '—'}</TableCell>
               <TableCell numeric>{row.debit > 0 ? <Money value={row.debit} size="sm" tone="negative" /> : '—'}</TableCell>
               <TableCell numeric>
-                <Money value={row.balance} size="sm" weight="semibold" />
+                <CustomerBalance value={row.balance} size="sm" weight="semibold" />
               </TableCell>
               {showActions && (
                 <TableCell>

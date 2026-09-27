@@ -17,8 +17,9 @@ import {
 } from '@/components/ui/select'
 import { Section } from '@/components/PageHeader'
 import { Field } from '@/components/Field'
-import { Money } from '@/components/Money'
+import { CustomerBalance, Money } from '@/components/Money'
 import { balanceOf as accountBalanceOf, transferCategory } from '@/utils/ledger'
+import { formatCustomerBalance } from '@/utils/customerLedger'
 import { formatCurrency, todayISO } from '@/utils/format'
 import type { Transaction } from '@/types'
 import { cn } from '@/utils/cn'
@@ -159,12 +160,7 @@ export function TransactionForm({
     () =>
       customers.map((customer) => {
         const balance = balanceOf(customer.id)
-        const balanceText =
-          balance > 0
-            ? `${formatCurrency(balance)} due`
-            : balance < 0
-              ? `${formatCurrency(-balance)} advance`
-              : 'Settled'
+        const balanceText = balance === 0 ? 'Settled' : `${formatCustomerBalance(balance)} ${balance > 0 ? 'due' : ''}`.trim()
 
         return {
           value: customer.id,
@@ -189,8 +185,6 @@ export function TransactionForm({
   // compared against it before the payment is recorded.
   const payingCustomer = customerId !== NO_CUSTOMER ? customers.find((c) => c.id === customerId) : undefined
   const customerBalance = payingCustomer ? balanceOf(payingCustomer.id) : 0
-  const customerDue = Math.max(0, customerBalance)
-  const customerAdvance = Math.max(0, -customerBalance)
   const balanceAfter = customerBalance - amount
 
   const submit = handleSubmit((values) => {
@@ -394,12 +388,7 @@ export function TransactionForm({
                         ? 'Currently in advance'
                         : 'Nothing outstanding'}
                   </span>
-                  <Money
-                    value={customerDue > 0 ? customerDue : customerAdvance}
-                    size="lg"
-                    weight="bold"
-                    tone={customerDue > 0 ? 'negative' : 'positive'}
-                  />
+                  <CustomerBalance value={customerBalance} size="lg" weight="bold" />
                 </div>
 
                 {amount > 0 && (

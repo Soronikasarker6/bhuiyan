@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
-import { Money } from '@/components/Money'
+import { CustomerBalance } from '@/components/Money'
 import { formatCurrency, todayISO } from '@/utils/format'
 import { customerDisplayLabel } from '@/utils/customerLedger'
 import { PAYMENT_METHODS } from '@/constants/paymentMethods'
@@ -75,8 +75,6 @@ export function PaymentForm({
   const amount = Number(watch('amount')) || 0
 
   const currentBalance = useMemo(() => (customerId ? balanceOf(customerId) : 0), [balanceOf, customerId])
-  const currentDue = Math.max(0, currentBalance)
-  const currentAdvance = Math.max(0, -currentBalance)
   const balanceAfter = currentBalance - amount
 
   const submit = handleSubmit(async (values) => {
@@ -123,12 +121,7 @@ export function PaymentForm({
             <span className="text-[0.8125rem] font-medium text-muted-foreground">
               {currentBalance > 0 ? 'Currently due' : currentBalance < 0 ? 'Currently in advance' : "Customer's balance"}
             </span>
-            <Money
-              value={currentDue > 0 ? currentDue : currentAdvance}
-              size="lg"
-              weight="bold"
-              tone={currentDue > 0 ? 'negative' : 'positive'}
-            />
+            <CustomerBalance value={currentBalance} size="lg" weight="bold" />
           </div>
         )}
 
