@@ -61,10 +61,18 @@ class ReportController extends Controller
             $sales->where('customer_id', $request->integer('customer_id'));
         }
 
-        $rows = $sales->get()->map(function (Sale $sale) {
+        // One allocation pass per customer rather than one per invoice — and,
+        // more to the point, the same allocator the Sales screen and the
+        // customer balance use, so a report and the screen it mirrors can
+        // never disagree about what is owed.
+        $settlements = [];
+        $rows = $sales->get()->map(function (Sale $sale) use (&$settlements) {
+            $customerId = (int) $sale->customer_id;
+            $settlements[$customerId] ??= $this->customerLedger->settlement($customerId);
+
             $total = $sale->items->sum(fn ($i) => $i->amount());
-            $paid = (float) CustomerTransaction::where('reference_sale_id', $sale->id)
-                ->whereIn('type', ['payment', 'advance_adjustment'])->sum('credit');
+            $paid = min($total, (float) ($settlements[$customerId]['paid_by_sale'][$sale->id] ?? 0));
+            $coveredByAdvance = (float) ($settlements[$customerId]['advance_by_sale'][$sale->id] ?? 0);
 
             return [
                 'invoice_no' => $sale->invoice_no,
@@ -74,7 +82,7 @@ class ReportController extends Controller
                 'total' => $total,
                 'paid' => $paid,
                 'due' => max(0, $total - $paid),
-                'status' => $total > 0 && $paid >= $total ? 'paid' : ($paid > 0 ? 'partial' : 'due'),
+                'status' => CustomerLedgerService::statusFor($total, $paid, $coveredByAdvance),
             ];
         });
 

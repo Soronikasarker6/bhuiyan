@@ -11,7 +11,7 @@ import type {
   SaleSummary,
 } from '@/types'
 import { bagKgOf, meshSizeNameOf, productNameOf } from './products'
-import { customerNameOf } from './customerLedger'
+import { allocateCreditByCustomer, customerNameOf } from './customerLedger'
 import { isWithin } from './format'
 import { kgToTons } from './imports'
 
@@ -91,33 +91,35 @@ export function itemsBagsTotal(rows: Array<{ bags: number }>): number {
   return rows.reduce((sum, r) => sum + (Number(r.bags) || 0), 0)
 }
 
-/**
- * Everything paid against one invoice: the amount collected at the moment of
- * sale, plus every payment and advance-adjustment recorded against it since.
- *
- * `sale.paidAtSale` is the figure the sale form captured, but it is not added
- * here on top of the ledger — `buildSaleTransactions` already turns it into a
- * linked `payment` row at the moment the sale is saved, and summing both
- * would count the same money twice. The ledger, not the sale record, is the
- * one source of truth for what has actually been paid.
- */
-export function saleAmountPaid(sale: Sale, transactions: CustomerTransaction[]): number {
-  return transactions
-    .filter(
-      (t) =>
-        t.referenceSaleId === sale.id &&
-        (t.type === 'payment' || t.type === 'advance_adjustment'),
-    )
-    .reduce((sum, t) => sum + t.credit, 0)
-}
-
 export function saleAmountDue(totalAmount: number, amountPaid: number): number {
   return Math.max(0, totalAmount - amountPaid)
 }
 
-export function paymentStatusOf(totalAmount: number, amountPaid: number): PaymentStatus {
-  if (totalAmount > 0 && amountPaid >= totalAmount) return 'paid'
-  if (amountPaid > 0) return 'partial'
+/** Half a paisa — below this, a difference is float noise, not money. */
+const EPSILON = 0.005
+
+/**
+ * An invoice's payment status.
+ *
+ * What has been paid against an invoice comes from
+ * `allocateCustomerCredit()` — the one place that decides which credits
+ * settle which charges — never from a second sum taken here. This function
+ * only names the result.
+ *
+ * `coveredByAdvance` separates the two ways an invoice can end up settled:
+ * money received against it, versus credit the customer was already holding
+ * when it was raised. Both mean nothing is owed; only the second is worth
+ * calling Advance.
+ */
+export function paymentStatusOf(
+  totalAmount: number,
+  amountPaid: number,
+  coveredByAdvance = 0,
+): PaymentStatus {
+  if (totalAmount > 0 && amountPaid >= totalAmount - EPSILON) {
+    return coveredByAdvance > EPSILON ? 'advance' : 'paid'
+  }
+  if (amountPaid > EPSILON) return 'partial'
   return 'due'
 }
 
@@ -136,13 +138,21 @@ export function buildSaleSummaries(
   customers: Customer[],
   customerTransactions: CustomerTransaction[],
 ): SaleSummary[] {
+  // One walk of the ledger for every customer, rather than one scan per
+  // invoice — and, more importantly, one place that decides what has settled
+  // what, shared with the customer balance every other screen shows.
+  const settlements = allocateCreditByCustomer(customerTransactions)
+
   return [...sales]
     .sort(chronological)
     .reverse()
     .map((sale) => {
       const items = buildSaleItemRows(itemsForSale(saleItems, sale.id), products, meshSizes)
       const totalAmount = itemsTotal(items)
-      const amountPaid = saleAmountPaid(sale, customerTransactions)
+
+      const settlement = settlements.get(sale.customerId)
+      const amountPaid = Math.min(totalAmount, settlement?.paidBySale.get(sale.id) ?? 0)
+      const coveredByAdvance = settlement?.advanceBySale.get(sale.id) ?? 0
       const amountDue = saleAmountDue(totalAmount, amountPaid)
 
       return {
@@ -153,7 +163,8 @@ export function buildSaleSummaries(
         totalWeightTon: itemsWeightTotal(items),
         amountPaid,
         amountDue,
-        status: paymentStatusOf(totalAmount, amountPaid),
+        coveredByAdvance,
+        status: paymentStatusOf(totalAmount, amountPaid, coveredByAdvance),
       }
     })
 }

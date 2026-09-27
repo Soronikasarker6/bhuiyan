@@ -9,11 +9,10 @@ import {
   nextInvoiceNo,
   paymentStatusOf,
   saleAmountDue,
-  saleAmountPaid,
   saleItemAmount,
   saleItemWeightTon,
 } from '@/utils/sales'
-import { buildPayment, buildCustomerLedgerRows } from '@/utils/customerLedger'
+import { allocateCustomerCredit, buildPayment, buildCustomerLedgerRows } from '@/utils/customerLedger'
 
 /**
  * Sales — tested against the spec's own worked examples, so a regression
@@ -123,7 +122,7 @@ describe('credit sale (spec: 100,000 sold, 40,000 paid, 60,000 due)', () => {
       },
     ]
 
-    const paid = saleAmountPaid(sale, transactions)
+    const paid = allocateCustomerCredit(transactions).paidBySale.get(sale.id) ?? 0
     expect(paid).toBe(100_000)
     expect(saleAmountDue(100_000, paid)).toBe(0)
   })
@@ -156,7 +155,7 @@ describe('the system’s own worked example: 50,000 sale, 20,000 Cash In, 30,000
       },
     ]
 
-    const paid = saleAmountPaid(sale, transactions)
+    const paid = allocateCustomerCredit(transactions).paidBySale.get(sale.id) ?? 0
     expect(paid).toBe(20_000)
     expect(saleAmountDue(50_000, paid)).toBe(30_000)
     expect(paymentStatusOf(50_000, paid)).toBe('partial')
@@ -190,7 +189,7 @@ describe('advance applied to a sale (advance 50,000, sale 35,000, remaining 15,0
       },
     ]
 
-    const paid = saleAmountPaid(sale, transactions)
+    const paid = allocateCustomerCredit(transactions).paidBySale.get(sale.id) ?? 0
     expect(paid).toBe(35_000)
     expect(saleAmountDue(35_000, paid)).toBe(0)
     expect(paymentStatusOf(35_000, paid)).toBe('paid')

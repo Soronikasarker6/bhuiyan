@@ -29,9 +29,30 @@ import { formatBags, formatCurrency, formatDate, formatNumber, formatTons, isWit
  * never a second thing that has to be kept in sync with the first.
  */
 
+/** Milliseconds, or 0 for a blank/unparseable stamp — which then falls through to the id tiebreak. */
+function instantOf(value: string): number {
+  const ms = Date.parse(value)
+  return Number.isNaN(ms) ? 0 : ms
+}
+
+/**
+ * Oldest first: by date, then by when the row was written, then by id.
+ *
+ * `createdAt` is compared as an instant rather than as text. The same moment
+ * has more than one spelling — `…T00:00:00Z` and `…T00:00:00.000Z` are the
+ * same time, but the second sorts *before* the first as a string, because
+ * `.` is below `Z`. That put a sale's own paid-at-sale credit ahead of the
+ * debit it settles, which a running balance survives (addition does not care
+ * about order) but credit allocation does not: a payment arriving before its
+ * invoice looks like advance the customer was already holding.
+ */
 function chronological(a: CustomerTransaction, b: CustomerTransaction): number {
   if (a.date !== b.date) return a.date < b.date ? -1 : 1
-  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1
+
+  const at = instantOf(a.createdAt)
+  const bt = instantOf(b.createdAt)
+  if (at !== bt) return at < bt ? -1 : 1
+
   return a.id < b.id ? -1 : 1
 }
 
@@ -296,6 +317,232 @@ export function customerLedgerStatementCsv(
 
 export function customerBalance(transactions: CustomerTransaction[]): number {
   return transactions.reduce((sum, t) => sum + t.debit - t.credit, 0)
+}
+
+// ------------------------------------------------- credit allocation
+
+/** Half a paisa — below this, a difference is float noise, not money. */
+const EPSILON = 0.005
+
+export interface CustomerSettlement {
+  /** How much of each sale has been settled, by sale id. */
+  paidBySale: Map<ID, number>
+  /**
+   * How much of each sale was settled by credit the customer *already held*
+   * when the invoice was raised — what makes a covered invoice read "Advance"
+   * rather than "Paid".
+   */
+  advanceBySale: Map<ID, number>
+  /** Credit not yet applied to anything: the customer's advance. */
+  unappliedCredit: number
+  /** Signed, and always equal to `customerBalance()` — positive is Due. */
+  balance: number
+}
+
+/**
+ * Which credits have settled which invoices, for one customer.
+ *
+ * This exists because payments here are *customer-level*, not invoice-level.
+ * `referenceSaleId` is set on exactly one kind of credit — the amount
+ * collected at the moment of sale — and on nothing else. A later Cash In is
+ * a plain credit against the account, which is why asking "what has been paid
+ * against this invoice?" by looking only at `referenceSaleId` reports every
+ * ordinary payment as if it had never happened, and leaves a customer who has
+ * paid in full showing a page of Due invoices.
+ *
+ * The rule, walking the account in date order:
+ *
+ *   1. A credit settles its own invoice first, when it names one.
+ *   2. Anything left over settles the oldest outstanding charge, then the
+ *      next — FIFO, the way a running account is normally applied.
+ *   3. Credit with nothing left to settle stays in hand as advance, and
+ *      settles the next charge raised — which is how an existing advance
+ *      covers a new sale without anyone allocating it by hand.
+ *
+ * Charges are not only invoices: an opening balance the customer owed, or a
+ * refund raised against them, are debits too and take their turn in the same
+ * queue. Only sales are reported back per-id, because only sales have a
+ * status to show.
+ *
+ * The one invariant worth stating: `balance` here is the same number
+ * `customerBalance()` returns for the same rows. This function decides how
+ * the money is *attributed*; it never changes how much there is.
+ */
+export function allocateCustomerCredit(transactions: CustomerTransaction[]): CustomerSettlement {
+  const rows = [...transactions].sort(chronological)
+
+  const paidBySale = new Map<ID, number>()
+  const advanceBySale = new Map<ID, number>()
+
+  const saleIdOf = (t: CustomerTransaction): ID | undefined =>
+    t.type === 'sale' ? (t.referenceSaleId ?? t.id) : undefined
+
+  const add = (map: Map<ID, number>, saleId: ID, amount: number) =>
+    map.set(saleId, (map.get(saleId) ?? 0) + amount)
+
+  // --- Pass 1: earmarked credit.
+  //
+  // A credit naming an invoice was collected for that invoice, so it settles
+  // it regardless of where the two rows land relative to each other. Order
+  // matters for the pool below, but it must not decide whether a payment
+  // counts against the invoice it was literally recorded against — an
+  // advance-adjustment carries its debit and credit on one row, and a
+  // paid-at-sale credit shares its invoice's timestamp to the millisecond.
+  const saleTotal = new Map<ID, number>()
+  for (const t of rows) {
+    const saleId = saleIdOf(t)
+    if (saleId) saleTotal.set(saleId, (saleTotal.get(saleId) ?? 0) + t.debit)
+  }
+
+  const earmarked = new Map<ID, number>()
+  /** What is left of each credit row once its own invoice has taken its share. */
+  const freeCredit = new Map<ID, number>()
+
+  for (const t of rows) {
+    if (t.credit <= 0) continue
+
+    const target = t.referenceSaleId
+    if (target && saleTotal.has(target)) {
+      const room = (saleTotal.get(target) ?? 0) - (earmarked.get(target) ?? 0)
+      const applied = Math.max(0, Math.min(t.credit, room))
+      if (applied > 0) {
+        add(earmarked, target, applied)
+        add(paidBySale, target, applied)
+      }
+      freeCredit.set(t.id, t.credit - applied)
+    } else {
+      freeCredit.set(t.id, t.credit)
+    }
+  }
+
+  // --- Pass 2: everything else, in date order.
+  //
+  // Whatever is still owing queues up oldest-first, and unearmarked credit
+  // drains into it. Credit already in hand when a charge is raised settles it
+  // on the spot — which is what makes an existing advance cover a new sale
+  // without anyone allocating it by hand, and what `advanceBySale` records.
+  const open: Array<{ saleId?: ID; outstanding: number }> = []
+  let pool = 0
+
+  for (const t of rows) {
+    if (t.debit > 0) {
+      const saleId = saleIdOf(t)
+      let outstanding = t.debit - (saleId ? (earmarked.get(saleId) ?? 0) : 0)
+
+      if (outstanding > EPSILON) {
+        const fromPool = Math.min(pool, outstanding)
+        if (fromPool > 0) {
+          pool -= fromPool
+          outstanding -= fromPool
+          if (saleId) {
+            add(paidBySale, saleId, fromPool)
+            add(advanceBySale, saleId, fromPool)
+          }
+        }
+        if (outstanding > EPSILON) open.push({ saleId, outstanding })
+      }
+    }
+
+    let remaining = freeCredit.get(t.id) ?? 0
+    if (remaining <= EPSILON) continue
+
+    for (const charge of open) {
+      if (remaining <= EPSILON) break
+      const applied = Math.min(remaining, charge.outstanding)
+      charge.outstanding -= applied
+      remaining -= applied
+      if (charge.saleId) add(paidBySale, charge.saleId, applied)
+    }
+
+    for (let i = open.length - 1; i >= 0; i--) {
+      if (open[i]!.outstanding <= EPSILON) open.splice(i, 1)
+    }
+
+    pool += remaining
+  }
+
+  return {
+    paidBySale,
+    advanceBySale,
+    unappliedCredit: pool,
+    balance: open.reduce((sum, c) => sum + c.outstanding, 0) - pool,
+  }
+}
+
+/**
+ * Every customer's settlement in one pass, keyed by customer id — so a screen
+ * listing sales across customers resolves each invoice's position without
+ * re-walking the whole ledger per row.
+ */
+export function allocateCreditByCustomer(
+  transactions: CustomerTransaction[],
+): Map<ID, CustomerSettlement> {
+  const byCustomer = new Map<ID, CustomerTransaction[]>()
+  for (const t of transactions) {
+    const list = byCustomer.get(t.customerId)
+    if (list) list.push(t)
+    else byCustomer.set(t.customerId, [t])
+  }
+
+  const settlements = new Map<ID, CustomerSettlement>()
+  for (const [customerId, list] of byCustomer) {
+    settlements.set(customerId, allocateCustomerCredit(list))
+  }
+
+  return settlements
+}
+
+/**
+ * Where a customer's account stands, in the three words the UI uses.
+ * Positive is Due, negative is Advance, zero is settled — the same signed
+ * balance every other figure here is derived from.
+ */
+export function balanceStatusOf(balance: number): 'due' | 'no_due' | 'advance' {
+  if (balance > EPSILON) return 'due'
+  if (balance < -EPSILON) return 'advance'
+  return 'no_due'
+}
+
+export const BALANCE_STATUS_LABEL: Record<'due' | 'no_due' | 'advance', string> = {
+  due: 'Due',
+  no_due: 'No due',
+  advance: 'Advance',
+}
+
+/** The tag that follows an advance amount. Nothing follows a due — a due is the default reading. */
+export const ADVANCE_TAG = '(ADV)'
+
+/**
+ * The one way a customer balance is written anywhere in this application.
+ *
+ *     ৳ 30,000          owed to us
+ *     ৳ 0               settled
+ *     ৳ 10,000 (ADV)    paid ahead
+ *
+ * Never `−৳ 10,000`. A minus sign in a money column is read as "less money"
+ * far more readily than as "the other party owes it", and on a printed
+ * statement it is easy to miss entirely. The amount is shown as a magnitude
+ * and the direction is named.
+ *
+ * This is presentation only. The stored balance stays signed — positive Due,
+ * negative Advance — and every sort, filter and sum still works on that
+ * signed number; see `balanceStatusOf`, which is what decides the tag.
+ */
+export function formatCustomerBalance(balance: number): string {
+  const status = balanceStatusOf(balance)
+  const amount = formatCurrency(status === 'no_due' ? 0 : Math.abs(balance))
+
+  return status === 'advance' ? `${amount} ${ADVANCE_TAG}` : amount
+}
+
+/** `'(ADV)'` for an advance, `''` otherwise — for callers that render the amount themselves. */
+export function customerBalanceTag(balance: number): string {
+  return balanceStatusOf(balance) === 'advance' ? ADVANCE_TAG : ''
+}
+
+/** The magnitude to print, with a settled balance normalised so `-0` never reaches the page. */
+export function customerBalanceMagnitude(balance: number): number {
+  return balanceStatusOf(balance) === 'no_due' ? 0 : Math.abs(balance)
 }
 
 /** A customer's financial summary — everything derived from the one running balance. */

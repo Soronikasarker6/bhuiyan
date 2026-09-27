@@ -66,7 +66,14 @@ export interface SaleItemRow extends SaleItem {
   amount: number
 }
 
-export type PaymentStatus = 'paid' | 'partial' | 'due'
+/**
+ * How an invoice stands.
+ *
+ * 'advance' is its own case rather than a flavour of 'paid': both mean
+ * nothing is owed, but 'advance' says the invoice was covered by credit the
+ * customer already held when it was raised, not by money received for it.
+ */
+export type PaymentStatus = 'paid' | 'partial' | 'due' | 'advance'
 
 /** A sale header with everything a list screen needs. Derived, never stored. */
 export interface SaleSummary extends Sale {
@@ -76,5 +83,7 @@ export interface SaleSummary extends Sale {
   totalWeightTon: number
   amountPaid: number
   amountDue: number
+  /** How much of `amountPaid` came from credit the customer already held when this invoice was raised. */
+  coveredByAdvance: number
   status: PaymentStatus
 }

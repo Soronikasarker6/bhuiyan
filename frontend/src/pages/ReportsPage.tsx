@@ -63,6 +63,8 @@ import {
   customerNameOf,
   customerTotals,
   filterCustomerTransactions,
+  formatCustomerBalance,
+  openingBalanceTotal,
   transactionsForCustomer,
 } from '@/utils/customerLedger'
 import { yearlyProfit, yearlyProfitTotals } from '@/utils/profit'
@@ -252,7 +254,10 @@ export default function ReportsPage() {
 
     const outstanding = customerSummaries.filter((c) => c.totals.totalDue > 0).sort((a, b) => b.totals.totalDue - a.totals.totalDue)
     const withAdvance = customerSummaries.filter((c) => c.totals.availableAdvance > 0).sort((a, b) => b.totals.availableAdvance - a.totals.availableAdvance)
-    const creditSales = salesInRange.filter((s) => s.status !== 'paid')
+    // Sales still owing something. `advance` is settled — covered by credit
+    // the customer already held — so it belongs with `paid` here, not with
+    // the unpaid ones.
+    const creditSales = salesInRange.filter((s) => s.status !== 'paid' && s.status !== 'advance')
     const paymentsInRange = customerTxnsInRange.filter((t) => t.type === 'payment')
     // Balances come from the full ledger, never from the in-range slice, so a
     // printed statement opens on the balance the customer carried into the
@@ -782,6 +787,25 @@ export default function ReportsPage() {
         build: () => ({
           title: 'Customer Ledger',
           subtitle: rangeLabel,
+          // The balance the range opens on, so a date-filtered statement is
+          // read against the position carried into it rather than as if the
+          // customer started from zero.
+          meta: [
+            {
+              label: 'Opening balance',
+              value: formatCustomerBalance(
+                openingBalanceTotal(
+                  data.customerTransactions,
+                  from || undefined,
+                  customerFilter === ALL ? undefined : customerFilter,
+                ),
+              ),
+            },
+            {
+              label: 'Closing balance',
+              value: formatCustomerBalance(ledgerRows[0]?.balance ?? 0),
+            },
+          ],
           columns: [
             { key: 'date', label: 'Date' },
             { key: 'reference', label: 'Reference' },
@@ -798,7 +822,9 @@ export default function ReportsPage() {
             description: r.description,
             debit: r.debit > 0 ? formatCurrency(r.debit) : '',
             credit: r.credit > 0 ? formatCurrency(r.credit) : '',
-            balance: formatCurrency(r.balance),
+            // Signed, and named: a negative balance is Advance, never a
+            // positive figure that lost its direction on the way to the page.
+            balance: formatCustomerBalance(r.balance),
           })),
         }),
       },
@@ -1070,6 +1096,7 @@ export default function ReportsPage() {
                 <SelectContent>
                   <SelectItem value={ALL}>All statuses</SelectItem>
                   <SelectItem value="paid">Paid</SelectItem>
+                  <SelectItem value="advance">No due · Advance</SelectItem>
                   <SelectItem value="partial">Partial</SelectItem>
                   <SelectItem value="due">Due</SelectItem>
                 </SelectContent>

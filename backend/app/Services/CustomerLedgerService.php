@@ -47,6 +47,164 @@ class CustomerLedgerService
         return $rows->reverse()->values();
     }
 
+    /** Half a paisa — below this, a difference is float noise, not money. */
+    private const EPSILON = 0.005;
+
+    /**
+     * Which credits have settled which invoices, for one customer.
+     *
+     * Mirrors `allocateCustomerCredit()` in src/utils/customerLedger.ts — the
+     * two must agree, because the same invoice is shown from both (this side
+     * serves /api/sales and the printed reports; that side derives the
+     * screens from /app-data). The rule is stated once there in full; the
+     * short version:
+     *
+     *   1. A credit naming an invoice settles that invoice, wherever the two
+     *      rows fall relative to each other.
+     *   2. Whatever is left settles the oldest outstanding charge first.
+     *   3. Credit with nothing left to settle stays in hand and covers the
+     *      next charge raised — an existing advance covering a new sale.
+     *
+     * Payments here are customer-level: only a paid-at-sale amount carries a
+     * `reference_sale_id`. Reading an invoice's position from that column
+     * alone — which is what `SaleController` and `ReportController` both used
+     * to do — reports every ordinary Cash In as if it had never happened.
+     *
+     * @return array{paid_by_sale: array<int, float>, advance_by_sale: array<int, float>, unapplied_credit: float, balance: float}
+     */
+    public function settlement(int $customerId): array
+    {
+        $rows = CustomerTransaction::where('customer_id', $customerId)
+            ->orderBy('date')->orderBy('created_at')->orderBy('id')
+            ->get();
+
+        $saleIdOf = fn (CustomerTransaction $t) => $t->type === 'sale'
+            ? ($t->reference_sale_id ?? $t->id)
+            : null;
+
+        $paidBySale = [];
+        $advanceBySale = [];
+
+        // Pass 1 — credit earmarked for a named invoice, order-independent.
+        // An advance-adjustment carries its debit and credit on one row, and
+        // a paid-at-sale credit shares its invoice's timestamp; neither may
+        // have its attribution decided by tie-breaking.
+        $saleTotal = [];
+        foreach ($rows as $t) {
+            $saleId = $saleIdOf($t);
+            if ($saleId !== null) {
+                $saleTotal[$saleId] = ($saleTotal[$saleId] ?? 0) + (float) $t->debit;
+            }
+        }
+
+        $earmarked = [];
+        $freeCredit = [];
+
+        foreach ($rows as $t) {
+            if ((float) $t->credit <= 0) {
+                continue;
+            }
+
+            $target = $t->reference_sale_id;
+            if ($target !== null && isset($saleTotal[$target])) {
+                $room = $saleTotal[$target] - ($earmarked[$target] ?? 0);
+                $applied = max(0, min((float) $t->credit, $room));
+                if ($applied > 0) {
+                    $earmarked[$target] = ($earmarked[$target] ?? 0) + $applied;
+                    $paidBySale[$target] = ($paidBySale[$target] ?? 0) + $applied;
+                }
+                $freeCredit[$t->id] = (float) $t->credit - $applied;
+            } else {
+                $freeCredit[$t->id] = (float) $t->credit;
+            }
+        }
+
+        // Pass 2 — everything else, oldest charge first.
+        $open = [];
+        $pool = 0.0;
+
+        foreach ($rows as $t) {
+            if ((float) $t->debit > 0) {
+                $saleId = $saleIdOf($t);
+                $outstanding = (float) $t->debit - ($saleId !== null ? ($earmarked[$saleId] ?? 0) : 0);
+
+                if ($outstanding > self::EPSILON) {
+                    $fromPool = min($pool, $outstanding);
+                    if ($fromPool > 0) {
+                        $pool -= $fromPool;
+                        $outstanding -= $fromPool;
+                        if ($saleId !== null) {
+                            $paidBySale[$saleId] = ($paidBySale[$saleId] ?? 0) + $fromPool;
+                            $advanceBySale[$saleId] = ($advanceBySale[$saleId] ?? 0) + $fromPool;
+                        }
+                    }
+                    if ($outstanding > self::EPSILON) {
+                        $open[] = ['sale_id' => $saleId, 'outstanding' => $outstanding];
+                    }
+                }
+            }
+
+            $remaining = $freeCredit[$t->id] ?? 0;
+            if ($remaining <= self::EPSILON) {
+                continue;
+            }
+
+            foreach ($open as $i => $charge) {
+                if ($remaining <= self::EPSILON) {
+                    break;
+                }
+                $applied = min($remaining, $charge['outstanding']);
+                $open[$i]['outstanding'] -= $applied;
+                $remaining -= $applied;
+                if ($charge['sale_id'] !== null) {
+                    $paidBySale[$charge['sale_id']] = ($paidBySale[$charge['sale_id']] ?? 0) + $applied;
+                }
+            }
+
+            $open = array_values(array_filter($open, fn ($c) => $c['outstanding'] > self::EPSILON));
+            $pool += $remaining;
+        }
+
+        return [
+            'paid_by_sale' => $paidBySale,
+            'advance_by_sale' => $advanceBySale,
+            'unapplied_credit' => $pool,
+            'balance' => array_sum(array_column($open, 'outstanding')) - $pool,
+        ];
+    }
+
+    /**
+     * How much has settled one sale, and how much of that came from credit
+     * the customer already held — the two figures an invoice's status needs.
+     *
+     * @return array{paid: float, covered_by_advance: float}
+     */
+    public function saleSettlement(int $customerId, int $saleId): array
+    {
+        $settlement = $this->settlement($customerId);
+
+        return [
+            'paid' => (float) ($settlement['paid_by_sale'][$saleId] ?? 0),
+            'covered_by_advance' => (float) ($settlement['advance_by_sale'][$saleId] ?? 0),
+        ];
+    }
+
+    /**
+     * An invoice's status, from figures {@see settlement()} produced.
+     *
+     * 'advance' is its own case rather than a flavour of 'paid': both mean
+     * nothing is owed, but 'advance' says the invoice was covered by credit
+     * the customer already held, not by money received for it.
+     */
+    public static function statusFor(float $total, float $paid, float $coveredByAdvance = 0): string
+    {
+        if ($total > 0 && $paid >= $total - self::EPSILON) {
+            return $coveredByAdvance > self::EPSILON ? 'advance' : 'paid';
+        }
+
+        return $paid > self::EPSILON ? 'partial' : 'due';
+    }
+
     public function totals(int $customerId): array
     {
         $rows = CustomerTransaction::where('customer_id', $customerId)->get();

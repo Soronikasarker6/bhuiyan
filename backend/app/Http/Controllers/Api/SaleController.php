@@ -5,9 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Exceptions\InsufficientStockException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreSaleRequest;
-use App\Models\CustomerTransaction;
 use App\Models\Sale;
 use App\Services\AuditLogger;
+use App\Services\CustomerLedgerService;
 use App\Services\SalesService;
 use App\Support\AuditAction;
 use App\Support\AuditEntity;
@@ -19,6 +19,7 @@ class SaleController extends Controller
     public function __construct(
         private SalesService $sales,
         private AuditLogger $audit,
+        private CustomerLedgerService $customerLedger,
     ) {}
 
     public function index(Request $request)
@@ -167,13 +168,15 @@ class SaleController extends Controller
 
         $totalAmount = $items->sum('amount');
         $totalWeightTon = $items->sum('weight_ton');
-        $amountPaid = (float) CustomerTransaction::where('reference_sale_id', $sale->id)
-            ->whereIn('type', ['payment', 'advance_adjustment'])
-            ->sum('credit');
+
+        // What has settled this invoice comes from the one allocator that
+        // also produces the customer's balance — not from a second sum of
+        // `reference_sale_id` credits, which counts only the amount collected
+        // at the moment of sale and reports every later Cash In as if it had
+        // never happened.
+        $settled = $this->customerLedger->saleSettlement((int) $sale->customer_id, (int) $sale->id);
+        $amountPaid = min($totalAmount, $settled['paid']);
         $amountDue = max(0.0, $totalAmount - $amountPaid);
-        $status = $totalAmount > 0 && $amountPaid >= $totalAmount
-            ? 'paid'
-            : ($amountPaid > 0 ? 'partial' : 'due');
 
         return array_merge($sale->toArray(), [
             'customer_name' => $sale->customer?->name,
@@ -182,7 +185,8 @@ class SaleController extends Controller
             'total_weight_ton' => $totalWeightTon,
             'amount_paid' => $amountPaid,
             'amount_due' => $amountDue,
-            'status' => $status,
+            'covered_by_advance' => $settled['covered_by_advance'],
+            'status' => CustomerLedgerService::statusFor($totalAmount, $amountPaid, $settled['covered_by_advance']),
         ]);
     }
 }
