@@ -11,6 +11,7 @@ import {
   defaultCashAccountId,
   describeLedgerFilters,
   idsToRemoveWith,
+  ledgerRowEditKind,
   ledgerFiltersActive,
   monthMovement,
   totalBalances,
@@ -338,5 +339,28 @@ describe('companyCostCategoryTotals / companyCostsForMonth', () => {
   it('a selection for a different month has no effect', () => {
     const selections: CompanyCostSelection[] = [{ id: 'sel-1', monthKey: '2026-08', categoryId: 'cat-salary' }]
     expect(companyCostsForMonth(transactions, categories, selections, '2026-09')).toBe(0)
+  })
+})
+
+describe('which edit a Cash & Bank row offers', () => {
+  it('sends a customer payment to the payment editor, not the cash-entry form', () => {
+    // Editing this as a plain cash row would move the register without
+    // moving the customer's ledger with it.
+    expect(ledgerRowEditKind({ customerTransactionId: 'ct-1' })).toBe('payment')
+  })
+
+  it('offers no edit on the row a sale posted', () => {
+    // It belongs to its invoice; it is changed by editing that sale.
+    expect(ledgerRowEditKind({ referenceSaleId: 's-1' })).toBe('none')
+  })
+
+  it('edits an ordinary receipt, payment or transfer leg in place', () => {
+    expect(ledgerRowEditKind({})).toBe('entry')
+  })
+
+  it('treats a payment row as a payment even if it also names a sale', () => {
+    // Both set is not a shape the app writes today, but the pairing with the
+    // customer ledger is the stronger constraint and must win if it ever is.
+    expect(ledgerRowEditKind({ customerTransactionId: 'ct-1', referenceSaleId: 's-1' })).toBe('payment')
   })
 })

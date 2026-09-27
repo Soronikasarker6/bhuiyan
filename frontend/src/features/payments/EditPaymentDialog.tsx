@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Dialog } from '@ui5/webcomponents-react/Dialog'
 import { Bar } from '@ui5/webcomponents-react/Bar'
-import type { Account, CustomerLedgerRow } from '@/types'
+import type { Account, CustomerTransaction } from '@/types'
 import { Field } from '@/components/Field'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
@@ -41,7 +41,8 @@ export function EditPaymentDialog({
   onOpenChange,
   onSubmit,
 }: {
-  row: (CustomerLedgerRow & { customerName?: string }) | null
+  /** Widened from CustomerLedgerRow: this dialog never reads a running balance, and the Cash & Bank register has no balance to give it. */
+  row: (CustomerTransaction & { customerName?: string }) | null
   accounts: Account[]
   onOpenChange: (open: boolean) => void
   onSubmit: (values: PaymentUpdateInput) => void | Promise<void>

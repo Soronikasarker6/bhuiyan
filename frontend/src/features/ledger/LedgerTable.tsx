@@ -26,7 +26,13 @@ import { Money } from '@/components/Money'
 import { ReasonDialog } from '@/components/ReasonDialog'
 import { EditTransactionDialog } from '@/features/ledger/EditTransactionDialog'
 import type { TransactionUpdateInput, TransferUpdateInput } from '@/hooks/useAppData'
-import { buildLedgerRows, idsToRemoveWith, summariseRows, type LedgerFilters } from '@/utils/ledger'
+import {
+  buildLedgerRows,
+  idsToRemoveWith,
+  ledgerRowEditKind,
+  summariseRows,
+  type LedgerFilters,
+} from '@/utils/ledger'
 import { customerNameOf } from '@/utils/customerLedger'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
@@ -55,6 +61,7 @@ export function LedgerTable({
   customers = [],
   onDelete,
   onEdit,
+  onEditPayment,
   toolbar,
   filters,
   onFiltersChange,
@@ -68,6 +75,12 @@ export function LedgerTable({
   onDelete: (ids: string[], reason?: string) => void | Promise<unknown>
   /** Omitted where editing isn't offered (the Reports preview, say) — the pencil then never appears. */
   onEdit?: (id: string, values: TransactionUpdateInput | TransferUpdateInput) => void | Promise<unknown>
+  /**
+   * A customer payment's cash row, handed back so the page can open the
+   * payment editor — the one that moves the customer ledger and this
+   * register together. Without it those rows show no pencil.
+   */
+  onEditPayment?: (row: LedgerRow) => void
   toolbar?: React.ReactNode
   className?: string
   /**
@@ -81,6 +94,7 @@ export function LedgerTable({
 }) {
   const canDelete = usePermission(PERMISSIONS.LEDGER_DELETE)
   const canEdit = usePermission(PERMISSIONS.LEDGER_EDIT)
+  const canEditPayment = usePermission(PERMISSIONS.CASH_IN_EDIT)
   const [page, setPage] = useState(1)
   const [pending, setPending] = useState<LedgerRow | null>(null)
   const [editing, setEditing] = useState<LedgerRow | null>(null)
@@ -335,11 +349,28 @@ export function LedgerTable({
 
                   <TableCell>
                     <span className="flex items-center justify-end gap-0.5">
-                      {/* A customer payment and a "paid at sale" row are each
-                          one half of a larger event with its own edit screen,
-                          so the pencil is not offered on them here — the
-                          backend refuses those edits for the same reason. */}
-                      {canEdit && onEdit && !row.customerTransactionId && !row.referenceSaleId && (
+                      {/* A customer payment is one half of a larger event, so
+                          it is not edited as a plain cash row — that would
+                          move this register without moving the customer's
+                          ledger with it. It gets the payment editor instead,
+                          which updates both. A "paid at sale" row has no edit
+                          path at all: it belongs to its invoice.
+
+                          Permission follows the event, not the screen: editing
+                          a payment needs CASH_IN_EDIT, editing a plain cash
+                          entry needs LEDGER_EDIT. */}
+                      {ledgerRowEditKind(row) === 'payment' && canEditPayment && onEditPayment && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground hover:text-foreground"
+                          onClick={() => onEditPayment(row)}
+                          aria-label={`Edit the customer payment from ${formatDate(row.date)}`}
+                        >
+                          <Pencil />
+                        </Button>
+                      )}
+                      {ledgerRowEditKind(row) === 'entry' && canEdit && onEdit && (
                         <Button
                           variant="ghost"
                           size="icon-sm"

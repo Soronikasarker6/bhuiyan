@@ -426,3 +426,33 @@ export function categoryBreakdown(
     .map(([category, value]) => ({ category, ...value }))
     .sort((a, b) => b.amount - a.amount)
 }
+
+/**
+ * Which edit a Cash & Bank row offers, if any.
+ *
+ * Not every row in this register is a thing you can correct here:
+ *
+ *  - `payment` — the cash half of a customer payment. It has to be edited
+ *    through the payment editor, which moves the customer's ledger with it;
+ *    editing it as a plain cash row would change this register alone and
+ *    leave the customer credited for money that no longer matches.
+ *  - `entry` — an ordinary receipt, payment or transfer leg. Edited in place
+ *    here.
+ *  - `none` — the row a sale's "paid at sale" amount posted. It belongs to
+ *    its invoice and has no meaning apart from it, so it is changed by
+ *    editing that sale, not from here.
+ *
+ * Stated as a function because it decides which of two different dialogs
+ * opens, and because getting it wrong is silent: the register looks right and
+ * the customer's balance quietly stops matching it.
+ */
+export type LedgerRowEdit = 'payment' | 'entry' | 'none'
+
+export function ledgerRowEditKind(row: {
+  customerTransactionId?: string
+  referenceSaleId?: string
+}): LedgerRowEdit {
+  if (row.customerTransactionId) return 'payment'
+  if (row.referenceSaleId) return 'none'
+  return 'entry'
+}

@@ -11,13 +11,19 @@ import { PageSkeleton } from '@/components/PageSkeleton'
 import { ExportMenu } from '@/components/ExportMenu'
 import { TransactionForm, NO_CUSTOMER, type TransactionSubmit } from '@/features/ledger/TransactionForm'
 import { LedgerTable } from '@/features/ledger/LedgerTable'
+import { EditPaymentDialog } from '@/features/payments/EditPaymentDialog'
 import { BalanceSummary } from '@/features/dashboard/BalanceSummary'
 import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
-import { useAppData, type TransactionUpdateInput, type TransferUpdateInput } from '@/hooks/useAppData'
+import {
+  useAppData,
+  type PaymentUpdateInput,
+  type TransactionUpdateInput,
+  type TransferUpdateInput,
+} from '@/hooks/useAppData'
 import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
-import type { Transaction } from '@/types'
+import type { CustomerTransaction, Transaction } from '@/types'
 import {
   accountBalances,
   buildLedgerRows,
@@ -28,7 +34,7 @@ import {
   totalBalances,
   type LedgerFilters,
 } from '@/utils/ledger'
-import { customerBalance, transactionsForCustomer } from '@/utils/customerLedger'
+import { customerBalance, customerNameOf, transactionsForCustomer } from '@/utils/customerLedger'
 import { downloadTextFile } from '@/utils/download'
 import { formatCurrency, formatDate, monthKeyOf, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
@@ -40,13 +46,14 @@ import { now, uid } from '@/utils/id'
  * they are the sum of the entries, so the two can never disagree.
  */
 export default function LedgerPage() {
-  const { data, loading, update, recordPayment, updateTransaction, voidTransaction } = useAppData()
+  const { data, loading, update, recordPayment, updatePayment, updateTransaction, voidTransaction } = useAppData()
   const { print } = usePrint()
   const canCreate = usePermission(PERMISSIONS.LEDGER_CREATE)
 
   // Owned here, not inside LedgerTable, so Print/Export can build a PDF from
   // the exact same filtered rows the table is showing (§6/§7 of the brief).
   const [filters, setFilters] = useState<LedgerFilters>({})
+  const [editingPayment, setEditingPayment] = useState<(CustomerTransaction & { customerName?: string }) | null>(null)
 
   const balances = useMemo(
     () => accountBalances(data.accounts, data.transactions),
@@ -200,6 +207,49 @@ export default function LedgerPage() {
       })
     },
     [data.transactions, voidTransaction],
+  )
+
+  /**
+   * A customer payment shown here is the cash half of one event. Editing it
+   * has to move the customer's ledger too, so the pencil on those rows opens
+   * the same payment editor the Cash In screen uses rather than the plain
+   * cash-entry form — one dialog, one backend path, both ledgers recalculated
+   * together.
+   */
+  const openPaymentEditor = useCallback(
+    (row: { customerTransactionId?: string }) => {
+      const payment = data.customerTransactions.find((t) => t.id === row.customerTransactionId)
+      if (!payment) {
+        toast.error('Could not open that payment', {
+          description: 'The customer record behind this entry is no longer available — reload and try again.',
+        })
+        return
+      }
+
+      setEditingPayment({ ...payment, customerName: customerNameOf(data.customers, payment.customerId) })
+    },
+    [data.customerTransactions, data.customers],
+  )
+
+  const savePaymentEdit = useCallback(
+    async (values: PaymentUpdateInput) => {
+      if (!editingPayment) return
+
+      try {
+        await updatePayment(editingPayment.id, values)
+      } catch (error) {
+        toast.error('Could not update the payment', {
+          description: error instanceof Error ? error.message : undefined,
+        })
+        return
+      }
+
+      toast.success('Payment updated', {
+        description: `${formatCurrency(values.amount)} · the customer ledger and this register were both recalculated.`,
+      })
+      setEditingPayment(null)
+    },
+    [editingPayment, updatePayment],
   )
 
   /**
@@ -405,9 +455,20 @@ export default function LedgerPage() {
         customers={data.customers}
         onDelete={removeTransactions}
         onEdit={editTransaction}
+        onEditPayment={openPaymentEditor}
         filters={filters}
         onFiltersChange={setFilters}
         className="mt-4"
+      />
+
+      {/* The same editor the Cash In screen uses — so a payment corrected
+          from either screen goes through one path and both ledgers move
+          together. */}
+      <EditPaymentDialog
+        row={editingPayment}
+        accounts={data.accounts}
+        onOpenChange={(open) => !open && setEditingPayment(null)}
+        onSubmit={savePaymentEdit}
       />
     </div>
   )
