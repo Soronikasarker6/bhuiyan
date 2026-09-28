@@ -3,6 +3,8 @@
 use App\Exceptions\BusinessRuleException;
 use App\Exceptions\InsufficientStockException;
 use App\Exceptions\ShipmentClosedException;
+use App\Services\SessionPolicy;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -37,6 +39,25 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (InsufficientStockException|ShipmentClosedException|BusinessRuleException $e, Request $request) {
             if ($request->is('api/*')) {
                 return response()->json(['message' => $e->getMessage()], 422);
+            }
+        });
+
+        // Always a JSON 401 for the API — never the default redirect to a
+        // `login` route this backend doesn't have — carrying why, when the
+        // session policy was what refused the token, so the client can say
+        // "your session has expired" rather than a bare "unauthenticated".
+        $exceptions->render(function (AuthenticationException $e, Request $request) {
+            if ($request->is('api/*')) {
+                $reason = $request->attributes->get(SessionPolicy::REQUEST_ATTRIBUTE);
+
+                return response()->json([
+                    'message' => match ($reason) {
+                        null => 'Unauthenticated.',
+                        SessionPolicy::REASON_DEACTIVATED => 'This account has been deactivated. Contact an administrator.',
+                        default => 'Your session has expired. Please log in again.',
+                    },
+                    'reason' => $reason ?? 'unauthenticated',
+                ], 401);
             }
         });
 

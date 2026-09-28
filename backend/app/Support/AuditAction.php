@@ -40,6 +40,12 @@ class AuditAction
 
     public const LOGOUT = 'LOGOUT';
 
+    /** A sign-in ended by the server — idle timeout, the absolute lifetime, or a deactivated account. */
+    public const SESSION_EXPIRED = 'SESSION_EXPIRED';
+
+    /** A rejected sign-in attempt — wrong credentials or a deactivated account. */
+    public const LOGIN_FAILED = 'LOGIN_FAILED';
+
     public const PASSWORD_CHANGE = 'PASSWORD_CHANGE';
 
     /** A role assignment or a role's permission set changing — who can do what. */

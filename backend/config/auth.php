@@ -114,4 +114,27 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Sign-in Session Policy
+    |--------------------------------------------------------------------------
+    |
+    | How long one sign-in (one Sanctum personal access token) stays usable.
+    | Enforced server-side on every authenticated request by
+    | App\Services\SessionPolicy — the frontend only reads these values back
+    | to warn the user in time; it never decides validity itself.
+    |
+    | max_lifetime: minutes from sign-in after which the token is dead no
+    | matter how active the user is. Activity never extends it.
+    |
+    | idle_timeout: minutes without an authenticated request after which the
+    | token is dead, even if max_lifetime has not been reached.
+    |
+    */
+
+    'session' => [
+        'max_lifetime' => (int) env('AUTH_SESSION_MAX_LIFETIME', 480),
+        'idle_timeout' => (int) env('AUTH_SESSION_IDLE_TIMEOUT', 60),
+    ],
+
 ];

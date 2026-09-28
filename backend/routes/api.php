@@ -30,7 +30,7 @@ use App\Http\Controllers\Api\WastageEntryController;
 use App\Support\Permissions as P;
 use Illuminate\Support\Facades\Route;
 
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
 // Unauthenticated on purpose — the public landing page's Contact section
 // reads this. Every field CompanyProfile carries (name, tagline, owner,
@@ -41,9 +41,13 @@ Route::post('/login', [AuthController::class, 'login']);
 // duplicate of it.
 Route::get('/public/company-profile', [CompanyProfileController::class, 'show']);
 
+// Every route in here is held to the sign-in session policy (8-hour absolute
+// lifetime, 60-minute idle timeout — config/auth.php `session`) by
+// SessionPolicy, which Sanctum consults for every bearer token.
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+    Route::post('/session/keep-alive', [AuthController::class, 'keepAlive']);
 
     // The shared read bootstrap every page needs — reachable by any
     // authenticated user; the frontend hides pages/nav/actions and every
