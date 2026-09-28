@@ -1,4 +1,4 @@
-import { http, setToken } from './httpClient'
+import { http, recordSession, setToken, type SessionInfo } from './httpClient'
 import { mapEntity } from './mappers'
 
 export interface AuthUser {
@@ -15,10 +15,13 @@ export interface AuthUser {
 
 export const authService = {
   async login(email: string, password: string): Promise<AuthUser> {
-    const { token, user } = await http.post<{ token: string; user: unknown }>('/login', {
-      email,
-      password,
-    })
+    const { token, user, session } = await http.post<{ token: string; user: unknown; session?: SessionInfo }>(
+      '/login',
+      { email, password },
+    )
+    // Timing first: the token write notifies listeners, and they should
+    // already see the new sign-in's lifetime.
+    recordSession(session)
     setToken(token)
     return mapEntity<AuthUser>(user)
   },
@@ -31,7 +34,16 @@ export const authService = {
     }
   },
 
+  /** `session` rides along with the user; it is split off so it never lands on `AuthUser`. */
   async me(): Promise<AuthUser> {
-    return mapEntity<AuthUser>(await http.get('/me'))
+    const { session, ...user } = await http.get<{ session?: SessionInfo } & Record<string, unknown>>('/me')
+    recordSession(session)
+    return mapEntity<AuthUser>(user)
+  },
+
+  /** "Continue session" — renews the idle timer only; the backend never extends the absolute limit. */
+  async keepAlive(): Promise<void> {
+    const { session } = await http.post<{ session?: SessionInfo }>('/session/keep-alive')
+    recordSession(session)
   },
 }

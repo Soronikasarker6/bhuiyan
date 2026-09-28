@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { MessageStrip } from '@ui5/webcomponents-react/MessageStrip'
 import { Field } from '@/components/Field'
 import { StoneMark } from '@/components/StoneMark'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/hooks/useAuth'
+import { ApiError } from '@/services/api/httpClient'
 
 /**
  * The only route that exists outside `AppLayout` in the backend-connected
@@ -13,7 +15,7 @@ import { useAuth } from '@/hooks/useAuth'
  * never renders this at all (there is no backend to sign in to).
  */
 export default function LoginPage() {
-  const { login } = useAuth()
+  const { login, sessionNotice } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [email, setEmail] = useState('')
@@ -32,8 +34,12 @@ export default function LoginPage() {
     try {
       await login(email, password)
       navigate(from, { replace: true })
-    } catch {
-      setError('Those credentials were not recognised. Check the email and password and try again.')
+    } catch (err) {
+      setError(
+        err instanceof ApiError && err.status === 429
+          ? 'Too many sign-in attempts. Wait a minute and try again.'
+          : 'Those credentials were not recognised. Check the email and password and try again.',
+      )
     } finally {
       setSubmitting(false)
     }
@@ -49,6 +55,14 @@ export default function LoginPage() {
           <h1 className="mt-3 font-display text-lg font-semibold">BHUIYAN INDUSTRY</h1>
           <p className="mt-0.5 text-xs text-muted-foreground">Sign in to continue</p>
         </div>
+
+        {/* Why the last sign-in ended (expired, deactivated, signed out in
+            another tab) — set by AuthProvider, cleared by the next login. */}
+        {sessionNotice && (
+          <MessageStrip design="Critical" hideCloseButton className="mb-4">
+            {sessionNotice}
+          </MessageStrip>
+        )}
 
         <form onSubmit={submit} className="space-y-3">
           <Field label="Email" htmlFor="login-email">

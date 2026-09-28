@@ -22,6 +22,8 @@ export type AuditActionName =
   | 'REOPEN_MONTH'
   | 'LOGIN'
   | 'LOGOUT'
+  | 'SESSION_EXPIRED'
+  | 'LOGIN_FAILED'
   | 'PASSWORD_CHANGE'
   | 'PERMISSION_CHANGE'
   | 'DATA_RESET'
