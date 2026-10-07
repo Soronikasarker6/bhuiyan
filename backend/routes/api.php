@@ -151,9 +151,10 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middlewareFor('store', 'permission:'.P::RAW_MATERIAL_CREATE)
         ->middlewareFor('destroy', 'permission:'.P::RAW_MATERIAL_DELETE);
 
-    Route::apiResource('production-entries', ProductionEntryController::class)->only(['index', 'store', 'destroy'])
+    Route::apiResource('production-entries', ProductionEntryController::class)->only(['index', 'store', 'update', 'destroy'])
         ->middlewareFor('index', 'permission:'.P::PRODUCTION_VIEW)
         ->middlewareFor('store', 'permission:'.P::PRODUCTION_CREATE)
+        ->middlewareFor('update', 'permission:'.P::PRODUCTION_EDIT)
         ->middlewareFor('destroy', 'permission:'.P::PRODUCTION_DELETE);
     Route::middleware('permission:'.P::PRODUCTION_VIEW)->group(function () {
         Route::get('products/{product}/mesh-stock', [ProductStockController::class, 'meshStock']);

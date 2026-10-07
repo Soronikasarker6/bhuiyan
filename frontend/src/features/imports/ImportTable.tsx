@@ -45,7 +45,9 @@ export function ImportTable({
     rows,
     searchText: (r) => `${r.productName} ${r.shipName ?? ''} ${r.truckNo ?? ''} ${r.serialNo ?? ''} ${r.notes ?? ''}`,
     sorters: {
-      date: (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0),
+      // Same-day entries fall back to entry order, so the latest one is on top.
+      date: (a, b) =>
+        a.date < b.date ? -1 : a.date > b.date ? 1 : a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0,
       product: (a, b) => a.productName.localeCompare(b.productName),
       truck: (a, b) => (a.truckNo ?? '').localeCompare(b.truckNo ?? ''),
       gross: (a, b) => a.grossWeightKg - b.grossWeightKg,

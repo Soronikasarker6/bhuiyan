@@ -26,6 +26,17 @@ export const productionService = {
       }),
     )
   },
+  async update(id: ID, data: ProductionInput): Promise<ProductionEntry> {
+    return mapEntity<ProductionEntry>(
+      await http.put(`/production-entries/${id}`, {
+        date: data.date,
+        product_id: data.productId,
+        mesh_id: data.meshId,
+        bags: data.bags,
+        notes: data.notes,
+      }),
+    )
+  },
   async remove(id: ID): Promise<void> {
     await http.delete(`/production-entries/${id}`)
   },

@@ -31,7 +31,7 @@ import { cn } from '@/utils/cn'
  * it can never land inside a shipment cycle that has already closed.
  */
 
-function buildSchema(
+export function buildSchema(
   availableTon: (productId: string) => number,
   cycleClosed: (productId: string, date: string) => boolean,
   productName: (productId: string) => string,

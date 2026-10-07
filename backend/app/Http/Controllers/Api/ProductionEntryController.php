@@ -70,6 +70,31 @@ class ProductionEntryController extends Controller
         return response()->json($entry, 201);
     }
 
+    public function update(StoreProductionEntryRequest $request, ProductionEntry $productionEntry)
+    {
+        $before = $this->auditSnapshot($productionEntry);
+
+        try {
+            $entry = $this->inventory->updateProduction($productionEntry->id, $request->validated());
+        } catch (ShipmentClosedException|InsufficientStockException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $this->audit->record(AuditEntity::PRODUCTION_ENTRY, $entry->id, AuditAction::UPDATE, [
+            'record' => $this->reference($entry),
+            'before' => $before,
+            'after' => $this->auditSnapshot($entry),
+            'reason' => $request->input('reason'),
+            'summary' => sprintf(
+                'Edited production: %d bags of Mesh %s',
+                (int) $entry->bags,
+                $entry->mesh?->name ?? $entry->mesh_id,
+            ),
+        ]);
+
+        return response()->json($entry);
+    }
+
     public function destroy(Request $request, ProductionEntry $productionEntry)
     {
         $productionEntry->loadMissing(['product', 'mesh']);

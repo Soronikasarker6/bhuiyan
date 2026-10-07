@@ -536,6 +536,70 @@ class InventoryService
         });
     }
 
+    /**
+     * Edit one production entry (date, product, mesh, bags, notes).
+     *
+     * The same rules as recording it, re-checked after the change: neither the
+     * old nor the new date may sit inside a closed shipment cycle, the new
+     * product's raw stock may not go negative, and the bags it used to supply
+     * may not already have been sold — the old (product, mesh) bag stock must
+     * not dip below zero on any date where it was not already short.
+     */
+    public function updateProduction(int $entryId, array $attributes): ProductionEntry
+    {
+        return DB::transaction(function () use ($entryId, $attributes) {
+            $entry = ProductionEntry::lockForUpdate()->findOrFail($entryId);
+            $oldProductId = (int) $entry->product_id;
+            $oldMeshId = (int) $entry->mesh_id;
+            $oldDate = $entry->date->toDateString();
+
+            if ($this->cycleStatusForDate($oldProductId, $oldDate) === 'closed') {
+                throw new ShipmentClosedException('This entry is inside a closed shipment cycle. Reopen that shipment first, then edit.');
+            }
+            $newProductId = (int) $attributes['product_id'];
+            if ($this->cycleStatusForDate($newProductId, $attributes['date']) === 'closed') {
+                $product = Product::find($newProductId);
+                throw new ShipmentClosedException(
+                    "This falls inside a closed shipment cycle for {$product?->name}. Reopen that shipment first if this entry must be moved there."
+                );
+            }
+
+            $lowestBefore = $this->lowestBagStock($oldProductId, $oldMeshId);
+
+            $entry->update($attributes);
+            $entry->load('mesh');
+            $tons = ((float) $entry->bags * (float) $entry->mesh->bag_kg) / 1000;
+
+            InventoryTransaction::where('source_type', 'production')->where('source_id', $entry->id)
+                ->update(['product_id' => $newProductId, 'quantity_ton' => $tons]);
+
+            $available = $this->currentRawStock($newProductId);
+            if ($available < 0) {
+                $product = Product::find($newProductId);
+                throw new InsufficientStockException(
+                    "This edit would take {$product?->name} raw stock negative by ".round(abs($available), 3).' Ton.'
+                );
+            }
+
+            $lowestAfter = $this->lowestBagStock($oldProductId, $oldMeshId);
+            if ($lowestAfter < 0 && $lowestAfter < $lowestBefore) {
+                throw new InsufficientStockException(
+                    'These bags have already been sold — this edit would take bag stock negative by '.abs($lowestAfter).' bags.'
+                );
+            }
+
+            return $entry->fresh();
+        });
+    }
+
+    /** The lowest running bag stock reached on any date for one (product, mesh). */
+    private function lowestBagStock(int $productId, int $meshId): int
+    {
+        $rows = $this->stockLedger($productId, $meshId)['rows'];
+
+        return $rows->isEmpty() ? 0 : (int) $rows->min('stock_bags');
+    }
+
     /** Delete a wastage/production entry and its matching audit-log OUT row. */
     public function deleteConsumption(string $sourceType, int $sourceId): void
     {

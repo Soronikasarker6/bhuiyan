@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Boxes, Factory, Package, Receipt, Scale, Trash2 } from 'lucide-react'
+import { Boxes, Factory, Package, Receipt, Pencil, Scale, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Section } from '@/components/PageHeader'
 import { StatCard, StatGrid } from '@/components/StatCard'
@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ProductionEntryForm, type ProductionSubmit } from '@/features/production/ProductionEntryForm'
+import { EditProductionDialog } from '@/features/production/EditProductionDialog'
 import { MeshStockSummary } from '@/features/production/MeshStockSummary'
 import { ProductionStockTable, type StockLedgerDisplayRow } from '@/features/production/ProductionStockTable'
 import { useAppData } from '@/hooks/useAppData'
@@ -22,6 +23,7 @@ import type { ProductionEntry } from '@/types'
 import { activeProducts, activeMeshSizes, bagKgOf, meshSizeNameOf } from '@/utils/products'
 import {
   buildStockLedger,
+  editBagShortfall,
   meshStockSummary,
   productionRowsForProduct,
   todaysProductionBags,
@@ -30,7 +32,7 @@ import {
   totalStockBags,
   totalStockTon,
 } from '@/utils/productionStock'
-import { currentRawStockTon, cycleStatusForDate } from '@/utils/rawMaterial'
+import { allRawStockSummaries, currentRawStockTon, cycleStatusForDate } from '@/utils/rawMaterial'
 import { formatDate, formatNumber, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
 
@@ -46,14 +48,23 @@ import { now, uid } from '@/utils/id'
 export default function ProductionPage() {
   const { data, loading, update } = useAppData()
   const canCreate = usePermission(PERMISSIONS.PRODUCTION_CREATE)
+  const canEdit = usePermission(PERMISSIONS.PRODUCTION_EDIT)
   const canDelete = usePermission(PERMISSIONS.PRODUCTION_DELETE)
 
-  const products = useMemo(() => activeProducts(data.products), [data.products])
+  const products = useMemo(() => {
+    const active = activeProducts(data.products)
+    const imported = new Map(
+      allRawStockSummaries(active, data.rawMaterialImports, data.wastageEntries, data.productionEntries, (meshId) => bagKgOf(data.meshSizes, meshId))
+        .map((s) => [s.productId, s.importedTon]),
+    )
+    return [...active].sort((a, b) => (imported.get(b.id) ?? 0) - (imported.get(a.id) ?? 0))
+  }, [data.products, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes])
   const meshSizes = useMemo(() => activeMeshSizes(data.meshSizes), [data.meshSizes])
 
   const [activeProductId, setActiveProductId] = useState(products[0]?.id ?? '')
   const selectedProductId = products.some((p) => p.id === activeProductId) ? activeProductId : products[0]?.id ?? ''
   const [pendingDelete, setPendingDelete] = useState<ProductionEntry | null>(null)
+  const [editing, setEditing] = useState<ProductionEntry | null>(null)
 
   const today = todayISO()
 
@@ -125,6 +136,39 @@ export default function ProductionPage() {
       if (ok) toast.success('Production recorded', { description: `${formatNumber(values.bags)} bags` })
     },
     [data.productionEntries, update],
+  )
+
+  // While editing, the entry's own tonnage counts as available — it is being
+  // replaced, not added on top.
+  const editAvailableTon = useCallback(
+    (productId: string) =>
+      currentRawStockTon(
+        productId,
+        data.rawMaterialImports,
+        data.wastageEntries,
+        data.productionEntries.filter((e) => e.id !== editing?.id),
+        (meshId) => bagKgOf(data.meshSizes, meshId),
+      ),
+    [data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes, editing],
+  )
+
+  const editShortfall = useCallback(
+    (values: ProductionSubmit) =>
+      editing ? editBagShortfall(editing, values, data.productionEntries, data.saleItems, data.sales) : 0,
+    [editing, data.productionEntries, data.saleItems, data.sales],
+  )
+
+  const editEntry = useCallback(
+    async (values: ProductionSubmit) => {
+      if (!editing) return
+      const next: ProductionEntry = { ...editing, ...values, notes: values.notes?.trim() || undefined }
+      const ok = await update('productionEntries', data.productionEntries.map((e) => (e.id === editing.id ? next : e)))
+      if (ok) {
+        toast.success('Entry updated', { description: 'Stock has been recalculated.' })
+        setEditing(null)
+      }
+    },
+    [editing, data.productionEntries, update],
   )
 
   const deleteEntry = useCallback(
@@ -251,17 +295,36 @@ export default function ProductionPage() {
                     <TableCell numeric>{formatNumber(entry.bags)}</TableCell>
                     <TableCell className="max-w-[16rem] truncate text-muted-foreground">{entry.notes || '—'}</TableCell>
                     <TableCell numeric>
-                      {canDelete && (
-                        <Button
-                          size="icon-sm"
-                          variant="ghost"
-                          className="text-muted-foreground hover:text-destructive"
-                          onClick={() => setPendingDelete(entry)}
-                          aria-label="Delete entry"
-                        >
-                          <Trash2 />
-                        </Button>
-                      )}
+                      <div className="flex justify-end gap-1">
+                        {canEdit && (
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground"
+                            onClick={() => setEditing(entry)}
+                            disabled={rawMaterialCycleClosed(entry.productId, entry.date)}
+                            aria-label="Edit entry"
+                            title={
+                              rawMaterialCycleClosed(entry.productId, entry.date)
+                                ? 'Shipment closed — reopen it in Raw Material Import first'
+                                : undefined
+                            }
+                          >
+                            <Pencil />
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={() => setPendingDelete(entry)}
+                            aria-label="Delete entry"
+                          >
+                            <Trash2 />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -272,6 +335,17 @@ export default function ProductionPage() {
       </div>
 
       <ProductionStockTable rows={ledgerRows} />
+
+      <EditProductionDialog
+        entry={editing}
+        products={products}
+        meshSizes={meshSizes}
+        availableTon={editAvailableTon}
+        cycleClosed={rawMaterialCycleClosed}
+        soldShortfall={editShortfall}
+        onOpenChange={(open) => !open && setEditing(null)}
+        onSubmit={editEntry}
+      />
 
       <ConfirmDialog
         open={pendingDelete !== null}

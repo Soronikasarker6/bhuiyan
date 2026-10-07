@@ -107,6 +107,30 @@ export function availableBags(
   return buildStockLedger(productId, meshId, productionEntries, saleItems, sales).currentStockBags
 }
 
+function lowestStockBags(productId: ID, meshId: ID, productionEntries: ProductionEntry[], saleItems: SaleItem[], sales: Sale[]): number {
+  const { rows } = buildStockLedger(productId, meshId, productionEntries, saleItems, sales)
+  return rows.reduce((min, r) => Math.min(min, r.stockBags), 0)
+}
+
+/**
+ * How many bags short an edit to a production entry would leave the
+ * (product, mesh) it used to supply, against sales already made — 0 when the
+ * edit is fine. A ledger that was already short before the edit is only
+ * flagged if the edit makes it worse. Mirrors `InventoryService::updateProduction`.
+ */
+export function editBagShortfall(
+  original: ProductionEntry,
+  next: Pick<ProductionEntry, 'date' | 'productId' | 'meshId' | 'bags'>,
+  productionEntries: ProductionEntry[],
+  saleItems: SaleItem[],
+  sales: Sale[],
+): number {
+  const before = lowestStockBags(original.productId, original.meshId, productionEntries, saleItems, sales)
+  const edited = productionEntries.map((e) => (e.id === original.id ? { ...e, ...next } : e))
+  const after = lowestStockBags(original.productId, original.meshId, edited, saleItems, sales)
+  return after < 0 && after < before ? -after : 0
+}
+
 /** The §9 per-mesh breakdown for one product. */
 export function meshStockSummary(
   productId: ID,

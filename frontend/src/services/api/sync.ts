@@ -28,7 +28,7 @@ import { ledgerService } from './ledgerService'
  * the shape every page already calls — into the right REST requests, by
  * diffing against the array currently in memory. This is what lets almost
  * every page (Products, Mesh Sizes, Units, Accounts, Categories, Customers,
- * Import/Wastage/Production add-and-delete, the Ledger register, Monthly
+ * Import/Production add-edit-delete, Wastage add-and-delete, the Ledger register, Monthly
  * Closing) keep calling `update`/`updateMany` completely unchanged.
  *
  * Composite, multi-slice business actions that don't decompose into
@@ -125,10 +125,11 @@ const syncWastageEntries = createOnly<WastageEntry>(
   (id) => wastageService.remove(id),
 )
 
-const syncProductionEntries = createOnly<ProductionEntry>(
-  (p) => productionService.create({ date: p.date, productId: p.productId, meshId: p.meshId, bags: p.bags, notes: p.notes }),
-  (id) => productionService.remove(id),
-)
+const syncProductionEntries = simple<ProductionEntry>({
+  create: (p) => productionService.create({ date: p.date, productId: p.productId, meshId: p.meshId, bags: p.bags, notes: p.notes }),
+  update: (id, p) => productionService.update(id, { date: p.date, productId: p.productId, meshId: p.meshId, bags: p.bags, notes: p.notes }),
+  remove: (id) => productionService.remove(id),
+})
 
 /**
  * A raw material import entry — create/edit/delete only. Which shipment
