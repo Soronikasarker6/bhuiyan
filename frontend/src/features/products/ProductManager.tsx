@@ -12,7 +12,7 @@ import { Badge, Switch } from '@/components/ui/misc'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
-import { now, uid } from '@/utils/id'
+import { newestFirst, now, uid } from '@/utils/id'
 import { cn } from '@/utils/cn'
 
 /**
@@ -104,7 +104,7 @@ export function ProductManager({
         />
       ) : (
         <ul className="mb-4 space-y-2">
-          {products.map((product) => {
+          {newestFirst(products).map((product) => {
             const used = usageOf(product.id)
             const editing = editingId === product.id
 

@@ -17,7 +17,7 @@ import {
 import { SortableHead } from '@/components/SortableHead'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Button } from '@/components/ui/button'
-import { useSortableSearch } from '@/hooks/useSortableSearch'
+import { CREATED, useSortableSearch } from '@/hooks/useSortableSearch'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import { formatCurrency, formatDate, formatNumber, formatTons } from '@/utils/format'
@@ -54,7 +54,7 @@ export function ImportTable({
       tare: (a, b) => a.tareWeightKg - b.tareWeightKg,
       net: (a, b) => a.netWeightKg - b.netWeightKg,
     },
-    defaultSortKey: 'date',
+    defaultSortKey: CREATED,
   })
 
   const totals = importTotals(rows)

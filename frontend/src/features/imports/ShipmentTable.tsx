@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { SortableHead } from '@/components/SortableHead'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Button } from '@/components/ui/button'
-import { useSortableSearch } from '@/hooks/useSortableSearch'
+import { CREATED, useSortableSearch } from '@/hooks/useSortableSearch'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import { formatDate, formatDateTime, formatTons } from '@/utils/format'
@@ -70,7 +70,7 @@ export function ShipmentTable({
       wastage: (a, b) => a.wastageTon - b.wastageTon,
       closing: (a, b) => a.closingTon - b.closingTon,
     },
-    defaultSortKey: 'date',
+    defaultSortKey: CREATED,
   })
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))

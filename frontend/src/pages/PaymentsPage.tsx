@@ -25,6 +25,7 @@ import {
   transactionsForCustomer,
 } from '@/utils/customerLedger'
 import { formatCurrency, formatDate } from '@/utils/format'
+import { newestFirst } from '@/utils/id'
 
 type PaymentRow = CustomerLedgerRow & { customerName?: string }
 
@@ -52,13 +53,17 @@ export default function PaymentsPage() {
    */
   const paymentRows = useMemo(
     () =>
-      buildCustomerLedgerRows(
-        data.customerTransactions.filter((t) => t.type === 'payment'),
-        data.customerTransactions,
-      ).map((row) => ({
-        ...row,
-        customerName: customerNameOf(data.customers, row.customerId),
-      })),
+      // Each row keeps its own customer's balance at that moment; only the
+      // display order is newest-recorded first.
+      newestFirst(
+        buildCustomerLedgerRows(
+          data.customerTransactions.filter((t) => t.type === 'payment'),
+          data.customerTransactions,
+        ).map((row) => ({
+          ...row,
+          customerName: customerNameOf(data.customers, row.customerId),
+        })),
+      ),
     [data.customerTransactions, data.customers],
   )
 

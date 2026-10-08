@@ -10,7 +10,7 @@ import { Badge, Switch } from '@/components/ui/misc'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
-import { now, uid } from '@/utils/id'
+import { newestFirst, now, uid } from '@/utils/id'
 
 /**
  * Mesh / size — a global catalog, not scoped to any one product.
@@ -89,7 +89,7 @@ export function MeshSizeManager({
         />
       ) : (
         <ul className="mb-4 space-y-2">
-          {meshSizes.map((mesh) => {
+          {newestFirst(meshSizes).map((mesh) => {
             const used = usageOf(mesh.id)
 
             return (

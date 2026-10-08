@@ -40,7 +40,7 @@ import { PERMISSIONS } from '@/constants/permissions'
 import type { Account, AccountKind, AppUser, Category, Direction, ExpenseType, Role, UnitOfMeasure } from '@/types'
 import { balanceOf } from '@/utils/ledger'
 import { formatCurrency, formatDateTime } from '@/utils/format'
-import { now, uid } from '@/utils/id'
+import { newestFirst, now, uid } from '@/utils/id'
 import { cn } from '@/utils/cn'
 import { userService, type CreateUserInput, type UserInput } from '@/services/api/userService'
 import { roleService, type RoleInput } from '@/services/api/roleService'
@@ -218,7 +218,7 @@ function AccountsPanel() {
       description="Every ledger entry is recorded against one of these."
     >
       <ul className="mb-4 space-y-2">
-        {data.accounts.map((account) => {
+        {newestFirst(data.accounts).map((account) => {
           const used = usageOf(account.id)
           const balance = balanceOf(data.transactions, account.id)
           const editing = editingId === account.id
@@ -646,7 +646,7 @@ function UnitsPanel() {
         <EmptyState icon={Ruler} size="sm" title="No units yet" description="Add one below — Ton, KG, Bag, Piece…" />
       ) : (
         <ul className="mb-4 flex flex-wrap gap-1.5">
-          {data.unitsOfMeasure.map((unit) => {
+          {newestFirst(data.unitsOfMeasure).map((unit) => {
             const used = usageOf(unit)
             const editing = editingId === unit.id
 

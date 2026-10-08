@@ -32,7 +32,7 @@ import {
   totalStockBags,
   totalStockTon,
 } from '@/utils/productionStock'
-import { allRawStockSummaries, currentRawStockTon, cycleStatusForDate } from '@/utils/rawMaterial'
+import { currentRawStockTon, cycleStatusForDate } from '@/utils/rawMaterial'
 import { formatDate, formatNumber, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
 
@@ -51,14 +51,11 @@ export default function ProductionPage() {
   const canEdit = usePermission(PERMISSIONS.PRODUCTION_EDIT)
   const canDelete = usePermission(PERMISSIONS.PRODUCTION_DELETE)
 
-  const products = useMemo(() => {
-    const active = activeProducts(data.products)
-    const imported = new Map(
-      allRawStockSummaries(active, data.rawMaterialImports, data.wastageEntries, data.productionEntries, (meshId) => bagKgOf(data.meshSizes, meshId))
-        .map((s) => [s.productId, s.importedTon]),
-    )
-    return [...active].sort((a, b) => (imported.get(b.id) ?? 0) - (imported.get(a.id) ?? 0))
-  }, [data.products, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes])
+  // Z → A by name, so the order is the same on every install regardless of data.
+  const products = useMemo(
+    () => [...activeProducts(data.products)].sort((a, b) => b.name.localeCompare(a.name, undefined, { sensitivity: 'base' })),
+    [data.products],
+  )
   const meshSizes = useMemo(() => activeMeshSizes(data.meshSizes), [data.meshSizes])
 
   const [activeProductId, setActiveProductId] = useState(products[0]?.id ?? '')

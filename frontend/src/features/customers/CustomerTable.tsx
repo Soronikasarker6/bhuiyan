@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { SortableHead } from '@/components/SortableHead'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { useSortableSearch } from '@/hooks/useSortableSearch'
+import { CREATED, useSortableSearch } from '@/hooks/useSortableSearch'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import { formatDate } from '@/utils/format'
@@ -39,7 +39,7 @@ export function CustomerTable({
       due: (a, b) => totalsOf(a.id).totalDue - totalsOf(b.id).totalDue,
       advance: (a, b) => totalsOf(a.id).availableAdvance - totalsOf(b.id).availableAdvance,
     },
-    defaultSortKey: 'name',
+    defaultSortKey: CREATED,
     defaultDirection: 'asc',
   })
 

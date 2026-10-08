@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { SortableHead } from '@/components/SortableHead'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { useSortableSearch } from '@/hooks/useSortableSearch'
+import { CREATED, useSortableSearch } from '@/hooks/useSortableSearch'
 import { useAuth, usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import { formatDateTime } from '@/utils/format'
@@ -40,7 +40,7 @@ export function UserTable({
       name: (a, b) => a.name.localeCompare(b.name),
       created: (a, b) => a.createdAt.localeCompare(b.createdAt),
     },
-    defaultSortKey: 'name',
+    defaultSortKey: CREATED,
     defaultDirection: 'asc',
   })
 

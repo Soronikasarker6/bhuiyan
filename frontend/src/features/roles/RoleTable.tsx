@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
+import { newestFirst } from '@/utils/id'
 
 export function RoleTable({
   roles,
@@ -36,7 +37,7 @@ export function RoleTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {roles.map((role) => {
+            {newestFirst(roles).map((role) => {
               const isAdmin = role.name === 'Admin'
               return (
                 <TableRow key={role.id}>

@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { SortableHead } from '@/components/SortableHead'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Button } from '@/components/ui/button'
-import { useSortableSearch } from '@/hooks/useSortableSearch'
+import { CREATED, useSortableSearch } from '@/hooks/useSortableSearch'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import { formatDate, formatNumber, formatTons } from '@/utils/format'
@@ -31,7 +31,7 @@ export function WastageTable({
       product: (a, b) => a.productName.localeCompare(b.productName),
       quantity: (a, b) => a.quantityKg - b.quantityKg,
     },
-    defaultSortKey: 'date',
+    defaultSortKey: CREATED,
   })
 
   const totalKg = rows.reduce((s, r) => s + r.quantityKg, 0)

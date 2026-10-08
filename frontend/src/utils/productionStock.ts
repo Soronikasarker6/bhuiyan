@@ -11,6 +11,7 @@ import type {
 } from '@/types'
 import { activeMeshSizes } from './products'
 import { kgToTons } from './imports'
+import { compareCreated } from './id'
 
 /**
  * Production & stock — mesh by mesh, bag by bag.
@@ -219,5 +220,5 @@ export function productionRowsForProduct(
 ): ProductionEntry[] {
   return entries
     .filter((e) => e.productId === productId)
-    .sort((a, b) => (a.date === b.date ? (a.createdAt < b.createdAt ? 1 : -1) : a.date < b.date ? 1 : -1))
+    .sort((a, b) => compareCreated(b, a))
 }

@@ -1,6 +1,15 @@
 import { useMemo, useState } from 'react'
+import { compareCreated } from '@/utils/id'
 
 export type SortDirection = 'asc' | 'desc'
+
+/**
+ * `defaultSortKey` for "newest created on top" — the default for every entry
+ * register, so a row just added (even one back-dated) appears first. No
+ * column header is highlighted for it; clicking a header sorts by that column
+ * as before. Rows must carry `id` and, ideally, `createdAt`.
+ */
+export const CREATED = '__created'
 
 /**
  * Search + column sort for a table, in one hook.
@@ -41,7 +50,7 @@ export function useSortableSearch<T>({
     const needle = search.trim().toLowerCase()
     const filtered = needle ? rows.filter((r) => searchText(r).toLowerCase().includes(needle)) : rows
 
-    const sorter = sorters[sortKey]
+    const sorter = sortKey === CREATED ? (compareCreated as (a: T, b: T) => number) : sorters[sortKey]
     if (!sorter) return filtered
 
     const sorted = [...filtered].sort(sorter)
