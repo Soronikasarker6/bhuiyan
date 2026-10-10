@@ -25,6 +25,15 @@ class CompanyProfileController extends Controller
         return CompanyProfile::current();
     }
 
+    /** The logo image itself — public, like the rest of the company identity. */
+    public function logo()
+    {
+        $file = CompanyProfile::current()->logoFile();
+        abort_unless($file, 404);
+
+        return response()->file($file, ['Cache-Control' => 'public, max-age=86400']);
+    }
+
     public function update(Request $request)
     {
         $data = $request->validate([

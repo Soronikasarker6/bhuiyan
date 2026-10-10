@@ -124,6 +124,35 @@ class CompanyProfileTest extends TestCase
         $this->assertNotSame($firstPath, CompanyProfile::current()->logo_path);
     }
 
+    /** The logo is served through /api — the only path the live host routes to Laravel — and is public. */
+    public function test_the_logo_is_served_publicly_through_the_api(): void
+    {
+        Storage::fake('public');
+        $this->actingAsAdmin();
+
+        $this->post('/api/company-profile', [
+            'name' => 'BHUIYAN INDUSTRY',
+            // A real 1×1 PNG, so the served file is detected as an image without needing GD.
+            'logo' => UploadedFile::fake()->createWithContent('logo.png', base64_decode(
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+            )),
+        ])->assertOk();
+
+        $url = $this->getJson('/api/public/company-profile')->json('logo_url');
+        $this->assertStringContainsString('/api/public/company-logo?v=', $url);
+        $this->assertStringNotContainsString('/storage/', $url);
+
+        $this->app['auth']->forgetGuards();
+        $response = $this->get(parse_url($url, PHP_URL_PATH).'?'.parse_url($url, PHP_URL_QUERY));
+        $response->assertOk();
+        $this->assertStringStartsWith('image/', $response->headers->get('Content-Type'));
+    }
+
+    public function test_the_logo_route_is_404_when_no_logo_is_set(): void
+    {
+        $this->get('/api/public/company-logo')->assertNotFound();
+    }
+
     public function test_removing_the_logo_clears_the_file_and_the_column(): void
     {
         Storage::fake('public');

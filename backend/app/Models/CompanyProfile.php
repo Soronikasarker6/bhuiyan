@@ -39,8 +39,27 @@ class CompanyProfile extends Model
         ]);
     }
 
+    /**
+     * Served through the API (`GET /api/public/company-logo`), not as a
+     * `/storage/...` file URL: on the live host only `/api` reaches Laravel —
+     * the web root is the frontend build, so a storage URL fell through to the
+     * SPA's index.html and rendered as a broken image. `v` busts the browser
+     * cache whenever the logo is replaced.
+     */
     public function getLogoUrlAttribute(): ?string
     {
-        return $this->logo_path ? Storage::disk('public')->url($this->logo_path) : null;
+        if (! $this->logo_path) {
+            return null;
+        }
+
+        return url('/api/public/company-logo').'?v='.substr(md5($this->logo_path), 0, 12);
+    }
+
+    /** The stored logo file, or null when none is set or the file is missing. */
+    public function logoFile(): ?string
+    {
+        return $this->logo_path && Storage::disk('public')->exists($this->logo_path)
+            ? Storage::disk('public')->path($this->logo_path)
+            : null;
     }
 }

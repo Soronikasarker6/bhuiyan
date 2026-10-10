@@ -40,6 +40,7 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:lo
 // door onto the exact same `CompanyProfile::current()` record, not a
 // duplicate of it.
 Route::get('/public/company-profile', [CompanyProfileController::class, 'show']);
+Route::get('/public/company-logo', [CompanyProfileController::class, 'logo']);
 
 // Every route in here is held to the sign-in session policy (8-hour absolute
 // lifetime, 60-minute idle timeout — config/auth.php `session`) by
