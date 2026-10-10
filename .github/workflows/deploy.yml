@@ -198,33 +198,31 @@ jobs:
       # 11. Verify production frontend and API
       - name: Verify production URLs
         run: |
+          # Hostinger's CDN can answer GitHub's runners with 403 (bot
+          # protection) even when the site is up for real visitors. A 403/429
+          # is logged as a warning; anything else that isn't 2xx/3xx — a 5xx,
+          # a 404, or no response at all — still fails the run.
+          check() {
+            name="$1"; url="$2"; code=000
+            for attempt in 1 2 3; do
+              code=$(curl --silent --location --output /dev/null \
+                --write-out '%{http_code}' --max-time 30 \
+                -A "Mozilla/5.0 (deploy-check; GitHub Actions)" "$url" || true)
+              case "$code" in 2??|3??) break ;; esac
+              sleep 2
+            done
+            case "$code" in
+              2??|3??) echo "$name is responding ($code)." ;;
+              403|429) echo "::warning::$name returned $code to the GitHub runner — likely the CDN's bot protection, not an outage. Check $url in a browser." ;;
+              *) echo "::error::$name check failed ($code): $url"; return 1 ;;
+            esac
+          }
+
           echo "Checking production frontend..."
-
-          curl \
-            --fail \
-            --silent \
-            --show-error \
-            --location \
-            --retry 3 \
-            --retry-delay 2 \
-            --output /dev/null \
-            https://bhuiyanindustry.com/
-
-          echo "Frontend is responding."
+          check "Frontend" https://bhuiyanindustry.com/
 
           echo "Checking production API..."
-
-          curl \
-            --fail \
-            --silent \
-            --show-error \
-            --location \
-            --retry 3 \
-            --retry-delay 2 \
-            --output /dev/null \
-            https://bhuiyanindustry.com/api/public/company-profile
-
-          echo "API is responding."
+          check "API" https://bhuiyanindustry.com/api/public/company-profile
 
           echo "========================================"
           echo "Production deployment verification passed"
