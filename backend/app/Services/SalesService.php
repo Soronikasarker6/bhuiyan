@@ -111,6 +111,108 @@ class SalesService
         });
     }
 
+    /**
+     * Edits an invoice in place — same invoice number, same id, so every
+     * report and ledger row citing it still points at the same sale. The old
+     * lines are dropped before the stock check, so the bags this invoice
+     * already holds count as available again. The `sale` debit, the
+     * paid-at-sale credit and its Cash & Bank row are updated (or added /
+     * removed when the paid amount moves to or from zero), never duplicated.
+     *
+     * @param  array  $payload  same shape as createSale()
+     */
+    public function updateSale(int $saleId, array $payload): Sale
+    {
+        return DB::transaction(function () use ($saleId, $payload) {
+            $sale = Sale::lockForUpdate()->findOrFail($saleId);
+
+            $sale->items()->delete();
+            $this->assertStockAvailable($payload['items']);
+
+            $sale->update([
+                'date' => $payload['date'],
+                'customer_id' => $payload['customer_id'],
+                'truck_no' => $payload['truck_no'] ?? null,
+                'notes' => $payload['notes'] ?? null,
+                'paid_at_sale' => $payload['paid_at_sale'] ?? 0,
+            ]);
+
+            $totalAmount = 0.0;
+            foreach ($payload['items'] as $item) {
+                $meshBagKg = (float) MeshSize::findOrFail($item['mesh_size_id'])->bag_kg;
+                $calculatedWeightTon = ((float) $item['bags'] * $meshBagKg) / 1000;
+                $actual = (float) ($item['actual_weight_ton'] ?? 0);
+                $weightTon = $actual > 0 ? $actual : $calculatedWeightTon;
+                $totalAmount += $weightTon * (float) $item['rate_per_ton'];
+
+                SaleItem::create([
+                    'sale_id' => $sale->id,
+                    'product_id' => $item['product_id'],
+                    'mesh_size_id' => $item['mesh_size_id'],
+                    'bags' => $item['bags'],
+                    'rate_per_ton' => $item['rate_per_ton'],
+                    'actual_weight_ton' => $item['actual_weight_ton'] ?? null,
+                ]);
+            }
+
+            CustomerTransaction::updateOrCreate(
+                ['reference_sale_id' => $sale->id, 'type' => 'sale'],
+                [
+                    'customer_id' => $sale->customer_id,
+                    'date' => $sale->date,
+                    'reference' => $sale->invoice_no,
+                    'description' => "Sale {$sale->invoice_no}",
+                    'debit' => $totalAmount,
+                    'credit' => 0,
+                ],
+            );
+
+            $paymentRow = CustomerTransaction::where('reference_sale_id', $sale->id)->where('type', 'payment')->first();
+            $cashRow = Transaction::where('reference_sale_id', $sale->id)->first();
+            $paidAtSale = (float) $sale->paid_at_sale;
+
+            if ($paidAtSale <= 0) {
+                $paymentRow?->delete();
+                $cashRow?->delete();
+            } else {
+                // Keeps the account the money already landed in unless the form
+                // picked a different one.
+                $accountId = $payload['account_id']
+                    ?? $cashRow?->account_id
+                    ?? $paymentRow?->linked_account_id
+                    ?? Account::where('system', true)->value('id');
+
+                $paymentAttributes = [
+                    'customer_id' => $sale->customer_id,
+                    'date' => $sale->date,
+                    'type' => 'payment',
+                    'reference' => "{$sale->invoice_no}-PD",
+                    'description' => "Paid at sale for {$sale->invoice_no}",
+                    'debit' => 0,
+                    'credit' => $paidAtSale,
+                    'reference_sale_id' => $sale->id,
+                    'linked_account_id' => $accountId,
+                ];
+                $paymentRow ? $paymentRow->update($paymentAttributes) : CustomerTransaction::create($paymentAttributes);
+
+                if ($accountId) {
+                    $cashAttributes = [
+                        'date' => $sale->date,
+                        'details' => "Paid at sale — {$sale->invoice_no}",
+                        'account_id' => $accountId,
+                        'direction' => 'in',
+                        'category_name' => 'Payment at Sale',
+                        'amount' => $paidAtSale,
+                        'reference_sale_id' => $sale->id,
+                    ];
+                    $cashRow ? $cashRow->update($cashAttributes) : Transaction::create($cashAttributes);
+                }
+            }
+
+            return $sale->fresh(['items', 'transactions']);
+        });
+    }
+
     public function deleteSale(int $saleId): void
     {
         DB::transaction(function () use ($saleId) {

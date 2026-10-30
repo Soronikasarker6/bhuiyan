@@ -81,6 +81,35 @@ class SaleController extends Controller
         );
     }
 
+    public function update(StoreSaleRequest $request, Sale $sale)
+    {
+        $sale->load(['customer', 'items.product', 'items.meshSize']);
+        $before = $this->auditSnapshot($sale);
+
+        try {
+            $sale = $this->sales->updateSale($sale->id, $request->validated());
+        } catch (InsufficientStockException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $sale->load(['customer', 'items.product', 'items.meshSize']);
+
+        $this->audit->record(AuditEntity::SALE, $sale->id, AuditAction::UPDATE, [
+            'record' => $sale->invoice_no,
+            'before' => $before,
+            'after' => $this->auditSnapshot($sale),
+            'reason' => $request->input('reason'),
+            'summary' => sprintf(
+                'Edited sale %s for %s · %s',
+                $sale->invoice_no,
+                $sale->customer?->name ?? 'customer',
+                $this->money((float) $this->present($sale, true)['total_amount']),
+            ),
+        ]);
+
+        return response()->json($this->present($sale, (bool) $request->user()?->can(Permissions::SALES_RATE_VIEW)));
+    }
+
     public function destroy(Request $request, Sale $sale)
     {
         $sale->load(['customer', 'items.product', 'items.meshSize']);

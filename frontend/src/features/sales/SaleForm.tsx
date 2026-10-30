@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -131,6 +131,8 @@ export function SaleForm({
   nextInvoiceNo,
   availableBags,
   onSubmit,
+  initialValues,
+  onCancel,
 }: {
   customers: Customer[]
   products: Product[]
@@ -140,7 +142,12 @@ export function SaleForm({
   /** Stock currently available for one (product, mesh) — see `utils/productionStock.ts`. */
   availableBags: (productId: string, meshSizeId: string) => number
   onSubmit: (values: SaleSubmit) => void | Promise<void>
+  /** Editing an existing invoice: prefilled, no card wrapper, Save/Cancel instead of Record, and no reset after saving. */
+  initialValues?: SaleFormValues
+  onCancel?: () => void
 }) {
+  const editing = initialValues !== undefined
+  const idPrefix = editing ? 'edit-sale' : 'sale'
   const schema = buildSchema(availableBags, (meshSizeId) => meshSizeNameOf(meshSizes, meshSizeId))
   const defaultAccountId = defaultCashAccountId(accounts) ?? accounts[0]?.id ?? ''
 
@@ -154,7 +161,7 @@ export function SaleForm({
     formState: { errors, isSubmitting, dirtyFields },
   } = useForm<SaleFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
+    defaultValues: initialValues ?? {
       date: todayISO(),
       customerId: customers[0]?.id ?? '',
       truckNo: '',
@@ -175,6 +182,21 @@ export function SaleForm({
 
   const { fields, append, remove } = useFieldArray({ control, name: 'items' })
 
+  // An invoice being edited may already carry a weighbridge figure that
+  // differs from bags × bag weight — those rows start out as overridden, so
+  // the sync below doesn't quietly replace the billed ton with the calculated one.
+  const [overriddenIds] = useState(
+    () =>
+      new Set(
+        fields
+          .filter((_, index) => {
+            const item = initialValues?.items[index]
+            return item && item.actualWeightTon !== saleItemWeightTon(Number(item.bags) || 0, bagKgOf(meshSizes, item.meshSizeId))
+          })
+          .map((field) => field.id),
+      ),
+  )
+
   const customerId = watch('customerId')
   const accountId = watch('accountId')
   const items = watch('items')
@@ -186,7 +208,7 @@ export function SaleForm({
   useEffect(() => {
     items.forEach((item, index) => {
       if (!item) return
-      const touched = Boolean(dirtyFields.items?.[index]?.actualWeightTon)
+      const touched = Boolean(dirtyFields.items?.[index]?.actualWeightTon) || overriddenIds.has(fields[index]?.id ?? '')
       if (touched) return
 
       const bagKg = bagKgOf(meshSizes, item.meshSizeId)
@@ -211,6 +233,7 @@ export function SaleForm({
 
   const submit = handleSubmit(async (values) => {
     await onSubmit(values)
+    if (editing) return
     reset({
       date: values.date,
       customerId: values.customerId,
@@ -230,20 +253,16 @@ export function SaleForm({
     })
   })
 
-  return (
-    <Section
-      title={`New sale — ${nextInvoiceNo}`}
-      description="One invoice can hold several products or mesh sizes — add a line for each."
-    >
+  const form = (
       <form onSubmit={submit} noValidate>
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Date" error={errors.date?.message} htmlFor="sale-date">
-            <DatePicker id="sale-date" max={todayISO()} value={watch('date')} onChange={(v) => setValue('date', v)} />
+          <Field label="Date" error={errors.date?.message} htmlFor={`${idPrefix}-date`}>
+            <DatePicker id={`${idPrefix}-date`} max={todayISO()} value={watch('date')} onChange={(v) => setValue('date', v)} />
           </Field>
 
-          <Field label="Customer" error={errors.customerId?.message} htmlFor="sale-customer">
+          <Field label="Customer" error={errors.customerId?.message} htmlFor={`${idPrefix}-customer`}>
             <Select value={customerId} onValueChange={(value) => setValue('customerId', value)}>
-              <SelectTrigger id="sale-customer">
+              <SelectTrigger id={`${idPrefix}-customer`}>
                 <SelectValue placeholder="Choose a customer" />
               </SelectTrigger>
               <SelectContent>
@@ -256,8 +275,8 @@ export function SaleForm({
             </Select>
           </Field>
 
-          <Field label="Truck number (optional)" htmlFor="sale-truck">
-            <Input id="sale-truck" placeholder="DHA-1234" {...register('truckNo')} />
+          <Field label="Truck number (optional)" htmlFor={`${idPrefix}-truck`}>
+            <Input id={`${idPrefix}-truck`} placeholder="DHA-1234" {...register('truckNo')} />
           </Field>
         </div>
 
@@ -439,13 +458,13 @@ export function SaleForm({
         </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <Field label="Paid at sale (৳)" error={errors.paidAtSale?.message} htmlFor="sale-paid" hint="Leave blank if this is fully on credit.">
+          <Field label="Paid at sale (৳)" error={errors.paidAtSale?.message} htmlFor={`${idPrefix}-paid`} hint="Leave blank if this is fully on credit.">
             <Controller
               control={control}
               name="paidAtSale"
               render={({ field: f }) => (
                 <NumberInput
-                  id="sale-paid"
+                  id={`${idPrefix}-paid`}
                   value={f.value as unknown as number}
                   onChange={f.onChange}
                   placeholder="0"
@@ -458,11 +477,11 @@ export function SaleForm({
           {paidAtSale > 0 && (
             <Field
               label="Payment account"
-              htmlFor="sale-account"
+              htmlFor={`${idPrefix}-account`}
               hint="This amount is recorded on the Cash & Bank Ledger too."
             >
               <Select value={accountId} onValueChange={(value) => setValue('accountId', value)}>
-                <SelectTrigger id="sale-account">
+                <SelectTrigger id={`${idPrefix}-account`}>
                   <SelectValue placeholder="Choose an account" />
                 </SelectTrigger>
                 <SelectContent>
@@ -476,8 +495,8 @@ export function SaleForm({
             </Field>
           )}
 
-          <Field label="Notes (optional)" htmlFor="sale-notes">
-            <Textarea id="sale-notes" rows={1} placeholder="Anything worth noting on this invoice" {...register('notes')} />
+          <Field label="Notes (optional)" htmlFor={`${idPrefix}-notes`}>
+            <Textarea id={`${idPrefix}-notes`} rows={1} placeholder="Anything worth noting on this invoice" {...register('notes')} />
           </Field>
         </div>
 
@@ -496,16 +515,27 @@ export function SaleForm({
           </div>
         </div>
 
-        <Button
-          type="submit"
-          size="lg"
-          className="mt-4 w-full"
-          loading={isSubmitting}
-          disabled={customers.length === 0 || products.length === 0 || meshSizes.length === 0}
-        >
-          <Receipt />
-          Record sale — {formatCurrency(total)}
-        </Button>
+        {editing ? (
+          <div className="mt-4 flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="success" loading={isSubmitting}>
+              Save changes — {formatCurrency(total)}
+            </Button>
+          </div>
+        ) : (
+          <Button
+            type="submit"
+            size="lg"
+            className="mt-4 w-full"
+            loading={isSubmitting}
+            disabled={customers.length === 0 || products.length === 0 || meshSizes.length === 0}
+          >
+            <Receipt />
+            Record sale — {formatCurrency(total)}
+          </Button>
+        )}
 
         {(customers.length === 0 || products.length === 0 || meshSizes.length === 0) && (
           <p className="mt-2 text-center text-xs text-muted-foreground">
@@ -513,6 +543,16 @@ export function SaleForm({
           </p>
         )}
       </form>
+  )
+
+  if (editing) return form
+
+  return (
+    <Section
+      title={`New sale — ${nextInvoiceNo}`}
+      description="One invoice can hold several products or mesh sizes — add a line for each."
+    >
+      {form}
     </Section>
   )
 }

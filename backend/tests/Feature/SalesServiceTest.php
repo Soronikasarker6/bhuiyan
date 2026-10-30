@@ -232,4 +232,77 @@ class SalesServiceTest extends TestCase
         $this->assertSame('INV-2026-002', $sale2->invoice_no);
         $this->assertSame('INV-2027-001', $this->sales->nextInvoiceNo(2027));
     }
+
+    public function test_editing_a_sale_keeps_its_invoice_and_rewrites_its_ledger_rows(): void
+    {
+        $cash = Account::create(['name' => 'Cash', 'kind' => 'cash', 'system' => true]);
+        $bank = Account::create(['name' => 'Bank', 'kind' => 'bank']);
+        [$product, $mesh] = $this->stockedProduct();
+        $customer = Customer::factory()->create();
+        $other = Customer::factory()->create();
+
+        // 100 bags * 50kg = 5 ton * 2000 = 10,000
+        $sale = $this->sales->createSale([
+            'date' => '2026-02-01', 'customer_id' => $customer->id, 'paid_at_sale' => 4000,
+            'items' => [['product_id' => $product->id, 'mesh_size_id' => $mesh->id, 'bags' => 100, 'rate_per_ton' => 2000]],
+        ]);
+
+        // 200 bags * 50kg = 10 ton * 3000 = 30,000, moved to another customer and the bank.
+        $edited = $this->sales->updateSale($sale->id, [
+            'date' => '2026-02-03', 'customer_id' => $other->id, 'paid_at_sale' => 5000, 'account_id' => $bank->id,
+            'items' => [['product_id' => $product->id, 'mesh_size_id' => $mesh->id, 'bags' => 200, 'rate_per_ton' => 3000]],
+        ]);
+
+        $this->assertSame($sale->invoice_no, $edited->invoice_no);
+        $this->assertSame(1000 - 200, $this->inventory->availableBags($product->id, $mesh->id));
+
+        $this->assertEqualsWithDelta(0.0, $this->ledger->totals($customer->id)['total_sales'], 0.01);
+        $totals = $this->ledger->totals($other->id);
+        $this->assertEqualsWithDelta(30000.0, $totals['total_sales'], 0.01);
+        $this->assertEqualsWithDelta(25000.0, $totals['total_due'], 0.01);
+
+        $this->assertSame(2, CustomerTransaction::where('reference_sale_id', $sale->id)->count());
+        $cashRows = Transaction::where('reference_sale_id', $sale->id)->get();
+        $this->assertCount(1, $cashRows);
+        $this->assertSame($bank->id, $cashRows->first()->account_id);
+        $this->assertEqualsWithDelta(5000.0, (float) $cashRows->first()->amount, 0.01);
+
+        // Clearing the paid amount removes both payment rows.
+        $this->sales->updateSale($sale->id, [
+            'date' => '2026-02-03', 'customer_id' => $other->id, 'paid_at_sale' => 0,
+            'items' => [['product_id' => $product->id, 'mesh_size_id' => $mesh->id, 'bags' => 200, 'rate_per_ton' => 3000]],
+        ]);
+        $this->assertSame(1, CustomerTransaction::where('reference_sale_id', $sale->id)->count());
+        $this->assertSame(0, Transaction::where('reference_sale_id', $sale->id)->count());
+    }
+
+    public function test_editing_a_sale_can_reuse_its_own_bags_but_not_exceed_stock(): void
+    {
+        [$product, $mesh] = $this->stockedProduct(100);
+        $customer = Customer::factory()->create();
+
+        $sale = $this->sales->createSale([
+            'date' => '2026-02-01', 'customer_id' => $customer->id,
+            'items' => [['product_id' => $product->id, 'mesh_size_id' => $mesh->id, 'bags' => 100, 'rate_per_ton' => 2000]],
+        ]);
+
+        // All 100 bags are this invoice's own — re-saving them must pass.
+        $this->sales->updateSale($sale->id, [
+            'date' => '2026-02-01', 'customer_id' => $customer->id,
+            'items' => [['product_id' => $product->id, 'mesh_size_id' => $mesh->id, 'bags' => 100, 'rate_per_ton' => 2500]],
+        ]);
+
+        try {
+            $this->sales->updateSale($sale->id, [
+                'date' => '2026-02-01', 'customer_id' => $customer->id,
+                'items' => [['product_id' => $product->id, 'mesh_size_id' => $mesh->id, 'bags' => 101, 'rate_per_ton' => 2500]],
+            ]);
+            $this->fail('Expected InsufficientStockException');
+        } catch (InsufficientStockException) {
+        }
+
+        // Rolled back: the invoice still holds its 100 bags at the edited rate.
+        $this->assertSame(0, $this->inventory->availableBags($product->id, $mesh->id));
+        $this->assertEqualsWithDelta(2500.0, (float) $sale->fresh('items')->items->first()->rate_per_ton, 0.01);
+    }
 }

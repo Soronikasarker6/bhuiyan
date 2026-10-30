@@ -132,6 +132,8 @@ interface AppDataValue {
   clearTransactionalData: () => void
   exportBackup: () => string | Promise<string>
   createSale: (input: SaleInput) => Promise<{ invoiceNo: string }>
+  /** Edit an invoice in place — same invoice number; its ledger and Cash & Bank rows are rewritten to match. */
+  updateSale: (saleId: ID, input: SaleInput) => Promise<void>
   deleteSale: (saleId: ID) => Promise<void>
   recordPayment: (input: PaymentInput) => Promise<{ reference: string }>
   /** Edit a Cash In already recorded — never the customer it belongs to, only when/how much/how. */
@@ -353,6 +355,104 @@ function useLocalAppData(): AppDataValue {
       })
 
       return { invoiceNo }
+    },
+    [updateMany],
+  )
+
+  const updateSale = useCallback(
+    async (saleId: ID, input: SaleInput) => {
+      const current = dataRef.current
+      const existing = current.sales.find((s) => s.id === saleId)
+      if (!existing) return
+      const stamp = now()
+      const invoiceNo = existing.invoiceNo
+
+      const sale = {
+        ...existing,
+        date: input.date,
+        customerId: input.customerId,
+        truckNo: input.truckNo,
+        notes: input.notes,
+        paidAtSale: input.paidAtSale ?? 0,
+      }
+
+      const items = input.items.map((item) => ({
+        id: uid(),
+        saleId,
+        productId: item.productId,
+        meshSizeId: item.meshSizeId,
+        bags: item.bags,
+        ratePerTon: item.ratePerTon,
+        actualWeightTon: item.actualWeightTon,
+      }))
+
+      const bagKgOf = (meshSizeId: ID) => current.meshSizes.find((m) => m.id === meshSizeId)?.bagKg ?? 0
+      const totalAmount = items.reduce((sum, item) => {
+        const calculated = (item.bags * bagKgOf(item.meshSizeId)) / 1000
+        const weightTon = item.actualWeightTon && item.actualWeightTon > 0 ? item.actualWeightTon : calculated
+        return sum + weightTon * item.ratePerTon
+      }, 0)
+
+      const linked = current.customerTransactions.filter((t) => t.referenceSaleId === saleId)
+      const saleRow = linked.find((t) => t.type === 'sale')
+      const paymentRow = linked.find((t) => t.type === 'payment')
+      const cashRow = current.transactions.find((t) => t.referenceSaleId === saleId)
+      // Keeps the account the money already landed in unless the form picked another.
+      const accountId =
+        input.accountId ?? cashRow?.accountId ?? paymentRow?.linkedAccountId ?? defaultCashAccountId(current.accounts)
+
+      const ledgerRows: AppData['customerTransactions'] = [
+        {
+          ...(saleRow ?? { id: uid(), createdAt: stamp }),
+          customerId: sale.customerId,
+          date: sale.date,
+          type: 'sale',
+          reference: invoiceNo,
+          description: `Sale ${invoiceNo}`,
+          debit: totalAmount,
+          credit: 0,
+          referenceSaleId: saleId,
+        },
+      ]
+      const cashLedgerRows: AppData['transactions'] = []
+
+      if (sale.paidAtSale > 0) {
+        ledgerRows.push({
+          ...(paymentRow ?? { id: uid(), createdAt: stamp }),
+          customerId: sale.customerId,
+          date: sale.date,
+          type: 'payment',
+          reference: `${invoiceNo}-PD`,
+          description: `Paid at sale for ${invoiceNo}`,
+          debit: 0,
+          credit: sale.paidAtSale,
+          referenceSaleId: saleId,
+          linkedAccountId: accountId,
+        })
+
+        if (accountId) {
+          cashLedgerRows.push({
+            ...(cashRow ?? { id: uid(), createdAt: stamp }),
+            date: sale.date,
+            details: `Paid at sale — ${invoiceNo}`,
+            accountId,
+            direction: 'in',
+            category: 'Payment at Sale',
+            amount: sale.paidAtSale,
+            referenceSaleId: saleId,
+          })
+        }
+      }
+
+      updateMany({
+        sales: current.sales.map((s) => (s.id === saleId ? sale : s)),
+        saleItems: [...current.saleItems.filter((i) => i.saleId !== saleId), ...items],
+        customerTransactions: [
+          ...ledgerRows,
+          ...current.customerTransactions.filter((t) => t.referenceSaleId !== saleId),
+        ],
+        transactions: [...cashLedgerRows, ...current.transactions.filter((t) => t.referenceSaleId !== saleId)],
+      })
     },
     [updateMany],
   )
@@ -619,6 +719,7 @@ function useLocalAppData(): AppDataValue {
       clearTransactionalData,
       exportBackup: repository.exportBackup,
       createSale,
+      updateSale,
       deleteSale,
       recordPayment,
       updatePayment,
@@ -637,6 +738,7 @@ function useLocalAppData(): AppDataValue {
       reset,
       clearTransactionalData,
       createSale,
+      updateSale,
       deleteSale,
       recordPayment,
       updatePayment,
@@ -769,6 +871,18 @@ function useApiAppData(): AppDataValue {
         return { invoiceNo: result.invoice_no }
       } catch (error) {
         throw new Error(errorMessage(error) ?? 'Could not record the sale.')
+      }
+    },
+    [refresh],
+  )
+
+  const updateSale = useCallback(
+    async (saleId: ID, input: SaleInput) => {
+      try {
+        await salesService.update(saleId, input)
+        await refresh()
+      } catch (error) {
+        throw new Error(errorMessage(error) ?? 'Could not update the sale.')
       }
     },
     [refresh],
@@ -937,6 +1051,7 @@ function useApiAppData(): AppDataValue {
       clearTransactionalData,
       exportBackup: backupService.exportBackup,
       createSale,
+      updateSale,
       deleteSale,
       recordPayment,
       updatePayment,
@@ -955,6 +1070,7 @@ function useApiAppData(): AppDataValue {
       reset,
       clearTransactionalData,
       createSale,
+      updateSale,
       deleteSale,
       recordPayment,
       updatePayment,

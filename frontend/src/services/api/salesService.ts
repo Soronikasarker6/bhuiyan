@@ -43,6 +43,9 @@ export const salesService = {
   create(data: SaleInput): Promise<{ invoice_no: string }> {
     return http.post('/sales', toPayload(data))
   },
+  update(id: ID, data: SaleInput): Promise<{ invoice_no: string }> {
+    return http.put(`/sales/${id}`, toPayload(data))
+  },
   remove(id: ID): Promise<void> {
     return http.delete(`/sales/${id}`)
   },

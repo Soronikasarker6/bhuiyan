@@ -417,6 +417,7 @@ export default function ImportPage() {
         ],
         columns: [
           { key: 'date', label: 'Date' },
+          { key: 'serial', label: 'SL No.' },
           { key: 'ship', label: 'Ship' },
           { key: 'truck', label: 'Truck' },
           { key: 'gross', label: 'Gross (kg)', align: 'right' },
@@ -426,6 +427,7 @@ export default function ImportPage() {
         ],
         rows: cycleImports.map((i) => ({
           date: formatDate(i.date),
+          serial: i.serialNo ?? '',
           ship: i.shipName ?? '',
           truck: i.truckNo ?? '',
           gross: formatNumber(i.grossWeightKg),

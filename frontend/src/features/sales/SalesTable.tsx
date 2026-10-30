@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react'
-import { ChevronDown, ChevronRight, Receipt, Search, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Pencil, Receipt, Search, Trash2 } from 'lucide-react'
 import type { SaleSummary } from '@/types'
 import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -30,16 +30,20 @@ const PAGE_SIZE = 20
 export function SalesTable({
   sales,
   onDelete,
+  onEdit,
   onExportCsv,
   onExportPdf,
 }: {
   sales: SaleSummary[]
   onDelete: (saleId: string) => void | Promise<void>
+  onEdit: (sale: SaleSummary) => void
   onExportCsv: (sale: SaleSummary) => void
   onExportPdf: (sale: SaleSummary) => void
 }) {
   const canDelete = usePermission(PERMISSIONS.SALES_DELETE)
   const canViewRate = usePermission(PERMISSIONS.SALES_RATE_VIEW)
+  // Editing re-submits every line's rate, so it needs the rate to be visible.
+  const canEdit = usePermission(PERMISSIONS.SALES_EDIT) && canViewRate
   const [page, setPage] = useState(0)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<SaleSummary | null>(null)
@@ -151,6 +155,17 @@ export function SalesTable({
                             onCsv={() => onExportCsv(sale)}
                             onPdf={() => onExportPdf(sale)}
                           />
+                          {canEdit && (
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              className="text-muted-foreground hover:text-foreground"
+                              onClick={() => onEdit(sale)}
+                              aria-label="Edit invoice"
+                            >
+                              <Pencil />
+                            </Button>
+                          )}
                           {canDelete && (
                             <Button
                               size="icon-sm"

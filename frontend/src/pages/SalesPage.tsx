@@ -10,8 +10,9 @@ import { Button } from '@/components/ui/button'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PageSkeleton } from '@/components/PageSkeleton'
-import { SaleForm, type SaleSubmit } from '@/features/sales/SaleForm'
+import { SaleForm, type SaleFormValues, type SaleSubmit } from '@/features/sales/SaleForm'
 import { SalesTable } from '@/features/sales/SalesTable'
+import { EditSaleDialog } from '@/features/sales/EditSaleDialog'
 import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
 import { useAppData } from '@/hooks/useAppData'
 import { usePageHeader } from '@/hooks/usePageHeader'
@@ -23,6 +24,7 @@ import { buildSaleSummaries, filterSaleSummaries, nextInvoiceNo } from '@/utils/
 import { customerDisplayLabel } from '@/utils/customerLedger'
 import { availableBags as availableBagsFor } from '@/utils/productionStock'
 import { downloadTextFile } from '@/utils/download'
+import { defaultCashAccountId } from '@/utils/ledger'
 import {
   firstDayOfMonth,
   firstDayOfWeek,
@@ -43,7 +45,7 @@ const ALL = '__all__'
  * items, which is why a sale is a header plus items rather than a flat row.
  */
 export default function SalesPage() {
-  const { data, loading, createSale: persistSale, deleteSale: persistDeleteSale } = useAppData()
+  const { data, loading, createSale: persistSale, updateSale: persistUpdateSale, deleteSale: persistDeleteSale } = useAppData()
   const { print } = usePrint()
   const canCreate = usePermission(PERMISSIONS.SALES_CREATE)
 
@@ -158,6 +160,73 @@ export default function SalesPage() {
       }
     },
     [availableBags, persistSale],
+  )
+
+  // ------------------------------------------------------------ edit
+  const [editing, setEditing] = useState<SaleSummary | null>(null)
+
+  /** While editing, the invoice's own bags count as available — they are being replaced, not added to. */
+  const editAvailableBags = useCallback(
+    (productId: string, meshSizeId: string) =>
+      availableBagsFor(
+        productId,
+        meshSizeId,
+        data.productionEntries,
+        data.saleItems.filter((i) => i.saleId !== editing?.id),
+        data.sales,
+      ),
+    [data.productionEntries, data.saleItems, data.sales, editing],
+  )
+
+  const editInitialValues = useMemo<SaleFormValues | null>(() => {
+    if (!editing) return null
+    const cashRow = data.transactions.find((t) => t.referenceSaleId === editing.id)
+    return {
+      date: editing.date,
+      customerId: editing.customerId,
+      truckNo: editing.truckNo ?? '',
+      notes: editing.notes ?? '',
+      paidAtSale: editing.paidAtSale > 0 ? editing.paidAtSale : ('' as unknown as number),
+      accountId: cashRow?.accountId ?? defaultCashAccountId(data.accounts) ?? data.accounts[0]?.id ?? '',
+      items: editing.items.map((item) => ({
+        productId: item.productId,
+        meshSizeId: item.meshSizeId,
+        bags: item.bags,
+        ratePerTon: item.ratePerTon ?? 0,
+        actualWeightTon: item.weightTon,
+      })),
+    }
+  }, [editing, data.transactions, data.accounts])
+
+  const saveEdit = useCallback(
+    async (values: SaleSubmit) => {
+      if (!editing) return
+      const paidAtSale = values.paidAtSale ?? 0
+      try {
+        await persistUpdateSale(editing.id, {
+          date: values.date,
+          customerId: values.customerId,
+          truckNo: values.truckNo?.trim() || undefined,
+          notes: values.notes?.trim() || undefined,
+          paidAtSale,
+          accountId: paidAtSale > 0 ? values.accountId : undefined,
+          items: values.items.map((item) => ({
+            productId: item.productId,
+            meshSizeId: item.meshSizeId,
+            bags: item.bags,
+            ratePerTon: item.ratePerTon,
+            actualWeightTon: item.actualWeightTon,
+          })),
+        })
+        toast.success(`${editing.invoiceNo} updated`)
+        setEditing(null)
+      } catch (error) {
+        toast.error('Could not update the invoice', {
+          description: error instanceof Error ? error.message : undefined,
+        })
+      }
+    },
+    [editing, persistUpdateSale],
   )
 
   const deleteSale = useCallback(
@@ -309,7 +378,25 @@ export default function SalesPage() {
         </div>
       )}
 
-      <SalesTable sales={filteredSales} onDelete={deleteSale} onExportCsv={exportInvoiceCsv} onExportPdf={printInvoice} />
+      <SalesTable
+        sales={filteredSales}
+        onDelete={deleteSale}
+        onEdit={setEditing}
+        onExportCsv={exportInvoiceCsv}
+        onExportPdf={printInvoice}
+      />
+
+      <EditSaleDialog
+        sale={editing}
+        initialValues={editInitialValues}
+        customers={data.customers}
+        products={products}
+        meshSizes={meshSizes}
+        accounts={data.accounts}
+        availableBags={editAvailableBags}
+        onOpenChange={(open) => !open && setEditing(null)}
+        onSubmit={saveEdit}
+      />
     </div>
   )
 }

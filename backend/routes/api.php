@@ -164,9 +164,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('sales/next-invoice-no', [SaleController::class, 'nextInvoiceNo'])
         ->middleware('permission:'.P::SALES_VIEW);
-    Route::apiResource('sales', SaleController::class)->only(['index', 'show', 'store', 'destroy'])
+    Route::apiResource('sales', SaleController::class)->only(['index', 'show', 'store', 'update', 'destroy'])
         ->middlewareFor(['index', 'show'], 'permission:'.P::SALES_VIEW)
         ->middlewareFor('store', 'permission:'.P::SALES_CREATE)
+        ->middlewareFor('update', 'permission:'.P::SALES_EDIT)
         ->middlewareFor('destroy', 'permission:'.P::SALES_DELETE);
 
     Route::post('transactions/transfer', [TransactionController::class, 'transfer'])
