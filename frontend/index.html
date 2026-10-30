@@ -28,6 +28,15 @@
       type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%232e3725'/%3E%3Cg fill='%23f4eee2'%3E%3Cellipse cx='12' cy='18.9' rx='8' ry='2.5'/%3E%3Cellipse cx='10.4' cy='13.8' rx='5.9' ry='2.3' opacity='.88'/%3E%3Cellipse cx='13.4' cy='8.8' rx='4.1' ry='2' opacity='.76'/%3E%3Cellipse cx='11.2' cy='4.6' rx='2.3' ry='1.4' opacity='.64'/%3E%3C/g%3E%3C/svg%3E"
     />
+    <!--
+      Real files for the icon too: Google Search (and some crawlers) ignore a
+      data-URI favicon and want a fetchable one, at least 48×48. The
+      single-file build strips every `data-hosted-icon` link (scripts/inline.mjs).
+    -->
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" data-hosted-icon />
+    <link rel="icon" type="image/png" href="/favicon-48.png" sizes="48x48" data-hosted-icon />
+    <link rel="icon" type="image/png" href="/icon-192.png" sizes="192x192" data-hosted-icon />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" data-hosted-icon />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

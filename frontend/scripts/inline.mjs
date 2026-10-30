@@ -63,6 +63,10 @@ html = html.replace(scriptPattern, () => `<script type="module">\n${bundle}\n</s
 // Preload hints point at files that will not exist beside the finished page.
 html = html.replace(/<link rel="modulepreload"[^>]*>\s*/g, () => '')
 
+// Same for the file-based icons (there for search engines, which ignore the
+// inline data-URI favicon) — the single file keeps only the data URI.
+html = html.replace(/<link [^>]*data-hosted-icon[^>]*>\s*/g, () => '')
+
 // Nothing local may remain referenced externally, or the page breaks the
 // moment it is opened away from its build folder. Google Fonts is the
 // deliberate exception: it degrades to the system stack when offline.
