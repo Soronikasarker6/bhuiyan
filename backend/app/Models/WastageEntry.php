@@ -10,15 +10,26 @@ class WastageEntry extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['date', 'product_id', 'quantity_kg', 'reason'];
+    protected $fillable = [
+        'date', 'product_id', 'quantity_kg', 'reason',
+        'reversed_on', 'reversed_at', 'reversed_by_user_id', 'reversal_reason',
+    ];
 
     protected function casts(): array
     {
         return [
             'date' => 'date:Y-m-d',
             'quantity_kg' => 'float',
+            'reversed_on' => 'date:Y-m-d',
+            'reversed_at' => 'datetime',
         ];
     }
+
+    public function isReversed(): bool
+    {
+        return $this->reversed_on !== null;
+    }
+
 
     public function product(): BelongsTo
     {

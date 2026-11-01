@@ -1,12 +1,16 @@
 import { Dialog } from '@ui5/webcomponents-react/Dialog'
 import type { Account, Customer, MeshSize, Product, SaleSummary } from '@/types'
 import { SaleForm, type SaleFormValues, type SaleSubmit } from '@/features/sales/SaleForm'
+import { RawMaterialSaleForm, type RawMaterialSaleValues } from '@/features/sales/RawMaterialSaleForm'
 
 /**
  * Correcting an already-recorded invoice — the same form as recording one,
  * prefilled. The invoice number never changes. `availableBags` must already
  * count this invoice's own bags as available (they are being replaced, not
  * added to); the server re-checks stock independently.
+ *
+ * A raw material sale opens the raw material form instead, prefilled the
+ * same way — `availableRawTon` likewise counts its own tons as available.
  */
 export function EditSaleDialog({
   sale,
@@ -18,6 +22,10 @@ export function EditSaleDialog({
   availableBags,
   onOpenChange,
   onSubmit,
+  rawInitialValues,
+  availableRawTon,
+  customerAdvance,
+  onSubmitRaw,
 }: {
   sale: SaleSummary | null
   initialValues: SaleFormValues | null
@@ -28,6 +36,10 @@ export function EditSaleDialog({
   availableBags: (productId: string, meshSizeId: string) => number
   onOpenChange: (open: boolean) => void
   onSubmit: (values: SaleSubmit) => Promise<void>
+  rawInitialValues: RawMaterialSaleValues | null
+  availableRawTon: (productId: string) => number
+  customerAdvance: (customerId: string) => number
+  onSubmitRaw: (values: RawMaterialSaleValues) => Promise<void>
 }) {
   return (
     <Dialog
@@ -50,6 +62,22 @@ export function EditSaleDialog({
             initialValues={initialValues}
             onCancel={() => onOpenChange(false)}
             onSubmit={onSubmit}
+          />
+        </div>
+      )}
+      {sale && rawInitialValues && (
+        <div className="p-1">
+          <RawMaterialSaleForm
+            key={sale.id}
+            customers={customers}
+            products={products}
+            accounts={accounts}
+            nextInvoiceNo={sale.invoiceNo}
+            availableRawTon={availableRawTon}
+            customerAdvance={customerAdvance}
+            initialValues={rawInitialValues}
+            onCancel={() => onOpenChange(false)}
+            onSubmit={onSubmitRaw}
           />
         </div>
       )}

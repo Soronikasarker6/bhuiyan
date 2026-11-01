@@ -60,5 +60,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    // Restores a usable localStorage/sessionStorage on Node versions that shadow jsdom's — see the file.
+    setupFiles: ['./src/test/setup.ts'],
   },
 })

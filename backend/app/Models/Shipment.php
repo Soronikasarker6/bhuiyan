@@ -18,7 +18,7 @@ class Shipment extends Model
     protected $fillable = [
         'product_id', 'opened_on', 'status',
         'closing_opening_ton', 'closing_received_ton', 'closing_consumed_ton',
-        'closing_wastage_ton', 'closing_closing_ton', 'closing_closed_at',
+        'closing_wastage_ton', 'closing_raw_sale_ton', 'closing_closing_ton', 'closing_closed_at',
     ];
 
     protected function casts(): array
@@ -29,6 +29,7 @@ class Shipment extends Model
             'closing_received_ton' => 'float',
             'closing_consumed_ton' => 'float',
             'closing_wastage_ton' => 'float',
+            'closing_raw_sale_ton' => 'float',
             'closing_closing_ton' => 'float',
             'closing_closed_at' => 'datetime',
         ];
@@ -56,6 +57,7 @@ class Shipment extends Model
             'received_ton' => (float) $this->closing_received_ton,
             'consumed_ton' => (float) $this->closing_consumed_ton,
             'wastage_ton' => (float) $this->closing_wastage_ton,
+            'raw_sale_ton' => (float) $this->closing_raw_sale_ton,
             'closing_ton' => (float) $this->closing_closing_ton,
             'closed_at' => optional($this->closing_closed_at)->toIso8601String(),
         ] : null;

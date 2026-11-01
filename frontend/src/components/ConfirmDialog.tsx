@@ -34,6 +34,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   variant = 'destructive',
   onConfirm,
+  confirmDisabled = false,
   children,
 }: {
   open: boolean
@@ -44,6 +45,8 @@ export function ConfirmDialog({
   cancelLabel?: string
   variant?: 'destructive' | 'default' | 'success'
   onConfirm: () => void
+  /** Hold Confirm back until required input in `children` (a reason, say) is filled in. */
+  confirmDisabled?: boolean
   /** Extra detail — a summary of exactly what is about to be frozen or lost. */
   children?: ReactNode
 }) {
@@ -73,7 +76,7 @@ export function ConfirmDialog({
               <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
                 {cancelLabel}
               </Button>
-              <Button variant={variant === 'default' ? 'default' : variant} loading={busy} onClick={confirm}>
+              <Button variant={variant === 'default' ? 'default' : variant} loading={busy} disabled={confirmDisabled} onClick={confirm}>
                 {confirmLabel}
               </Button>
             </>

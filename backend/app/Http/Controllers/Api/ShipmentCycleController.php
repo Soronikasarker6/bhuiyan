@@ -67,8 +67,16 @@ class ShipmentCycleController extends Controller
         return $after;
     }
 
+    /**
+     * Admin-only (RAW_MATERIAL_REOPEN), with a required reason: reopening
+     * unfreezes figures that were reported final. The REOPEN_SHIPMENT audit
+     * event records who, when, which cycle and why; closing it again
+     * re-derives and re-freezes its figures from the logs as they then stand.
+     */
     public function reopen(Request $request, int $shipment)
     {
+        $validated = $request->validate(['reason' => ['required', 'string', 'max:255']]);
+
         $before = $this->present($this->cycleFor($shipment));
 
         try {
@@ -83,7 +91,7 @@ class ShipmentCycleController extends Controller
             'record' => $this->cycleReference($after),
             'before' => $before,
             'after' => $after,
-            'reason' => $request->input('reason'),
+            'reason' => $validated['reason'],
             'summary' => sprintf(
                 'Reopened %s cycle opened %s',
                 $after['product_name'] ?? 'shipment',
@@ -120,6 +128,7 @@ class ShipmentCycleController extends Controller
             'available_ton' => $cycle['available_ton'],
             'consumed_ton' => $cycle['consumed_ton'],
             'wastage_ton' => $cycle['wastage_ton'],
+            'raw_sale_ton' => $cycle['raw_sale_ton'],
             'closing_ton' => $cycle['closing_ton'],
             'status' => $cycle['shipment']->status ?? 'open',
             'closed_at' => optional($cycle['shipment']->closing_closed_at)->toIso8601String(),

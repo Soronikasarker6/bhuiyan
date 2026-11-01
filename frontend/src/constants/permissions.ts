@@ -13,17 +13,25 @@ export const PERMISSIONS = {
   RAW_MATERIAL_CREATE: 'RAW_MATERIAL_CREATE',
   RAW_MATERIAL_EDIT: 'RAW_MATERIAL_EDIT',
   RAW_MATERIAL_DELETE: 'RAW_MATERIAL_DELETE',
+  /** Admin-only — reverse a wastage entry inside a closed shipment cycle. */
+  RAW_MATERIAL_REVERSE: 'RAW_MATERIAL_REVERSE',
+  /** Admin-only — reopen a closed shipment cycle (with a reason). Closing stays under RAW_MATERIAL_EDIT. */
+  RAW_MATERIAL_REOPEN: 'RAW_MATERIAL_REOPEN',
 
   PRODUCTION_VIEW: 'PRODUCTION_VIEW',
   PRODUCTION_CREATE: 'PRODUCTION_CREATE',
   PRODUCTION_EDIT: 'PRODUCTION_EDIT',
   PRODUCTION_DELETE: 'PRODUCTION_DELETE',
+  /** Admin-only — reverse a production entry inside a closed shipment cycle. */
+  PRODUCTION_REVERSE: 'PRODUCTION_REVERSE',
 
   SALES_VIEW: 'SALES_VIEW',
   SALES_CREATE: 'SALES_CREATE',
   SALES_EDIT: 'SALES_EDIT',
   SALES_DELETE: 'SALES_DELETE',
   SALES_RATE_VIEW: 'SALES_RATE_VIEW',
+  /** Admin-only — reverse a sale that can no longer be edited or deleted (raw material sale in a closed shipment cycle). */
+  SALES_REVERSE: 'SALES_REVERSE',
 
   CUSTOMERS_VIEW: 'CUSTOMERS_VIEW',
   CUSTOMERS_CREATE: 'CUSTOMERS_CREATE',
@@ -94,6 +102,8 @@ export const PERMISSION_GROUPS: Array<{ label: string; permissions: Permission[]
       PERMISSIONS.RAW_MATERIAL_CREATE,
       PERMISSIONS.RAW_MATERIAL_EDIT,
       PERMISSIONS.RAW_MATERIAL_DELETE,
+      PERMISSIONS.RAW_MATERIAL_REVERSE,
+      PERMISSIONS.RAW_MATERIAL_REOPEN,
     ],
   },
   {
@@ -103,6 +113,7 @@ export const PERMISSION_GROUPS: Array<{ label: string; permissions: Permission[]
       PERMISSIONS.PRODUCTION_CREATE,
       PERMISSIONS.PRODUCTION_EDIT,
       PERMISSIONS.PRODUCTION_DELETE,
+      PERMISSIONS.PRODUCTION_REVERSE,
     ],
   },
   {
@@ -113,6 +124,7 @@ export const PERMISSION_GROUPS: Array<{ label: string; permissions: Permission[]
       PERMISSIONS.SALES_EDIT,
       PERMISSIONS.SALES_DELETE,
       PERMISSIONS.SALES_RATE_VIEW,
+      PERMISSIONS.SALES_REVERSE,
     ],
   },
   {

@@ -8,6 +8,8 @@ export type CustomerTxnType =
   | 'refund'
   | 'opening_balance'
   | 'other'
+  /** Cancels one sale (named by `referenceSaleId`) on a later date — see `Sale.reversedOn`. */
+  | 'sale_reversal'
 
 /**
  * One row of a customer's account — a simple running ledger, like a bank

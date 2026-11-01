@@ -25,6 +25,9 @@ class AuditAction
 
     public const RESTORE = 'RESTORE';
 
+    /** A sale cancelled by offsetting entries on a later date — the original rows are kept untouched. */
+    public const REVERSE = 'REVERSE';
+
     /** A Cash→Bank / Bank→Cash / Bank→Bank move, audited as the one logical operation both legs are. */
     public const TRANSFER = 'TRANSFER';
 

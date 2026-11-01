@@ -1,4 +1,4 @@
-import type { ID } from '@/types'
+import type { ID, SaleType } from '@/types'
 import { http } from './httpClient'
 
 export interface SaleItemInput {
@@ -9,22 +9,51 @@ export interface SaleItemInput {
   actualWeightTon?: number
 }
 
+/**
+ * One shape for both kinds of sale. A finished-product sale sends `items`;
+ * a raw material sale sends `rawMaterial` instead (its one line is built from
+ * it server-side — net weight = gross − tare, billed and deducted from raw stock).
+ */
 export interface SaleInput {
+  saleType?: SaleType
   date: string
   customerId: ID
   truckNo?: string
+  grossWeightKg?: number
+  tareWeightKg?: number
   notes?: string
   paidAtSale?: number
   /** Which Cash & Bank account a "paid at sale" amount lands in — the backend falls back to the system Cash account when omitted. */
   accountId?: ID
   items: SaleItemInput[]
+  /** Raw material sales only — gross/tare above are required with it. */
+  rawMaterial?: { productId: ID; ratePerTon: number }
 }
 
 function toPayload(data: SaleInput) {
+  if (data.saleType === 'raw_material' && data.rawMaterial) {
+    return {
+      sale_type: 'raw_material',
+      date: data.date,
+      customer_id: data.customerId,
+      product_id: data.rawMaterial.productId,
+      rate_per_ton: data.rawMaterial.ratePerTon,
+      truck_no: data.truckNo,
+      gross_weight_kg: data.grossWeightKg,
+      tare_weight_kg: data.tareWeightKg,
+      notes: data.notes,
+      paid_at_sale: data.paidAtSale ?? 0,
+      account_id: data.accountId,
+    }
+  }
+
   return {
+    sale_type: 'finished_product',
     date: data.date,
     customer_id: data.customerId,
     truck_no: data.truckNo,
+    gross_weight_kg: data.grossWeightKg ?? null,
+    tare_weight_kg: data.tareWeightKg ?? null,
     notes: data.notes,
     paid_at_sale: data.paidAtSale ?? 0,
     account_id: data.accountId,
@@ -48,6 +77,10 @@ export const salesService = {
   },
   remove(id: ID): Promise<void> {
     return http.delete(`/sales/${id}`)
+  },
+  /** Admin-only (SALES_REVERSE): cancel a sale by offsetting entries on `date`; the sale itself is kept. */
+  reverse(id: ID, input: { reason: string; date: string }): Promise<unknown> {
+    return http.post(`/sales/${id}/reverse`, { reason: input.reason, date: input.date })
   },
   async nextInvoiceNo(year: number): Promise<string> {
     const { invoice_no } = await http.get<{ invoice_no: string }>(`/sales/next-invoice-no?year=${year}`)

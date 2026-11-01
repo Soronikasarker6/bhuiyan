@@ -21,6 +21,10 @@ class RoleSeeder extends Seeder
     private const ADMIN_ONLY = [
         Permissions::AUDIT_VIEW,
         Permissions::CUSTOMER_INTERNAL_LEDGER_VIEW,
+        Permissions::SALES_REVERSE,
+        Permissions::PRODUCTION_REVERSE,
+        Permissions::RAW_MATERIAL_REVERSE,
+        Permissions::RAW_MATERIAL_REOPEN,
     ];
 
     public function run(): void

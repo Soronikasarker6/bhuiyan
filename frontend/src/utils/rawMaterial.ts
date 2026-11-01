@@ -4,6 +4,7 @@ import type {
   Product,
   ProductionEntry,
   RawMaterialImport,
+  RawMaterialSaleMovement,
   RawMaterialStock,
   RawStockSummary,
   ShipmentCycle,
@@ -82,9 +83,36 @@ function importedTonOf(productId: ID, imports: RawMaterialImport[], from?: ISODa
 }
 
 function wastageTonOf(productId: ID, wastage: WastageEntry[], from?: ISODate, to?: ISODate): number {
-  return wastage
-    .filter((w) => w.productId === productId && inDateWindow(w.date, from, to))
-    .reduce((sum, w) => sum + kgToTons(Number(w.quantityKg) || 0), 0)
+  return withReversals(
+    wastage.filter((w) => w.productId === productId),
+    (w) => kgToTons(Number(w.quantityKg) || 0),
+  )
+    .filter((m) => inDateWindow(m.date, from, to))
+    .reduce((sum, m) => sum + m.amount, 0)
+}
+
+/**
+ * An entry as dated movements: its own amount on its own date, and — once
+ * reversed — the same amount back out on the reversal date. Mirrors how
+ * InventoryService nets reversals: the original period keeps its figure, the
+ * correction lands where it was booked.
+ */
+export function withReversals<T extends { date: ISODate; reversedOn?: ISODate | null }>(
+  entries: T[],
+  amountOf: (entry: T) => number,
+): Array<{ entry: T; date: ISODate; amount: number }> {
+  return entries.flatMap((entry) => {
+    const amount = amountOf(entry)
+    const own = { entry, date: entry.date, amount }
+    return entry.reversedOn ? [own, { entry, date: entry.reversedOn, amount: -amount }] : [own]
+  })
+}
+
+/** Tons sold as raw material, by sale date. Never production — a separate way out of the yard. */
+function rawSaleTonOf(productId: ID, rawSales: RawMaterialSaleMovement[], from?: ISODate, to?: ISODate): number {
+  return rawSales
+    .filter((s) => s.productId === productId && inDateWindow(s.date, from, to))
+    .reduce((sum, s) => sum + (Number(s.ton) || 0), 0)
 }
 
 function producedTonOf(
@@ -94,9 +122,12 @@ function producedTonOf(
   from?: ISODate,
   to?: ISODate,
 ): number {
-  return productionEntries
-    .filter((e) => e.productId === productId && inDateWindow(e.date, from, to))
-    .reduce((sum, e) => sum + kgToTons((Number(e.bags) || 0) * bagKgOf(e.meshId)), 0)
+  return withReversals(
+    productionEntries.filter((e) => e.productId === productId),
+    (e) => kgToTons((Number(e.bags) || 0) * bagKgOf(e.meshId)),
+  )
+    .filter((m) => inDateWindow(m.date, from, to))
+    .reduce((sum, m) => sum + m.amount, 0)
 }
 
 // ---------------------------------------------------------------- current raw stock (§1, §5, §6)
@@ -104,9 +135,9 @@ function producedTonOf(
 /**
  * How many tons of this raw material are physically in the yard right now:
  *
- *     Total Imported − Production Consumption − Wastage
+ *     Total Imported − Production Consumption − Wastage − Raw Material Sold
  *
- * Each ton appears in exactly one of those three logs, so nothing is
+ * Each ton appears in exactly one of those logs, so nothing is
  * double-counted. A production entry consumes exactly the tonnage it bags
  * (`bags × bagKg`) and nothing on top of it — process loss is never folded in,
  * it is only ever recorded as a `WastageEntry` of its own. Production and
@@ -125,6 +156,8 @@ function producedTonOf(
  * same rows so the screen never has to wait on a round trip.
  *
  * `asOf` bounds every input to entries dated on or before that day.
+ * `rawSales` (see `rawMaterialSaleMovements`) defaults to none, so a caller
+ * that predates raw material sales still gets the figure it always did.
  */
 export function currentRawStockTon(
   productId: ID,
@@ -133,11 +166,13 @@ export function currentRawStockTon(
   productionEntries: ProductionEntry[],
   bagKgOf: (meshId: ID) => number,
   asOf?: ISODate,
+  rawSales: RawMaterialSaleMovement[] = [],
 ): number {
   return (
     importedTonOf(productId, imports, undefined, asOf) -
     producedTonOf(productId, productionEntries, bagKgOf, undefined, asOf) -
-    wastageTonOf(productId, wastage, undefined, asOf)
+    wastageTonOf(productId, wastage, undefined, asOf) -
+    rawSaleTonOf(productId, rawSales, undefined, asOf)
   )
 }
 
@@ -167,14 +202,16 @@ export function rawStockSummary(
   bagKgOf: (meshId: ID) => number,
   from?: ISODate,
   to?: ISODate,
+  rawSales: RawMaterialSaleMovement[] = [],
 ): RawStockSummary {
   const openingTon = from
-    ? currentRawStockTon(productId, imports, wastage, productionEntries, bagKgOf, dayBefore(from))
+    ? currentRawStockTon(productId, imports, wastage, productionEntries, bagKgOf, dayBefore(from), rawSales)
     : 0
 
   const importedTon = importedTonOf(productId, imports, from, to)
   const productionTon = producedTonOf(productId, productionEntries, bagKgOf, from, to)
   const wastageTon = wastageTonOf(productId, wastage, from, to)
+  const rawSaleTon = rawSaleTonOf(productId, rawSales, from, to)
 
   return {
     productId,
@@ -183,7 +220,8 @@ export function rawStockSummary(
     importedTon,
     productionTon,
     wastageTon,
-    currentRawStockTon: openingTon + importedTon - productionTon - wastageTon,
+    rawSaleTon,
+    currentRawStockTon: openingTon + importedTon - productionTon - wastageTon - rawSaleTon,
     averageCostPerTon: averageCostPerTon(productId, imports),
     // Counted over the same window as the movements above, so the card never
     // captions period figures with an all-time shipment count.
@@ -200,9 +238,10 @@ export function allRawStockSummaries(
   bagKgOf: (meshId: ID) => number,
   from?: ISODate,
   to?: ISODate,
+  rawSales: RawMaterialSaleMovement[] = [],
 ): RawStockSummary[] {
   return products.map((p) =>
-    rawStockSummary(p.id, products, imports, wastage, productionEntries, bagKgOf, from, to),
+    rawStockSummary(p.id, products, imports, wastage, productionEntries, bagKgOf, from, to, rawSales),
   )
 }
 
@@ -214,12 +253,14 @@ export function rawMaterialStock(
   wastage: WastageEntry[],
   productionEntries: ProductionEntry[],
   bagKgOf: (meshId: ID) => number,
+  rawSales: RawMaterialSaleMovement[] = [],
 ): RawMaterialStock {
   const importedTon = importedTonOf(productId, imports)
   const wastageTon = wastageTonOf(productId, wastage)
   const producedTon = producedTonOf(productId, productionEntries, bagKgOf)
+  const rawSaleTon = rawSaleTonOf(productId, rawSales)
 
-  const cycles = buildShipmentCycles(productId, products, shipmentCycles, imports, wastage, productionEntries, bagKgOf)
+  const cycles = buildShipmentCycles(productId, products, shipmentCycles, imports, wastage, productionEntries, bagKgOf, rawSales)
   const latest = cycles[cycles.length - 1]
 
   // No shipment has ever been recorded for this material — fall back to the
@@ -229,7 +270,10 @@ export function rawMaterialStock(
   const receivedTon = latest ? latest.receivedTon : 0
   const consumedTon = latest ? latest.consumedTon : producedTon
   const cycleWastageTon = latest ? latest.wastageTon : wastageTon
-  const closingTon = latest ? latest.closingTon : openingTon + receivedTon - consumedTon - cycleWastageTon
+  const cycleRawSaleTon = latest ? latest.rawSaleTon : rawSaleTon
+  const closingTon = latest
+    ? latest.closingTon
+    : openingTon + receivedTon - consumedTon - cycleWastageTon - cycleRawSaleTon
 
   return {
     productId,
@@ -237,12 +281,14 @@ export function rawMaterialStock(
     importedTon,
     wastageTon,
     producedTon,
-    currentRawStockTon: importedTon - producedTon - wastageTon,
+    rawSaleTon,
+    currentRawStockTon: importedTon - producedTon - wastageTon - rawSaleTon,
     availableTon: closingTon,
     openingTon,
     receivedTon,
     consumedTon,
     cycleWastageTon,
+    cycleRawSaleTon,
     closingTon,
     shipmentCount: cycles.length,
     openShipmentCount: cycles.filter((c) => c.status === 'open').length,
@@ -257,8 +303,11 @@ export function allRawMaterialStock(
   wastage: WastageEntry[],
   productionEntries: ProductionEntry[],
   bagKgOf: (meshId: ID) => number,
+  rawSales: RawMaterialSaleMovement[] = [],
 ): RawMaterialStock[] {
-  return products.map((p) => rawMaterialStock(p.id, products, shipmentCycles, imports, wastage, productionEntries, bagKgOf))
+  return products.map((p) =>
+    rawMaterialStock(p.id, products, shipmentCycles, imports, wastage, productionEntries, bagKgOf, rawSales),
+  )
 }
 
 // ---------------------------------------------------------------- wastage
@@ -323,9 +372,11 @@ export function buildShipmentCycles(
   wastage: WastageEntry[],
   productionEntries: ProductionEntry[],
   bagKgOf: (meshId: ID) => number,
+  rawSales: RawMaterialSaleMovement[] = [],
 ): ShipmentCycleRow[] {
   const cycles = shipmentCycles.filter((c) => c.productId === productId).sort(chronologicalCycle)
   const productWastage = wastage.filter((w) => w.productId === productId)
+  const productRawSales = rawSales.filter((s) => s.productId === productId)
   const productProduction = productionEntries.filter((e) => e.productId === productId)
 
   const productName = productNameOf(products, productId)
@@ -344,6 +395,7 @@ export function buildShipmentCycles(
         availableTon: openingTon + receivedTon,
         consumedTon,
         wastageTon,
+        rawSaleTon: Number(cycle.closing.rawSaleTon) || 0,
         closingTon,
         status: 'closed',
         closedAt,
@@ -364,13 +416,19 @@ export function buildShipmentCycles(
       return true
     }
 
-    const wastageTon = productWastage
-      .filter((w) => inWindow(w.date))
-      .reduce((sum, w) => sum + kgToTons(Number(w.quantityKg) || 0), 0)
+    // A reversed entry counts in its own window and comes back out in the
+    // window of its reversal — a closed cycle's frozen figures never move.
+    const wastageTon = withReversals(productWastage, (w) => kgToTons(Number(w.quantityKg) || 0))
+      .filter((m) => inWindow(m.date))
+      .reduce((sum, m) => sum + m.amount, 0)
 
-    const consumedTon = productProduction
-      .filter((e) => inWindow(e.date))
-      .reduce((sum, e) => sum + kgToTons((Number(e.bags) || 0) * bagKgOf(e.meshId)), 0)
+    const consumedTon = withReversals(productProduction, (e) => kgToTons((Number(e.bags) || 0) * bagKgOf(e.meshId)))
+      .filter((m) => inWindow(m.date))
+      .reduce((sum, m) => sum + m.amount, 0)
+
+    const rawSaleTon = productRawSales
+      .filter((s) => inWindow(s.date))
+      .reduce((sum, s) => sum + (Number(s.ton) || 0), 0)
 
     const receivedTon = imports
       .filter((i) => i.shipmentId === cycle.id)
@@ -378,9 +436,9 @@ export function buildShipmentCycles(
 
     const openingTon = runningOpening
     const availableTon = openingTon + receivedTon
-    const closingTon = availableTon - consumedTon - wastageTon
+    const closingTon = availableTon - consumedTon - wastageTon - rawSaleTon
 
-    rows.push({ ...meta, receivedTon, openingTon, availableTon, consumedTon, wastageTon, closingTon, status: 'open' })
+    rows.push({ ...meta, receivedTon, openingTon, availableTon, consumedTon, wastageTon, rawSaleTon, closingTon, status: 'open' })
     runningOpening = closingTon
   })
 
@@ -395,8 +453,11 @@ export function allShipmentCycles(
   wastage: WastageEntry[],
   productionEntries: ProductionEntry[],
   bagKgOf: (meshId: ID) => number,
+  rawSales: RawMaterialSaleMovement[] = [],
 ): ShipmentCycleRow[] {
-  return products.flatMap((p) => buildShipmentCycles(p.id, products, shipmentCycles, imports, wastage, productionEntries, bagKgOf))
+  return products.flatMap((p) =>
+    buildShipmentCycles(p.id, products, shipmentCycles, imports, wastage, productionEntries, bagKgOf, rawSales),
+  )
 }
 
 /**

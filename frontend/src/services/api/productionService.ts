@@ -40,6 +40,10 @@ export const productionService = {
   async remove(id: ID): Promise<void> {
     await http.delete(`/production-entries/${id}`)
   },
+  /** Admin-only (PRODUCTION_REVERSE): undo an entry on `date` — returns its tons, removes its bags; the entry is kept. */
+  async reverse(id: ID, input: { reason: string; date: string }): Promise<void> {
+    await http.post(`/production-entries/${id}/reverse`, input)
+  },
   async meshStock(productId: ID): Promise<MeshStock[]> {
     return mapEntities<MeshStock>(await http.get(`/products/${productId}/mesh-stock`))
   },

@@ -22,16 +22,35 @@ class Permissions
     public const RAW_MATERIAL_EDIT = 'RAW_MATERIAL_EDIT';
     public const RAW_MATERIAL_DELETE = 'RAW_MATERIAL_DELETE';
 
+    /** Reverse a wastage entry inside a closed shipment cycle, where delete is refused. Admin-only — see RoleSeeder. */
+    public const RAW_MATERIAL_REVERSE = 'RAW_MATERIAL_REVERSE';
+
+    /**
+     * Reopen a closed shipment cycle — unfreezing figures that were reported
+     * final. Admin-only (see RoleSeeder), for exceptional cases such as a cycle
+     * closed by mistake; closing stays under RAW_MATERIAL_EDIT.
+     */
+    public const RAW_MATERIAL_REOPEN = 'RAW_MATERIAL_REOPEN';
+
     public const PRODUCTION_VIEW = 'PRODUCTION_VIEW';
     public const PRODUCTION_CREATE = 'PRODUCTION_CREATE';
     public const PRODUCTION_EDIT = 'PRODUCTION_EDIT';
     public const PRODUCTION_DELETE = 'PRODUCTION_DELETE';
+
+    /** Reverse a production entry inside a closed shipment cycle, where edit/delete are refused. Admin-only — see RoleSeeder. */
+    public const PRODUCTION_REVERSE = 'PRODUCTION_REVERSE';
 
     public const SALES_VIEW = 'SALES_VIEW';
     public const SALES_CREATE = 'SALES_CREATE';
     public const SALES_EDIT = 'SALES_EDIT';
     public const SALES_DELETE = 'SALES_DELETE';
     public const SALES_RATE_VIEW = 'SALES_RATE_VIEW';
+
+    /**
+     * Reverse a sale that can no longer be edited or deleted (a raw material
+     * sale inside a closed shipment cycle). Admin-only — see RoleSeeder.
+     */
+    public const SALES_REVERSE = 'SALES_REVERSE';
 
     public const CUSTOMERS_VIEW = 'CUSTOMERS_VIEW';
     public const CUSTOMERS_CREATE = 'CUSTOMERS_CREATE';

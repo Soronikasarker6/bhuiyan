@@ -116,6 +116,39 @@ class ProductionEntryController extends Controller
     }
 
     /** Bags and the raw-material tonnage they consumed — the two figures a production edit moves together (§19). */
+    /**
+     * Admin-only correction for an entry that can no longer be edited or
+     * deleted (inside a closed shipment cycle) — see
+     * InventoryService::reverseConsumption(). The entry stays, marked reversed.
+     */
+    public function reverse(Request $request, ProductionEntry $productionEntry)
+    {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:255'],
+            'date' => ['nullable', 'date', 'before_or_equal:today'],
+        ]);
+
+        $before = $this->auditSnapshot($productionEntry);
+
+        $entry = $this->inventory->reverseConsumption(
+            'production',
+            $productionEntry->id,
+            $validated['date'] ?? now()->toDateString(),
+            $validated['reason'],
+            $request->user()?->id,
+        );
+
+        $this->audit->record(AuditEntity::PRODUCTION_ENTRY, $entry->id, AuditAction::REVERSE, [
+            'record' => $this->reference($entry),
+            'before' => $before,
+            'after' => $this->auditSnapshot($entry) + ['reversed_on' => $entry->reversed_on->toDateString()],
+            'reason' => $validated['reason'],
+            'summary' => sprintf('Reversed production of %d bags of Mesh %s on %s', (int) $entry->bags, $entry->mesh?->name ?? '—', $entry->reversed_on->toDateString()),
+        ]);
+
+        return response()->json($entry);
+    }
+
     private function auditSnapshot(ProductionEntry $entry, ?float $tons = null): array
     {
         $entry->loadMissing(['product', 'mesh']);

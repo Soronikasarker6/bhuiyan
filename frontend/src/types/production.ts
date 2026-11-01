@@ -15,6 +15,13 @@ export interface ProductionEntry {
   meshId: ID
   bags: number
   notes?: string
+  /**
+   * Set once an Admin reverses the entry (it sat in a closed shipment cycle,
+   * where edit/delete are refused). The entry stays as recorded; its effect
+   * is undone on this date instead — never in the original, frozen cycle.
+   */
+  reversedOn?: ISODate | null
+  reversalReason?: string | null
   createdAt: string
 }
 

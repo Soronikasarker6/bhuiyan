@@ -41,6 +41,7 @@ export default function ProductsPage() {
       counts.set(entry.meshId, (counts.get(entry.meshId) ?? 0) + 1)
     }
     for (const item of data.saleItems) {
+      if (!item.meshSizeId) continue // raw material lines use no mesh
       counts.set(item.meshSizeId, (counts.get(item.meshSizeId) ?? 0) + 1)
     }
     return counts

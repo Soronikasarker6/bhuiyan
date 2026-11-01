@@ -218,7 +218,9 @@ class CustomerLedgerService
     public function totals(int $customerId): array
     {
         $rows = CustomerTransaction::where('customer_id', $customerId)->get();
-        $totalSales = $rows->where('type', 'sale')->sum('debit');
+        // Net of reversals, so Balance = Total Sales − Total Payments still holds
+        // once a sale has been reversed by a `sale_reversal` credit.
+        $totalSales = $rows->where('type', 'sale')->sum('debit') - $rows->where('type', 'sale_reversal')->sum('credit');
         $totalPaid = $rows->where('type', 'payment')->sum('credit');
         $balance = $rows->sum('debit') - $rows->sum('credit');
 

@@ -12,6 +12,7 @@ import type {
 import { activeMeshSizes } from './products'
 import { kgToTons } from './imports'
 import { compareCreated } from './id'
+import { withReversals } from './rawMaterial'
 
 /**
  * Production & stock — mesh by mesh, bag by bag.
@@ -44,10 +45,11 @@ function dailyBuckets(
   saleItems: SaleItem[],
   sales: Sale[],
 ) {
+  // A reversed production entry takes its bags back out on its reversal date.
   const producedByDate = new Map<ISODate, number>()
-  for (const entry of productionEntries) {
-    if (entry.productId !== productId || entry.meshId !== meshId) continue
-    producedByDate.set(entry.date, (producedByDate.get(entry.date) ?? 0) + (Number(entry.bags) || 0))
+  const ownEntries = productionEntries.filter((e) => e.productId === productId && e.meshId === meshId)
+  for (const { date, amount } of withReversals(ownEntries, (e) => Number(e.bags) || 0)) {
+    producedByDate.set(date, (producedByDate.get(date) ?? 0) + amount)
   }
 
   const saleDateOf = new Map(sales.map((s) => [s.id, s.date]))
@@ -189,15 +191,19 @@ export function totalStockBags(rows: ProductMeshStock[] | MeshStock[]): number {
 
 // ---------------------------------------------------------------- aggregates
 
+/** Reversed entries net out on their reversal date, as everywhere else. */
 export function todaysProductionBags(entries: ProductionEntry[], today: ISODate, productId?: ID): number {
-  return entries
-    .filter((e) => e.date === today && (!productId || e.productId === productId))
-    .reduce((sum, e) => sum + (Number(e.bags) || 0), 0)
+  return withReversals(
+    entries.filter((e) => !productId || e.productId === productId),
+    (e) => Number(e.bags) || 0,
+  )
+    .filter((m) => m.date === today)
+    .reduce((sum, m) => sum + m.amount, 0)
 }
 
 export function totalProductionBags(entries: ProductionEntry[], productId?: ID): number {
   return entries
-    .filter((e) => !productId || e.productId === productId)
+    .filter((e) => !e.reversedOn && (!productId || e.productId === productId))
     .reduce((sum, e) => sum + (Number(e.bags) || 0), 0)
 }
 

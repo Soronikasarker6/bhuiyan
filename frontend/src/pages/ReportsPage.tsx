@@ -33,9 +33,12 @@ import { PageSkeleton } from '@/components/PageSkeleton'
 import { ExportMenu } from '@/components/ExportMenu'
 import { cn } from '@/utils/cn'
 import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
+import { truckWeightReportPayload } from '@/features/reports/truckWeightReport'
 import { useAppData } from '@/hooks/useAppData'
 import { usePageHeader } from '@/hooks/usePageHeader'
-import type { PaymentStatus } from '@/types'
+import type { PaymentStatus, SaleType } from '@/types'
+import { usePermission } from '@/hooks/useAuth'
+import { PERMISSIONS } from '@/constants/permissions'
 import {
   accountBalances,
   buildLedgerRows,
@@ -53,7 +56,12 @@ import {
   salesByCustomer,
   salesByMeshSize,
   salesByProduct,
-  salesByTruck,
+  truckWeightRows,
+  rawMaterialSaleMovements,
+  isRawMaterialSale,
+  standingSales,
+  saleTypeOf,
+  SALE_TYPE_LABEL,
 } from '@/utils/sales'
 import { bagKgOf, meshSizeNameOf, productNameOf } from '@/utils/products'
 import { customerDisplayLabel } from '@/utils/customerLedger'
@@ -108,6 +116,8 @@ const ALL = '__all__'
 
 export default function ReportsPage() {
   const { data, loading } = useAppData()
+  // Raw material sold straight from the yard — subtracted from raw stock beside production and wastage, never as either.
+  const rawSales = useMemo(() => rawMaterialSaleMovements(data.sales, data.saleItems), [data.sales, data.saleItems])
   const { print } = usePrint()
 
   const thisYear = new Date().getFullYear()
@@ -120,9 +130,13 @@ export default function ReportsPage() {
   const [customerFilter, setCustomerFilter] = useState(ALL)
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | typeof ALL>(ALL)
   const [accountFilter, setAccountFilter] = useState(ALL)
+  const [saleTypeFilter, setSaleTypeFilter] = useState<SaleType | typeof ALL>(ALL)
+  const [truckFilter, setTruckFilter] = useState('')
   const [showMoreFilters, setShowMoreFilters] = useState(false)
+  // Rate/TON and amounts on the raw material report follow the same permission as everywhere else.
+  const canViewRate = usePermission(PERMISSIONS.SALES_RATE_VIEW)
 
-  const activeSecondaryFilters = [productFilter, customerFilter, statusFilter, accountFilter].filter(
+  const activeSecondaryFilters = [productFilter, customerFilter, statusFilter, accountFilter, saleTypeFilter, truckFilter || ALL].filter(
     (v) => v !== ALL,
   ).length
 
@@ -167,8 +181,31 @@ export default function ReportsPage() {
         productId: productFilter === ALL ? undefined : productFilter,
         customerId: customerFilter === ALL ? undefined : customerFilter,
         status: statusFilter === ALL ? undefined : statusFilter,
-      }),
-    [allSales, from, to, productFilter, customerFilter, statusFilter],
+        saleType: saleTypeFilter === ALL ? undefined : saleTypeFilter,
+      }).filter((s) => !truckFilter.trim() || (s.truckNo ?? '').toLowerCase().includes(truckFilter.trim().toLowerCase())),
+    [allSales, from, to, productFilter, customerFilter, statusFilter, saleTypeFilter, truckFilter],
+  )
+
+
+  /**
+   * Reversed sales are listed (marked Reversed) so the history stays
+   * traceable, but every total and aggregate counts only the ones that stand.
+   */
+  const countedSalesInRange = useMemo(() => standingSales(salesInRange), [salesInRange])
+
+  const countedRawSalesInRange = useMemo(() => countedSalesInRange.filter(isRawMaterialSale), [countedSalesInRange])
+
+  /**
+   * The Truck-wise report's rows: every standing sale with a truck number,
+   * under every sales filter (date, customer, product, sale type, truck),
+   * grouped by truck and then by date.
+   */
+  const truckSalesInRange = useMemo(
+    () =>
+      countedSalesInRange
+        .filter((s) => s.truckNo?.trim())
+        .sort((a, b) => (a.truckNo ?? '').localeCompare(b.truckNo ?? '') || a.date.localeCompare(b.date) || a.invoiceNo.localeCompare(b.invoiceNo)),
+    [countedSalesInRange],
   )
 
   const ledgerInRange = useMemo(
@@ -203,6 +240,7 @@ export default function ReportsPage() {
       data.wastageEntries,
       data.productionEntries,
       (meshId) => bagKgOf(data.meshSizes, meshId),
+      rawSales,
     )
     const shipmentCycleRows = allShipmentCycles(
       data.products,
@@ -211,6 +249,7 @@ export default function ReportsPage() {
       data.wastageEntries,
       data.productionEntries,
       (meshId) => bagKgOf(data.meshSizes, meshId),
+      rawSales,
     )
     const wastageInRange = buildWastageRows(data.wastageEntries, data.products)
       .filter((row) => isWithin(row.date, from, to))
@@ -257,7 +296,7 @@ export default function ReportsPage() {
     // Sales still owing something. `advance` is settled — covered by credit
     // the customer already held — so it belongs with `paid` here, not with
     // the unpaid ones.
-    const creditSales = salesInRange.filter((s) => s.status !== 'paid' && s.status !== 'advance')
+    const creditSales = countedSalesInRange.filter((s) => s.status !== 'paid' && s.status !== 'advance')
     const paymentsInRange = customerTxnsInRange.filter((t) => t.type === 'payment')
     // Balances come from the full ledger, never from the in-range slice, so a
     // printed statement opens on the balance the customer carried into the
@@ -429,6 +468,7 @@ export default function ReportsPage() {
               { key: 'opening', label: 'Opening (Ton)', align: 'right' },
               { key: 'received', label: 'Received (Ton)', align: 'right' },
               { key: 'used', label: 'Used (Ton)', align: 'right' },
+              { key: 'rawSold', label: 'Raw Sold (Ton)', align: 'right' },
               { key: 'closing', label: 'Closing / Available (Ton)', align: 'right' },
               { key: 'imported', label: 'Imported All-Time (Ton)', align: 'right' },
               { key: 'avgCost', label: 'Avg. Cost/Ton', align: 'right' },
@@ -438,6 +478,7 @@ export default function ReportsPage() {
               opening: formatTons(s.openingTon),
               received: formatTons(s.receivedTon),
               used: formatTons(s.consumedTon),
+              rawSold: formatTons(s.cycleRawSaleTon),
               closing: formatTons(s.closingTon),
               imported: formatTons(s.importedTon),
               avgCost: s.averageCostPerTon ? formatCurrency(s.averageCostPerTon) : '—',
@@ -447,6 +488,7 @@ export default function ReportsPage() {
               opening: formatTons(rows.reduce((s, r) => s + r.openingTon, 0)),
               received: formatTons(rows.reduce((s, r) => s + r.receivedTon, 0)),
               used: formatTons(rows.reduce((s, r) => s + r.consumedTon, 0)),
+              rawSold: formatTons(rows.reduce((s, r) => s + r.cycleRawSaleTon, 0)),
               closing: formatTons(rows.reduce((s, r) => s + r.closingTon, 0)),
               imported: formatTons(rows.reduce((s, r) => s + r.importedTon, 0)),
             },
@@ -473,6 +515,7 @@ export default function ReportsPage() {
               { key: 'opening', label: 'Opening (Ton)', align: 'right' },
               { key: 'consumed', label: 'Consumed (Ton)', align: 'right' },
               { key: 'wastage', label: 'Wastage (Ton)', align: 'right' },
+              { key: 'rawSold', label: 'Raw Sold (Ton)', align: 'right' },
               { key: 'closing', label: 'Closing (Ton)', align: 'right' },
               { key: 'status', label: 'Status' },
             ],
@@ -486,6 +529,7 @@ export default function ReportsPage() {
                 opening: formatTons(c.openingTon),
                 consumed: formatTons(c.consumedTon),
                 wastage: formatTons(c.wastageTon),
+                rawSold: formatTons(c.rawSaleTon),
                 closing: formatTons(c.closingTon),
                 status: c.status === 'closed' ? 'Closed' : 'Open',
               })),
@@ -529,20 +573,21 @@ export default function ReportsPage() {
         id: 'sales',
         group: 'Sales',
         name: 'Sales Report',
-        description: 'Every invoice in the range — product, mesh, billable TON, rate, paid and due.',
+        description: 'Every invoice in the range — type, product, mesh, billable TON, paid and due. Use the Sale type filter for finished product, raw material or all.',
         icon: Receipt,
         count: salesInRange.length,
         build: () => ({
-          title: 'Sales Report',
+          title: saleTypeFilter === ALL ? 'Sales Report' : `${SALE_TYPE_LABEL[saleTypeFilter]} Sales Report`,
           subtitle: rangeLabel,
           meta: [
-            { label: 'Total TON sold', value: `${formatTons(salesInRange.reduce((s, r) => s + r.totalWeightTon, 0))} Ton` },
-            { label: 'Total invoices', value: String(salesInRange.length) },
+            { label: 'Total TON sold', value: `${formatTons(countedSalesInRange.reduce((s, r) => s + r.totalWeightTon, 0))} Ton` },
+            { label: 'Total invoices', value: String(countedSalesInRange.length) },
           ],
           columns: [
             { key: 'invoice', label: 'Invoice' },
             { key: 'date', label: 'Date' },
             { key: 'customer', label: 'Customer' },
+            { key: 'type', label: 'Type' },
             { key: 'truck', label: 'Truck' },
             { key: 'product', label: 'Product' },
             { key: 'mesh', label: 'Mesh / Size' },
@@ -556,6 +601,7 @@ export default function ReportsPage() {
             invoice: s.invoiceNo,
             date: formatDate(s.date),
             customer: s.customerName,
+            type: SALE_TYPE_LABEL[saleTypeOf(s)],
             truck: s.truckNo ?? '—',
             product: s.items.length === 1 ? s.items[0].productName : s.items.length > 1 ? 'Multiple' : '—',
             mesh: s.items.length === 1 ? s.items[0].meshSizeName : s.items.length > 1 ? 'Multiple' : '—',
@@ -566,13 +612,47 @@ export default function ReportsPage() {
             status: SALE_STATUS_LABEL[s.status],
           })),
           totals: {
-            invoice: `Total (${salesInRange.length})`,
-            ton: `${formatTons(salesInRange.reduce((s, r) => s + r.totalWeightTon, 0))} Ton`,
-            total: formatCurrency(salesInRange.reduce((s, r) => s + r.totalAmount, 0)),
-            paid: formatCurrency(salesInRange.reduce((s, r) => s + r.amountPaid, 0)),
-            due: formatCurrency(salesInRange.reduce((s, r) => s + r.amountDue, 0)),
+            // Reversed rows are listed above but not counted here.
+            invoice: `Total (${countedSalesInRange.length})`,
+            ton: `${formatTons(countedSalesInRange.reduce((s, r) => s + r.totalWeightTon, 0))} Ton`,
+            total: formatCurrency(countedSalesInRange.reduce((s, r) => s + r.totalAmount, 0)),
+            paid: formatCurrency(countedSalesInRange.reduce((s, r) => s + r.amountPaid, 0)),
+            due: formatCurrency(countedSalesInRange.reduce((s, r) => s + r.amountDue, 0)),
           },
         }),
+      },
+      {
+        id: 'raw-material-sales',
+        group: 'Sales',
+        name: 'Raw Material Sales',
+        description: 'Raw limestone sold straight from the yard — material, truck and weighbridge gross, tare and net per sale.',
+        icon: Scale,
+        count: countedRawSalesInRange.length,
+        build: () => {
+          // Same rows, columns and totals as the Truck-wise report — plus the
+          // confidential Rate/Amount, only for users who may see Rate/TON.
+          const rows = truckWeightRows(countedRawSalesInRange)
+          const summaries = new Map(countedRawSalesInRange.map((s) => [s.id, s]))
+          return truckWeightReportPayload({
+            title: 'Raw Material Sales',
+            subtitle: rangeLabel,
+            rows,
+            saleType: 'raw_material',
+            ...(canViewRate
+              ? {
+                  extraColumns: [
+                    { key: 'rate', label: 'Rate / Ton', align: 'right' as const },
+                    { key: 'amount', label: 'Amount', align: 'right' as const },
+                  ],
+                  extraCells: (row) => ({
+                    rate: formatCurrency(summaries.get(row.saleId)?.items[0]?.ratePerTon),
+                    amount: formatCurrency(summaries.get(row.saleId)?.totalAmount),
+                  }),
+                  extraTotals: { amount: formatCurrency(countedRawSalesInRange.reduce((t, s) => t + s.totalAmount, 0)) },
+                }
+              : {}),
+          })
+        },
       },
       {
         id: 'sales-by-product',
@@ -580,9 +660,9 @@ export default function ReportsPage() {
         name: 'Product-wise Sales',
         description: 'Revenue and weight sold per product in the range.',
         icon: Boxes,
-        count: salesByProduct(salesInRange).length,
+        count: salesByProduct(countedSalesInRange).length,
         build: () => {
-          const rows = salesByProduct(salesInRange)
+          const rows = salesByProduct(countedSalesInRange)
           return {
             title: 'Product-wise Sales',
             subtitle: rangeLabel,
@@ -602,9 +682,9 @@ export default function ReportsPage() {
         name: 'Customer-wise Sales',
         description: 'Invoices, TON sold, amount, paid and due per customer in the range (§6).',
         icon: Users,
-        count: salesByCustomer(salesInRange).length,
+        count: salesByCustomer(countedSalesInRange).length,
         build: () => {
-          const rows = salesByCustomer(salesInRange)
+          const rows = salesByCustomer(countedSalesInRange)
           return {
             title: 'Customer-wise Sales',
             subtitle: rangeLabel,
@@ -639,23 +719,16 @@ export default function ReportsPage() {
         id: 'sales-by-truck',
         group: 'Sales',
         name: 'Truck-wise Sales',
-        description: 'Revenue per truck in the range.',
+        description: 'Every sale on a truck — finished product and raw material — with weighbridge gross, tare and net weight. Use the Sale type filter for one kind or both.',
         icon: Truck,
-        count: salesByTruck(salesInRange).length,
-        build: () => {
-          const rows = salesByTruck(salesInRange)
-          return {
-            title: 'Truck-wise Sales',
+        count: truckSalesInRange.length,
+        build: () =>
+          truckWeightReportPayload({
+            title: saleTypeFilter === ALL ? 'Truck-wise Sales' : `Truck-wise Sales — ${SALE_TYPE_LABEL[saleTypeFilter]}`,
             subtitle: rangeLabel,
-            columns: [
-              { key: 'truck', label: 'Truck No' },
-              { key: 'count', label: 'Trips', align: 'right' },
-              { key: 'amount', label: 'Amount', align: 'right' },
-            ],
-            rows: rows.map((r) => ({ truck: r.truckNo, count: String(r.count), amount: formatCurrency(r.amount) })),
-            totals: { truck: 'Total', count: String(rows.reduce((s, r) => s + r.count, 0)), amount: formatCurrency(rows.reduce((s, r) => s + r.amount, 0)) },
-          }
-        },
+            rows: truckWeightRows(truckSalesInRange),
+            saleType: saleTypeFilter === ALL ? undefined : saleTypeFilter,
+          }),
       },
       {
         id: 'sales-by-mesh',
@@ -663,9 +736,9 @@ export default function ReportsPage() {
         name: 'Mesh-wise Sales',
         description: 'Revenue and weight per mesh size in the range.',
         icon: Scale,
-        count: salesByMeshSize(salesInRange).length,
+        count: salesByMeshSize(countedSalesInRange).length,
         build: () => {
-          const rows = salesByMeshSize(salesInRange)
+          const rows = salesByMeshSize(countedSalesInRange)
           return {
             title: 'Mesh-wise Sales',
             subtitle: rangeLabel,
@@ -987,7 +1060,7 @@ export default function ReportsPage() {
         balance: formatCurrency(row.balance),
       }
     }
-  }, [data, importsInRange, productionInRange, allSales, salesInRange, ledgerInRange, customerTxnsInRange, rangeLabel, year, to])
+  }, [data, importsInRange, productionInRange, allSales, salesInRange, ledgerInRange, customerTxnsInRange, rangeLabel, year, to, rawSales, countedSalesInRange, countedRawSalesInRange, truckSalesInRange, canViewRate, saleTypeFilter])
 
   // ---------------------------------------------------------------- export
 
@@ -1099,6 +1172,7 @@ export default function ReportsPage() {
                   <SelectItem value="advance">No due · Advance</SelectItem>
                   <SelectItem value="partial">Partial</SelectItem>
                   <SelectItem value="due">Due</SelectItem>
+                  <SelectItem value="reversed">Reversed</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1111,6 +1185,21 @@ export default function ReportsPage() {
                   {data.accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Sale type</label>
+              <Select value={saleTypeFilter} onValueChange={(v) => setSaleTypeFilter(v as SaleType | typeof ALL)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All sales</SelectItem>
+                  <SelectItem value="finished_product">{SALE_TYPE_LABEL.finished_product} sales</SelectItem>
+                  <SelectItem value="raw_material">{SALE_TYPE_LABEL.raw_material} sales</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label htmlFor="report-truck" className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Truck number</label>
+              <Input id="report-truck" placeholder="Any truck" value={truckFilter} onChange={(e) => setTruckFilter(e.target.value)} />
             </div>
             <div>
               <label htmlFor="report-year" className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">P&amp;L year</label>

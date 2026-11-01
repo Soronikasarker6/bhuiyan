@@ -3,7 +3,8 @@ import { Download, Lock, LockOpen, Search, Ship } from 'lucide-react'
 import type { ShipmentCycleRow } from '@/types'
 import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
-import { Input } from '@/components/ui/input'
+import { Input, Textarea } from '@/components/ui/input'
+import { Field } from '@/components/Field'
 import { Badge } from '@/components/ui/misc'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { SortableHead } from '@/components/SortableHead'
@@ -39,7 +40,9 @@ function Ton({ value, tone = 'neutral', bold = false }: { value: number; tone?: 
  * permanently (`ConfirmDialog` below asks first, the same way a cash month
  * is closed in `ClosingPage`) and hands the closing balance forward as the
  * *next* cycle of the same material's opening balance. Reopening removes
- * the freeze — an explicit, confirmed action, never an accidental edit.
+ * the freeze — an explicit, confirmed action, never an accidental edit:
+ * Admin-only (RAW_MATERIAL_REOPEN) and with a required reason, which goes on
+ * the audit record. Closing stays with RAW_MATERIAL_EDIT.
  */
 export function ShipmentTable({
   rows,
@@ -49,11 +52,13 @@ export function ShipmentTable({
 }: {
   rows: ShipmentCycleRow[]
   onClose: (row: ShipmentCycleRow) => void | Promise<void>
-  onReopen: (row: ShipmentCycleRow) => void | Promise<void>
+  onReopen: (row: ShipmentCycleRow, reason: string) => void | Promise<void>
   /** The full import history behind one cycle, as a printable/downloadable document (§9). */
   onDownload: (row: ShipmentCycleRow) => void
 }) {
   const canEdit = usePermission(PERMISSIONS.RAW_MATERIAL_EDIT)
+  const canReopen = usePermission(PERMISSIONS.RAW_MATERIAL_REOPEN)
+  const [reopenReason, setReopenReason] = useState('')
   const [page, setPage] = useState(0)
   const [closing, setClosing] = useState<ShipmentCycleRow | null>(null)
   const [reopening, setReopening] = useState<ShipmentCycleRow | null>(null)
@@ -159,18 +164,27 @@ export function ShipmentTable({
                         <Download />
                         Download
                       </Button>
-                      {canEdit &&
-                        (row.status === 'closed' ? (
-                          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={() => setReopening(row)}>
-                            <LockOpen />
-                            Reopen
-                          </Button>
-                        ) : (
-                          <Button variant="outline" size="sm" onClick={() => setClosing(row)}>
-                            <Lock />
-                            Close
-                          </Button>
-                        ))}
+                      {row.status === 'closed'
+                        ? canReopen && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                setReopenReason('')
+                                setReopening(row)
+                              }}
+                            >
+                              <LockOpen />
+                              Reopen
+                            </Button>
+                          )
+                        : canEdit && (
+                            <Button variant="outline" size="sm" onClick={() => setClosing(row)}>
+                              <Lock />
+                              Close
+                            </Button>
+                          )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -233,12 +247,26 @@ export function ShipmentTable({
         open={reopening !== null}
         onOpenChange={(open) => !open && setReopening(null)}
         title={reopening ? `Reopen Shipment #${reopening.id}?` : ''}
-        description="Its balance will be recomputed live again from the production and wastage logs, and the next shipment's opening balance will move with it. Use this only to correct a mistake."
+        description="Its balance will be recomputed live again from the production, wastage and raw sale logs, and the next shipment's opening balance will move with it. Its entries become editable until it is closed again, which re-freezes the corrected figures. Use this only to correct a mistake."
         confirmLabel="Reopen shipment"
+        confirmDisabled={reopenReason.trim().length === 0}
         onConfirm={async () => {
-          if (reopening) await onReopen(reopening)
+          if (reopening) await onReopen(reopening, reopenReason.trim())
         }}
-      />
+      >
+        <div className="mt-3">
+          <Field label="Reason (required)" htmlFor="reopen-reason" hint="Recorded on the audit trail with your name and the time.">
+            <Textarea
+              id="reopen-reason"
+              rows={2}
+              maxLength={255}
+              placeholder="Why this cycle must be reopened"
+              value={reopenReason}
+              onChange={(e) => setReopenReason(e.target.value)}
+            />
+          </Field>
+        </div>
+      </ConfirmDialog>
     </Section>
   )
 }

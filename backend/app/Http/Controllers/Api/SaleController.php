@@ -147,7 +147,13 @@ class SaleController extends Controller
             'invoice_no' => $sale->invoice_no,
             'date' => $sale->date?->toDateString(),
             'customer' => $sale->customer?->name,
+            'sale_type' => $sale->sale_type,
             'truck_no' => $sale->truck_no,
+            'gross_weight_kg' => $sale->gross_weight_kg,
+            'tare_weight_kg' => $sale->tare_weight_kg,
+            'net_weight_kg' => $sale->netWeightKg(),
+            'reversed_on' => $sale->reversed_on?->toDateString(),
+            'reversal_reason' => $sale->reversal_reason,
             'notes' => $sale->notes,
             'paid_at_sale' => (float) $sale->paid_at_sale,
             'total_weight_ton' => $presented['total_weight_ton'],
@@ -166,6 +172,46 @@ class SaleController extends Controller
     private function money(float $amount): string
     {
         return '৳'.number_format($amount, 2);
+    }
+
+    /**
+     * Admin-only correction for a sale that can no longer be edited or
+     * deleted — see SalesService::reverseSale(). The sale stays, marked
+     * reversed; the reason is required and kept on the sale and the audit.
+     */
+    public function reverse(Request $request, Sale $sale)
+    {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:255'],
+            'date' => ['nullable', 'date', 'before_or_equal:today'],
+        ]);
+
+        $sale->load(['customer', 'items.product', 'items.meshSize']);
+        $before = $this->auditSnapshot($sale);
+
+        $sale = $this->sales->reverseSale(
+            $sale->id,
+            $validated['date'] ?? now()->toDateString(),
+            $validated['reason'],
+            $request->user()?->id,
+        );
+        $sale->load(['customer', 'items.product', 'items.meshSize']);
+
+        $this->audit->record(AuditEntity::SALE, $sale->id, AuditAction::REVERSE, [
+            'record' => $sale->invoice_no,
+            'before' => $before,
+            'after' => $this->auditSnapshot($sale),
+            'reason' => $validated['reason'],
+            'summary' => sprintf(
+                'Reversed sale %s for %s on %s · %s',
+                $sale->invoice_no,
+                $sale->customer?->name ?? 'customer',
+                $sale->reversed_on->toDateString(),
+                $this->money((float) $before['total_amount']),
+            ),
+        ]);
+
+        return response()->json($this->present($sale, (bool) $request->user()?->can(Permissions::SALES_RATE_VIEW)));
     }
 
     public function nextInvoiceNo(Request $request)
@@ -209,13 +255,20 @@ class SaleController extends Controller
 
         return array_merge($sale->toArray(), [
             'customer_name' => $sale->customer?->name,
+            'net_weight_kg' => $sale->netWeightKg(),
             'items' => $items,
             'total_amount' => $totalAmount,
             'total_weight_ton' => $totalWeightTon,
-            'amount_paid' => $amountPaid,
-            'amount_due' => $amountDue,
-            'covered_by_advance' => $settled['covered_by_advance'],
-            'status' => CustomerLedgerService::statusFor($totalAmount, $amountPaid, $settled['covered_by_advance']),
+            // A reversed sale is settled by its own reversal credit — it is
+            // neither owed nor "paid", it no longer stands. What it shows as
+            // paid is the money actually taken with it at sale (now the
+            // customer's advance), never the reversal credit.
+            'amount_paid' => $sale->isReversed() ? min($totalAmount, (float) $sale->paid_at_sale) : $amountPaid,
+            'amount_due' => $sale->isReversed() ? 0.0 : $amountDue,
+            'covered_by_advance' => $sale->isReversed() ? 0.0 : $settled['covered_by_advance'],
+            'status' => $sale->isReversed()
+                ? 'reversed'
+                : CustomerLedgerService::statusFor($totalAmount, $amountPaid, $settled['covered_by_advance']),
         ]);
     }
 }
