@@ -45,7 +45,8 @@ class InventoryService
      *
      * @return Collection<int, array{
      *   shipment: Shipment, opening_ton: float, received_ton: float,
-     *   available_ton: float, consumed_ton: float, wastage_ton: float, closing_ton: float,
+     *   available_ton: float, consumed_ton: float, wastage_ton: float, raw_sale_ton: float,
+     *   closing_ton: float,
      * }>
      */
     public function shipmentCycles(int $productId): Collection
@@ -62,6 +63,8 @@ class InventoryService
             ->orderBy('date')->orderBy('created_at')->orderBy('id')
             ->get();
 
+        $rawSales = $this->rawSaleLines($productId);
+
         $cycles = collect();
         $runningOpening = 0.0;
 
@@ -71,23 +74,33 @@ class InventoryService
                 $received = (float) $shipment->closing_received_ton;
                 $consumed = (float) $shipment->closing_consumed_ton;
                 $wastageTon = (float) $shipment->closing_wastage_ton;
+                // Null on a cycle closed before raw material sales existed — none were sold then.
+                $rawSaleTon = (float) ($shipment->closing_raw_sale_ton ?? 0);
                 $closing = (float) $shipment->closing_closing_ton;
             } else {
                 $lowerBound = $index === 0 ? null : $this->momentOf($shipment, 'opened_on');
                 $next = $shipments->get($index + 1);
                 $upperBound = $next ? $this->momentOf($next, 'opened_on') : null;
 
-                $wastageTon = $wastage
-                    ->filter(fn (WastageEntry $w) => $this->inWindow($this->momentOf($w), $lowerBound, $upperBound))
-                    ->sum(fn (WastageEntry $w) => $w->quantityTon());
+                // A reversed entry counts in its own window and comes back out
+                // in the window of its reversal — never touching a closed one.
+                $inCycle = fn ($entry) => $this->inWindow($this->momentOf($entry), $lowerBound, $upperBound);
+                $reversedInCycle = fn ($entry) => $entry->isReversed()
+                    && $this->inWindow($this->reversalMomentOf($entry), $lowerBound, $upperBound);
 
-                $consumed = $production
-                    ->filter(fn (ProductionEntry $p) => $this->inWindow($this->momentOf($p), $lowerBound, $upperBound))
-                    ->sum(fn (ProductionEntry $p) => ((float) $p->bags * (float) $p->mesh->bag_kg) / 1000);
+                $wastageTon = $wastage->filter($inCycle)->sum(fn (WastageEntry $w) => $w->quantityTon())
+                    - $wastage->filter($reversedInCycle)->sum(fn (WastageEntry $w) => $w->quantityTon());
+
+                $consumed = $production->filter($inCycle)->sum(fn (ProductionEntry $p) => $p->quantityTon())
+                    - $production->filter($reversedInCycle)->sum(fn (ProductionEntry $p) => $p->quantityTon());
+
+                $rawSaleTon = $rawSales
+                    ->filter(fn (array $line) => $this->inWindow($line['moment'], $lowerBound, $upperBound))
+                    ->sum('ton');
 
                 $opening = $runningOpening;
                 $received = $shipment->imports->sum(fn (RawMaterialImport $i) => $i->netWeightTon());
-                $closing = $opening + $received - $consumed - $wastageTon;
+                $closing = $opening + $received - $consumed - $wastageTon - $rawSaleTon;
             }
 
             $cycles->push([
@@ -97,6 +110,7 @@ class InventoryService
                 'available_ton' => $this->round($opening + $received),
                 'consumed_ton' => $this->round($consumed),
                 'wastage_ton' => $this->round($wastageTon),
+                'raw_sale_ton' => $this->round($rawSaleTon),
                 'closing_ton' => $this->round($closing),
             ]);
 
@@ -132,15 +146,18 @@ class InventoryService
     /**
      * How many tons of this raw material are physically in the yard right now:
      *
-     *     Total Imported − Production Consumption − Wastage
+     *     Total Imported − Production Consumption − Wastage − Raw Material Sold
      *
-     * The three inputs are three separate logs and each ton appears in exactly
+     * The inputs are separate logs and each ton appears in exactly
      * one of them, so nothing here is double-counted. In particular a production
      * entry consumes exactly the tonnage it bags (bags × bag_kg) and nothing
      * more: process loss is never folded into it, it is only ever recorded as a
      * WastageEntry of its own. So production and wastage are two disjoint ways
      * raw material leaves the yard, and subtracting both is subtracting each
-     * ton once — see the "A vs. B" distinction in the plan's §4.
+     * ton once — see the "A vs. B" distinction in the plan's §4. Raw material
+     * sold straight from the yard (a raw_material sale's weighbridge net) is a
+     * fourth, equally disjoint way out: it is never bagged, so it is never
+     * production, and it is never filed as wastage.
      *
      * This is the same arithmetic the shipment-cycle chain telescopes to, since
      * each cycle opens at the previous one's closing balance and every
@@ -159,6 +176,7 @@ class InventoryService
             $this->importedTon($productId, null, $asOf)
             - $this->productionTon($productId, null, $asOf)
             - $this->wastageTon($productId, null, $asOf)
+            - $this->rawSaleTon($productId, null, $asOf)
         );
     }
 
@@ -174,7 +192,7 @@ class InventoryService
      *
      * @return array{
      *   product_id: int, product_name: string, opening_ton: float, imported_ton: float,
-     *   production_ton: float, wastage_ton: float, current_raw_stock_ton: float,
+     *   production_ton: float, wastage_ton: float, raw_sale_ton: float, current_raw_stock_ton: float,
      *   shipment_count: int, from: ?string, to: ?string, average_cost_per_ton: ?float,
      * }
      */
@@ -189,6 +207,7 @@ class InventoryService
         $imported = $this->importedTon($productId, $from, $to);
         $production = $this->productionTon($productId, $from, $to);
         $wastage = $this->wastageTon($productId, $from, $to);
+        $rawSale = $this->rawSaleTon($productId, $from, $to);
 
         return [
             'product_id' => $product->id,
@@ -197,7 +216,8 @@ class InventoryService
             'imported_ton' => $this->round($imported),
             'production_ton' => $this->round($production),
             'wastage_ton' => $this->round($wastage),
-            'current_raw_stock_ton' => $this->round($opening + $imported - $production - $wastage),
+            'raw_sale_ton' => $this->round($rawSale),
+            'current_raw_stock_ton' => $this->round($opening + $imported - $production - $wastage - $rawSale),
             // Counted over the same window as the movements above, so a period
             // view never captions its figures with an all-time shipment count.
             'shipment_count' => $this->betweenDates(
@@ -234,25 +254,98 @@ class InventoryService
      */
     private function productionTon(int $productId, ?string $from = null, ?string $to = null): float
     {
-        return (float) $this->betweenDates(ProductionEntry::with('mesh')->where('product_id', $productId), $from, $to)
-            ->get()
-            ->sum(fn (ProductionEntry $p) => ((float) $p->bags * (float) $p->mesh->bag_kg) / 1000);
+        $consumed = $this->betweenDates(ProductionEntry::with('mesh')->where('product_id', $productId), $from, $to)
+            ->get()->sum(fn (ProductionEntry $p) => $p->quantityTon());
+        $returned = $this->betweenDates(ProductionEntry::with('mesh')->where('product_id', $productId), $from, $to, 'reversed_on')
+            ->get()->sum(fn (ProductionEntry $p) => $p->quantityTon());
+
+        return (float) $consumed - (float) $returned;
     }
 
-    /** Tons lost as wastage — raw material that left the yard *without* being bagged. */
+    /**
+     * Tons lost as wastage — raw material that left the yard *without* being
+     * bagged. A reversed entry comes back out on its reversal date (as does a
+     * reversed production entry above).
+     */
     private function wastageTon(int $productId, ?string $from = null, ?string $to = null): float
     {
-        return (float) $this->betweenDates(WastageEntry::where('product_id', $productId), $from, $to)
-            ->sum('quantity_kg') / 1000;
+        $lost = $this->betweenDates(WastageEntry::where('product_id', $productId), $from, $to)->sum('quantity_kg');
+        $returned = $this->betweenDates(WastageEntry::where('product_id', $productId), $from, $to, 'reversed_on')->sum('quantity_kg');
+
+        return ((float) $lost - (float) $returned) / 1000;
     }
 
-    private function betweenDates($query, ?string $from, ?string $to)
+    /**
+     * Net tons sold as raw material: the billable (weighbridge net) weight of
+     * raw_material sale lines by sale date, less any of those sales reversed
+     * by reversal date. A reversal returns the tons on the day it is booked —
+     * never on the original sale date, which may sit in a closed cycle.
+     */
+    private function rawSaleTon(int $productId, ?string $from = null, ?string $to = null): float
     {
+        $sold = $this->rawSaleItems($productId);
+        $returned = $this->rawSaleItems($productId)->whereNotNull('sales.reversed_on');
+
+        foreach ([[$sold, 'sales.date'], [$returned, 'sales.reversed_on']] as [$query, $column]) {
+            if ($from) {
+                $query->where($column, '>=', $from);
+            }
+            if ($to) {
+                $query->where($column, '<=', $to);
+            }
+        }
+
+        return (float) $sold->sum('sale_items.actual_weight_ton') - (float) $returned->sum('sale_items.actual_weight_ton');
+    }
+
+    private function rawSaleItems(int $productId)
+    {
+        return SaleItem::query()
+            ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+            ->where('sales.sale_type', Sale::TYPE_RAW_MATERIAL)
+            ->where('sale_items.product_id', $productId);
+    }
+
+    /**
+     * Every raw material sale line for one product, with the moment it
+     * happened (sale date + time of recording) — what the shipment-cycle
+     * windows are drawn against, exactly like production and wastage. A
+     * reversed sale adds a second, negative line at its reversal moment.
+     *
+     * @return Collection<int, array{moment: Carbon, ton: float}>
+     */
+    private function rawSaleLines(int $productId): Collection
+    {
+        $rows = $this->rawSaleItems($productId)->get([
+            'sales.date as sale_date', 'sales.created_at as sale_created_at',
+            'sales.reversed_on', 'sales.reversed_at', 'sale_items.actual_weight_ton',
+        ]);
+
+        $moment = fn ($date, $stamp) => Carbon::parse($date)->setTimeFromTimeString(
+            $stamp ? Carbon::parse($stamp)->format('H:i:s.u') : '00:00:00'
+        );
+
+        // A reversal is a negative line on its own date, so it lands in the
+        // cycle that is open then — a closed cycle's window is never touched.
+        return $rows->flatMap(fn ($row) => array_filter([
+            ['moment' => $moment($row->sale_date, $row->sale_created_at), 'ton' => (float) $row->actual_weight_ton],
+            $row->reversed_on
+                ? ['moment' => $moment($row->reversed_on, $row->reversed_at), 'ton' => -(float) $row->actual_weight_ton]
+                : null,
+        ]))->values();
+    }
+
+    /** `$column` = 'reversed_on' selects the reversals dated in the window (and only reversed rows). */
+    private function betweenDates($query, ?string $from, ?string $to, string $column = 'date')
+    {
+        if ($column !== 'date') {
+            $query->whereNotNull($column);
+        }
         if ($from) {
-            $query->where('date', '>=', $from);
+            $query->where($column, '>=', $from);
         }
         if ($to) {
-            $query->where('date', '<=', $to);
+            $query->where($column, '<=', $to);
         }
 
         return $query;
@@ -311,12 +404,13 @@ class InventoryService
         $importedTon = $this->importedTon($productId);
         $wastageTon = $this->wastageTon($productId);
         $producedTon = $this->productionTon($productId);
+        $rawSoldTon = $this->rawSaleTon($productId);
 
         $latest = $cycles->last();
         if ($latest) {
-            [$opening, $received, $consumed, $cycleWastage, $closing] = [
+            [$opening, $received, $consumed, $cycleWastage, $cycleRawSale, $closing] = [
                 $latest['opening_ton'], $latest['received_ton'], $latest['consumed_ton'],
-                $latest['wastage_ton'], $latest['closing_ton'],
+                $latest['wastage_ton'], $latest['raw_sale_ton'], $latest['closing_ton'],
             ];
         } else {
             // No shipment at all yet — still report a number (matches the frontend fallback).
@@ -324,7 +418,8 @@ class InventoryService
             $received = 0.0;
             $consumed = $producedTon;
             $cycleWastage = $wastageTon;
-            $closing = -($consumed + $cycleWastage);
+            $cycleRawSale = $rawSoldTon;
+            $closing = -($consumed + $cycleWastage + $cycleRawSale);
         }
 
         return [
@@ -333,13 +428,16 @@ class InventoryService
             'imported_ton' => $this->round($importedTon),
             'wastage_ton' => $this->round($wastageTon),
             'produced_ton' => $this->round($producedTon),
-            'current_raw_stock_ton' => $this->round($importedTon - $producedTon - $wastageTon),
+            'raw_sale_ton' => $this->round($rawSoldTon),
+            'current_raw_stock_ton' => $this->round($importedTon - $producedTon - $wastageTon - $rawSoldTon),
             'available_ton' => $this->round($closing),
             'opening_ton' => $this->round($opening),
             'received_ton' => $this->round($received),
             'consumed_ton' => $this->round($consumed),
             /** Wastage within the *current shipment cycle* only — see `wastage_ton` above for the all-time figure. */
             'cycle_wastage_ton' => $this->round($cycleWastage),
+            /** Raw material sold within the current shipment cycle only. */
+            'cycle_raw_sale_ton' => $this->round($cycleRawSale),
             'closing_ton' => $this->round($closing),
             'shipment_count' => $cycles->count(),
             'open_shipment_count' => $cycles->filter(fn ($c) => $c['shipment']->status !== 'closed')->count(),
@@ -426,7 +524,9 @@ class InventoryService
     }
 
     /**
-     * Record a wastage or production entry that consumes raw-material stock.
+     * Record a wastage, production or raw material sale entry that consumes
+     * raw-material stock (`$sourceType` is what the audit-log OUT row is filed
+     * under — a raw material sale is never filed as production).
      * Rejects entries dated inside an already-closed shipment cycle, or that
      * would drive the material's current raw stock negative.
      *
@@ -451,7 +551,7 @@ class InventoryService
             if ($tons > $available) {
                 $product = Product::find($productId);
                 throw new InsufficientStockException(
-                    "This would take {$product?->name} raw stock negative. Only ".round($available, 3)." Ton is currently available."
+                    "This would take {$product?->name} raw stock negative. Only ".round($available, 3).' Ton is currently available.'
                 );
             }
 
@@ -470,6 +570,34 @@ class InventoryService
             ]);
 
             return $entry;
+        });
+    }
+
+    /**
+     * Put raw-material stock back — the opposite of consumeStock(), for a
+     * reversal that returns tons on its own date. Refused when that date sits
+     * in a closed shipment cycle: the return must land in an open period, so
+     * the closed cycle's frozen figures stay exactly what was reported.
+     */
+    public function returnStock(int $productId, string $sourceType, int $sourceId, string $date, float $tons): void
+    {
+        DB::transaction(function () use ($productId, $sourceType, $sourceId, $date, $tons) {
+            if ($this->cycleStatusForDate($productId, $date) === 'closed') {
+                $product = Product::find($productId);
+                throw new ShipmentClosedException(
+                    "This date falls inside a closed shipment cycle for {$product?->name}. Date the reversal inside an open cycle."
+                );
+            }
+
+            InventoryTransaction::create([
+                'product_id' => $productId,
+                'direction' => 'in',
+                'source_type' => $sourceType,
+                'source_id' => $sourceId,
+                'quantity_ton' => $tons,
+                'balance_after_ton' => $this->lifetimeBalance($productId) + $tons,
+                'occurred_at' => now(),
+            ]);
         });
     }
 
@@ -551,11 +679,8 @@ class InventoryService
             $entry = ProductionEntry::lockForUpdate()->findOrFail($entryId);
             $oldProductId = (int) $entry->product_id;
             $oldMeshId = (int) $entry->mesh_id;
-            $oldDate = $entry->date->toDateString();
 
-            if ($this->cycleStatusForDate($oldProductId, $oldDate) === 'closed') {
-                throw new ShipmentClosedException('This entry is inside a closed shipment cycle. Reopen that shipment first, then edit.');
-            }
+            $this->assertConsumptionCorrectable($entry, 'edited');
             $newProductId = (int) $attributes['product_id'];
             if ($this->cycleStatusForDate($newProductId, $attributes['date']) === 'closed') {
                 $product = Product::find($newProductId);
@@ -600,17 +725,99 @@ class InventoryService
         return $rows->isEmpty() ? 0 : (int) $rows->min('stock_bags');
     }
 
-    /** Delete a wastage/production entry and its matching audit-log OUT row. */
+    /**
+     * Delete a wastage/production entry and its matching audit-log OUT row.
+     * Refused inside a closed shipment cycle, and for a reversed entry — see
+     * assertConsumptionCorrectable().
+     */
     public function deleteConsumption(string $sourceType, int $sourceId): void
     {
         DB::transaction(function () use ($sourceType, $sourceId) {
-            InventoryTransaction::where('source_type', $sourceType)->where('source_id', $sourceId)->delete();
+            $entry = $this->consumptionEntry($sourceType, $sourceId);
+            $this->assertConsumptionCorrectable($entry, 'deleted');
 
-            match ($sourceType) {
-                'wastage' => WastageEntry::findOrFail($sourceId)->delete(),
-                'production' => ProductionEntry::findOrFail($sourceId)->delete(),
-            };
+            InventoryTransaction::where('source_type', $sourceType)->where('source_id', $sourceId)->delete();
+            $entry->delete();
         });
+    }
+
+    /**
+     * Reverse a production or wastage entry — the correction for one that can
+     * no longer be edited or deleted because it sits in a closed shipment cycle
+     * (Admin-only: PRODUCTION_REVERSE / RAW_MATERIAL_REVERSE).
+     *
+     * The entry stays exactly as it was, marked reversed. On `$date` its tons
+     * return to raw stock via returnStock() — which refuses a date inside a
+     * closed cycle, so the return lands in an open one and the closed cycle's
+     * frozen figures never move. A production entry's bags come back out of
+     * bag stock on that date too, so it is refused if they have already been
+     * sold (bag stock would go negative).
+     */
+    public function reverseConsumption(string $sourceType, int $sourceId, string $date, string $reason, ?int $userId): ProductionEntry|WastageEntry
+    {
+        return DB::transaction(function () use ($sourceType, $sourceId, $date, $reason, $userId) {
+            $entry = $this->consumptionEntry($sourceType, $sourceId);
+
+            if ($entry->isReversed()) {
+                throw new BusinessRuleException('This entry has already been reversed.');
+            }
+            if ($date < $entry->date->toDateString()) {
+                throw new BusinessRuleException('A reversal cannot be dated before the entry it reverses.');
+            }
+
+            Product::lockForUpdate()->findOrFail($entry->product_id);
+            $tons = $entry->quantityTon();
+
+            $this->returnStock((int) $entry->product_id, "{$sourceType}_reversal", $entry->id, $date, $tons);
+
+            $lowestBefore = $entry instanceof ProductionEntry ? $this->lowestBagStock((int) $entry->product_id, (int) $entry->mesh_id) : 0;
+
+            $entry->update([
+                'reversed_on' => $date,
+                'reversed_at' => now(),
+                'reversed_by_user_id' => $userId,
+                'reversal_reason' => $reason,
+            ]);
+
+            if ($entry instanceof ProductionEntry) {
+                $lowestAfter = $this->lowestBagStock((int) $entry->product_id, (int) $entry->mesh_id);
+                if ($lowestAfter < 0 && $lowestAfter < $lowestBefore) {
+                    throw new InsufficientStockException(
+                        'These bags have already been sold — reversing this production would take bag stock negative by '.abs($lowestAfter).' bags.'
+                    );
+                }
+            }
+
+            return $entry->fresh();
+        });
+    }
+
+    private function consumptionEntry(string $sourceType, int $sourceId): ProductionEntry|WastageEntry
+    {
+        return match ($sourceType) {
+            'wastage' => WastageEntry::lockForUpdate()->findOrFail($sourceId),
+            'production' => ProductionEntry::with('mesh')->lockForUpdate()->findOrFail($sourceId),
+        };
+    }
+
+    /**
+     * Edit and delete rewrite an entry in place, so they are refused where that
+     * would rewrite history: a reversed entry, and one dated inside a closed
+     * shipment cycle (its frozen figures would stop matching the logs). Both
+     * are corrected by reverseConsumption() instead — or, for a cycle closed
+     * by mistake, by reopening it.
+     */
+    private function assertConsumptionCorrectable(ProductionEntry|WastageEntry $entry, string $action): void
+    {
+        if ($entry->isReversed()) {
+            throw new BusinessRuleException("This entry has been reversed and is kept as history — it cannot be {$action}.");
+        }
+
+        if ($this->cycleStatusForDate((int) $entry->product_id, $entry->date->toDateString()) === 'closed') {
+            throw new ShipmentClosedException(
+                "This entry is inside a closed shipment cycle and cannot be {$action}. An Admin can reverse it instead."
+            );
+        }
     }
 
     public function closeShipment(int $shipmentId): Shipment
@@ -631,6 +838,7 @@ class InventoryService
                 'closing_received_ton' => $cycle['received_ton'],
                 'closing_consumed_ton' => $cycle['consumed_ton'],
                 'closing_wastage_ton' => $cycle['wastage_ton'],
+                'closing_raw_sale_ton' => $cycle['raw_sale_ton'],
                 'closing_closing_ton' => $cycle['closing_ton'],
                 'closing_closed_at' => now(),
             ]);
@@ -653,6 +861,7 @@ class InventoryService
             'closing_received_ton' => null,
             'closing_consumed_ton' => null,
             'closing_wastage_ton' => null,
+            'closing_raw_sale_ton' => null,
             'closing_closing_ton' => null,
             'closing_closed_at' => null,
         ]);
@@ -674,6 +883,13 @@ class InventoryService
     {
         return Carbon::parse($model->{$dateField})->setTimeFromTimeString(
             optional($model->created_at)->format('H:i:s.u') ?? '00:00:00'
+        );
+    }
+
+    private function reversalMomentOf($entry): Carbon
+    {
+        return Carbon::parse($entry->reversed_on)->setTimeFromTimeString(
+            optional($entry->reversed_at)->format('H:i:s.u') ?? '00:00:00'
         );
     }
 
@@ -704,12 +920,19 @@ class InventoryService
         $production = ProductionEntry::where('product_id', $productId)->where('mesh_id', $meshId)->get();
         $soldByDate = $this->soldBagsByDate($productId, $meshId);
 
+        // A reversed production entry takes its bags back out on its reversal date.
+        $reversed = $production->filter(fn (ProductionEntry $p) => $p->isReversed());
+
         $dates = $production->pluck('date')->map(fn ($d) => $d->toDateString())
+            ->merge($reversed->pluck('reversed_on')->map(fn ($d) => $d->toDateString()))
             ->merge($soldByDate->keys())
             ->unique()->sort()->values();
 
         $producedByDate = $production->groupBy(fn ($p) => $p->date->toDateString())
             ->map(fn ($rows) => $rows->sum('bags'));
+        foreach ($reversed->groupBy(fn ($p) => $p->reversed_on->toDateString()) as $date => $rows) {
+            $producedByDate[$date] = ($producedByDate[$date] ?? 0) - $rows->sum('bags');
+        }
 
         $running = 0;
         $rows = collect();

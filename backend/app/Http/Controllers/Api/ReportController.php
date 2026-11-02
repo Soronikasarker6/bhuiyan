@@ -60,6 +60,9 @@ class ReportController extends Controller
         if ($request->filled('customer_id')) {
             $sales->where('customer_id', $request->integer('customer_id'));
         }
+        if ($request->filled('sale_type')) {
+            $sales->where('sale_type', $request->string('sale_type'));
+        }
 
         // One allocation pass per customer rather than one per invoice — and,
         // more to the point, the same allocator the Sales screen and the
@@ -78,11 +81,12 @@ class ReportController extends Controller
                 'invoice_no' => $sale->invoice_no,
                 'date' => $sale->date->toDateString(),
                 'customer' => $sale->customer?->name,
+                'sale_type' => $sale->sale_type,
                 'truck_no' => $sale->truck_no,
                 'total' => $total,
                 'paid' => $paid,
-                'due' => max(0, $total - $paid),
-                'status' => CustomerLedgerService::statusFor($total, $paid, $coveredByAdvance),
+                'due' => $sale->isReversed() ? 0 : max(0, $total - $paid),
+                'status' => $sale->isReversed() ? 'reversed' : CustomerLedgerService::statusFor($total, $paid, $coveredByAdvance),
             ];
         });
 
@@ -131,10 +135,13 @@ class ReportController extends Controller
         return $this->payload('Shipment Report', $rows->map(fn ($c) => [
             'shipment_id' => $c['shipment']->id,
             'product' => $c['shipment']->product?->name,
-            'date' => $c['shipment']->date->toDateString(),
+            // A cycle is dated by when it opened — shipments have no `date` column.
+            'date' => $c['shipment']->opened_on->toDateString(),
             'received_ton' => $c['received_ton'],
             'opening_ton' => $c['opening_ton'],
             'consumed_ton' => $c['consumed_ton'],
+            'wastage_ton' => $c['wastage_ton'],
+            'raw_sale_ton' => $c['raw_sale_ton'],
             'closing_ton' => $c['closing_ton'],
             'status' => $c['shipment']->status ?? 'open',
         ]), []);
@@ -224,6 +231,8 @@ class ReportController extends Controller
         $sales = $this->applyDateRangeCollection($request, Sale::with('items.meshSize')->get());
 
         $rows = $sales->flatMap(fn (Sale $s) => $s->items)
+            // Raw material lines carry no mesh — they are not mesh-wise sales.
+            ->filter(fn ($i) => $i->mesh_size_id !== null)
             ->groupBy(fn ($i) => $i->meshSize?->name ?? 'Unknown')
             ->map(fn ($items, $name) => [
                 'mesh' => $name,

@@ -46,8 +46,9 @@ export const shipmentService = {
   async closeCycle(id: ID): Promise<ShipmentCycle> {
     return mapEntity<ShipmentCycle>(await http.post(`/shipment-cycles/${id}/close`))
   },
-  async reopenCycle(id: ID): Promise<ShipmentCycle> {
-    return mapEntity<ShipmentCycle>(await http.post(`/shipment-cycles/${id}/reopen`))
+  /** Admin-only (RAW_MATERIAL_REOPEN); the reason is required and goes on the audit record. */
+  async reopenCycle(id: ID, reason: string): Promise<ShipmentCycle> {
+    return mapEntity<ShipmentCycle>(await http.post(`/shipment-cycles/${id}/reopen`, { reason }))
   },
   async cycles(productId?: ID): Promise<ShipmentCycleRow[]> {
     const qs = toQuery({ product_id: productId })

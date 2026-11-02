@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, Trash2, TriangleAlert } from 'lucide-react'
+import { Lock, Search, Trash2, TriangleAlert, Undo2 } from 'lucide-react'
 import type { WastageRow } from '@/types'
 import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { SortableHead } from '@/components/SortableHead'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { ReverseDialog } from '@/components/ReverseDialog'
+import { Badge } from '@/components/ui/misc'
 import { Button } from '@/components/ui/button'
 import { CREATED, useSortableSearch } from '@/hooks/useSortableSearch'
 import { usePermission } from '@/hooks/useAuth'
@@ -16,12 +18,24 @@ import { formatDate, formatNumber, formatTons } from '@/utils/format'
 export function WastageTable({
   rows,
   onDelete,
+  lockReason = () => undefined,
+  onReverse,
 }: {
   rows: WastageRow[]
   onDelete: (id: string) => void | Promise<void>
+  /**
+   * Why an entry can no longer be deleted, if it can't — reversed, or inside
+   * a closed shipment cycle. The server refuses both regardless; this only
+   * keeps the button from being offered.
+   */
+  lockReason?: (row: WastageRow) => string | undefined
+  /** Admin correction for a locked entry — see InventoryService::reverseConsumption(). */
+  onReverse?: (row: WastageRow, input: { reason: string; date: string }) => Promise<void>
 }) {
   const canDelete = usePermission(PERMISSIONS.RAW_MATERIAL_DELETE)
+  const canReverse = usePermission(PERMISSIONS.RAW_MATERIAL_REVERSE) && onReverse !== undefined
   const [pendingDelete, setPendingDelete] = useState<WastageRow | null>(null)
+  const [pendingReverse, setPendingReverse] = useState<WastageRow | null>(null)
 
   const { search, setSearch, sortKey, direction, toggleSort, rows: sorted } = useSortableSearch({
     rows,
@@ -34,7 +48,9 @@ export function WastageTable({
     defaultSortKey: CREATED,
   })
 
-  const totalKg = rows.reduce((s, r) => s + r.quantityKg, 0)
+  // Reversed entries stay listed (marked) but are not counted.
+  const counted = rows.filter((r) => !r.reversedOn)
+  const totalKg = counted.reduce((s, r) => s + r.quantityKg, 0)
 
   return (
     <Section
@@ -76,20 +92,39 @@ export function WastageTable({
                 <TableCell className="font-medium">{row.productName}</TableCell>
                 <TableCell numeric className="font-semibold text-destructive">{formatNumber(row.quantityKg)}</TableCell>
                 <TableCell numeric className="font-mono tabular text-muted-foreground">{formatTons(row.quantityTon)}</TableCell>
-                <TableCell className="max-w-[16rem] truncate text-muted-foreground">{row.reason || '—'}</TableCell>
-                <TableCell numeric>
-                  {canDelete && (
-                    <Button size="icon-sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => setPendingDelete(row)} aria-label="Delete entry">
-                      <Trash2 />
-                    </Button>
+                <TableCell className="max-w-[16rem] truncate text-muted-foreground">
+                  {row.reversedOn && (
+                    <Badge variant="outline" className="mr-1.5" title={row.reversalReason ?? undefined}>
+                      Reversed {formatDate(row.reversedOn)}
+                    </Badge>
                   )}
+                  {row.reason || '—'}
+                </TableCell>
+                <TableCell numeric>
+                  <div className="flex justify-end gap-1">
+                    {canReverse && !row.reversedOn && lockReason(row) && (
+                      <Button size="icon-sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => setPendingReverse(row)} aria-label="Reverse entry" title="Reverse entry (Admin correction)">
+                        <Undo2 />
+                      </Button>
+                    )}
+                    {lockReason(row) && (
+                      <span className="grid h-6 w-6 place-items-center text-muted-foreground" title={lockReason(row)} aria-label={lockReason(row)}>
+                        <Lock className="h-3.5 w-3.5" />
+                      </span>
+                    )}
+                    {canDelete && !lockReason(row) && (
+                      <Button size="icon-sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => setPendingDelete(row)} aria-label="Delete entry">
+                        <Trash2 />
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
           <TableFooter>
             <TableRow className="hover:bg-transparent">
-              <TableCell colSpan={2} className="text-2xs font-semibold uppercase tracking-wider">Total ({rows.length})</TableCell>
+              <TableCell colSpan={2} className="text-2xs font-semibold uppercase tracking-wider">Total ({counted.length})</TableCell>
               <TableCell numeric className="font-mono tabular font-bold text-destructive">{formatNumber(totalKg)}</TableCell>
               <TableCell numeric className="font-mono tabular font-bold">{formatTons(totalKg / 1000)}</TableCell>
               <TableCell colSpan={2} />
@@ -97,6 +132,23 @@ export function WastageTable({
           </TableFooter>
         </Table>
       )}
+
+      <ReverseDialog
+        open={pendingReverse !== null}
+        onOpenChange={(open) => !open && setPendingReverse(null)}
+        title="Reverse this wastage entry?"
+        description={
+          <>
+            The entry stays on record, marked Reversed. On the reversal date its{' '}
+            {pendingReverse ? `${formatTons(pendingReverse.quantityTon)} Ton` : ''} return to raw stock in the open shipment cycle — the
+            closed cycle keeps its figures. This cannot be undone.
+          </>
+        }
+        confirmLabel="Reverse entry"
+        onReverse={async (input) => {
+          if (pendingReverse && onReverse) await onReverse(pendingReverse, input)
+        }}
+      />
 
       <ConfirmDialog
         open={pendingDelete !== null}

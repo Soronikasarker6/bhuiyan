@@ -102,4 +102,24 @@ class SaleEditApiTest extends TestCase
             ->assertStatus(422)
             ->assertJsonValidationErrors('paid_at_sale');
     }
+
+    /** Finished-product sales keep normal edit/delete: bag stock, ledger and cash all follow. */
+    public function test_edit_and_delete_recalculate_bag_stock_ledger_and_cash(): void
+    {
+        $this->actingAsRole('Admin');
+        $inventory = app(\App\Services\InventoryService::class);
+        $this->assertSame(200, $inventory->availableBags($this->product->id, $this->mesh->id));
+
+        $this->putJson("/api/sales/{$this->saleId}", $this->payload())->assertOk(); // 100 → 120 bags, 3,000 paid
+        $this->assertSame(180, $inventory->availableBags($this->product->id, $this->mesh->id));
+        $this->assertEqualsWithDelta(12_000, app(\App\Services\CustomerLedgerService::class)->totals($this->customer->id)['balance'], 0.001);
+        $this->assertSame(1, \App\Models\Transaction::count());
+        $this->assertEqualsWithDelta(3_000, \App\Models\Transaction::sole()->amount, 0.001);
+
+        $this->deleteJson("/api/sales/{$this->saleId}")->assertNoContent();
+        $this->assertSame(300, $inventory->availableBags($this->product->id, $this->mesh->id));
+        $this->assertSame(0, \App\Models\CustomerTransaction::count());
+        $this->assertSame(0, \App\Models\Transaction::count());
+        $this->assertEqualsWithDelta(0, app(\App\Services\CustomerLedgerService::class)->totals($this->customer->id)['balance'], 0.001);
+    }
 }

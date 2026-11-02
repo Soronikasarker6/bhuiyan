@@ -50,11 +50,24 @@ export function monthlyProfit(
   const itemsThisMonth = salesThisMonth.flatMap((sale) => itemsForSale(data.saleItems, sale.id))
   const rows = buildSaleItemRows(itemsThisMonth, data.products, data.meshSizes)
 
-  const totalSales = rows.reduce((sum, r) => sum + r.amount, 0)
+  // A reversal comes off in the month it was booked, never the month of the
+  // original sale — a month already reported keeps its figures. Mirrors
+  // ProfitService::monthlyProfit().
+  const reversedThisMonth = data.sales.filter((s) => s.reversedOn?.slice(0, 7) === monthKey)
+  const reversedRows = buildSaleItemRows(
+    reversedThisMonth.flatMap((sale) => itemsForSale(data.saleItems, sale.id)),
+    data.products,
+    data.meshSizes,
+  )
+
+  const totalSales = rows.reduce((sum, r) => sum + r.amount, 0) - reversedRows.reduce((sum, r) => sum + r.amount, 0)
 
   const tonsSoldByProduct = new Map<string, number>()
   for (const row of rows) {
     tonsSoldByProduct.set(row.productId, (tonsSoldByProduct.get(row.productId) ?? 0) + row.weightTon)
+  }
+  for (const row of reversedRows) {
+    tonsSoldByProduct.set(row.productId, (tonsSoldByProduct.get(row.productId) ?? 0) - row.weightTon)
   }
 
   const costOfGoodsSold = [...tonsSoldByProduct.entries()].reduce((sum, [productId, tons]) => {

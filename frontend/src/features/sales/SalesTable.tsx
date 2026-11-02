@@ -1,9 +1,10 @@
 import { Fragment, useState } from 'react'
-import { ChevronDown, ChevronRight, Pencil, Receipt, Search, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Lock, Pencil, Receipt, Search, Trash2, Undo2 } from 'lucide-react'
 import type { SaleSummary } from '@/types'
 import { Section } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Input } from '@/components/ui/input'
+import { ReverseDialog } from '@/components/ReverseDialog'
 import { Badge } from '@/components/ui/misc'
 import { ExportMenu } from '@/components/ExportMenu'
 import { Money } from '@/components/Money'
@@ -14,8 +15,8 @@ import { Button } from '@/components/ui/button'
 import { CREATED, useSortableSearch } from '@/hooks/useSortableSearch'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
-import { formatCurrency, formatDate, formatTons } from '@/utils/format'
-import { itemsBagsTotal } from '@/utils/sales'
+import { formatCurrency, formatDate, formatNumber, formatTons } from '@/utils/format'
+import { isRawMaterialSale, isReversedSale, itemsBagsTotal, saleNetWeightKg } from '@/utils/sales'
 import { SALE_STATUS_LABEL, SALE_STATUS_VARIANT } from '@/constants/saleStatus'
 
 /** A single-item invoice can show that item's own figure directly; a multi-item one can't collapse to one value. */
@@ -33,12 +34,22 @@ export function SalesTable({
   onEdit,
   onExportCsv,
   onExportPdf,
+  lockReason = () => undefined,
+  onReverse,
 }: {
   sales: SaleSummary[]
   onDelete: (saleId: string) => void | Promise<void>
   onEdit: (sale: SaleSummary) => void
   onExportCsv: (sale: SaleSummary) => void
   onExportPdf: (sale: SaleSummary) => void
+  /**
+   * Why a sale can no longer be edited or deleted, if it can't — a reversed
+   * sale, or a raw material sale inside a closed shipment cycle. The server
+   * refuses both regardless; this only keeps the buttons from being offered.
+   */
+  lockReason?: (sale: SaleSummary) => string | undefined
+  /** Admin correction for a locked raw material sale — see SalesService::reverseSale(). */
+  onReverse?: (sale: SaleSummary, input: { reason: string; date: string }) => Promise<void>
 }) {
   const canDelete = usePermission(PERMISSIONS.SALES_DELETE)
   const canViewRate = usePermission(PERMISSIONS.SALES_RATE_VIEW)
@@ -47,6 +58,8 @@ export function SalesTable({
   const [page, setPage] = useState(0)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<SaleSummary | null>(null)
+  const canReverse = usePermission(PERMISSIONS.SALES_REVERSE) && onReverse !== undefined
+  const [pendingReverse, setPendingReverse] = useState<SaleSummary | null>(null)
 
   const { search, setSearch, sortKey, direction, toggleSort, rows: sorted } = useSortableSearch({
     rows: sales,
@@ -122,13 +135,18 @@ export function SalesTable({
                       <TableCell>
                         {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap font-mono text-xs font-medium">{sale.invoiceNo}</TableCell>
+                      <TableCell className="whitespace-nowrap font-mono text-xs font-medium">
+                        {sale.invoiceNo}
+                        {isRawMaterialSale(sale) && (
+                          <Badge variant="outline" className="ml-1.5 font-sans">Raw</Badge>
+                        )}
+                      </TableCell>
                       <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(sale.date)}</TableCell>
                       <TableCell className="max-w-[10rem] truncate font-medium">{sale.customerName}</TableCell>
                       <TableCell className="font-mono text-2xs text-muted-foreground">{sale.truckNo || '—'}</TableCell>
                       <TableCell className="max-w-[8rem] truncate">{itemFieldOrMultiple(sale, 'productName')}</TableCell>
                       <TableCell className="max-w-[8rem] truncate text-muted-foreground">{itemFieldOrMultiple(sale, 'meshSizeName')}</TableCell>
-                      <TableCell numeric>{itemsBagsTotal(sale.items)}</TableCell>
+                      <TableCell numeric>{isRawMaterialSale(sale) ? '—' : itemsBagsTotal(sale.items)}</TableCell>
                       <TableCell numeric className="font-medium">{formatTons(sale.totalWeightTon)}</TableCell>
                       {canViewRate && (
                         <TableCell numeric className="text-muted-foreground">
@@ -155,7 +173,24 @@ export function SalesTable({
                             onCsv={() => onExportCsv(sale)}
                             onPdf={() => onExportPdf(sale)}
                           />
-                          {canEdit && (
+                          {canReverse && isRawMaterialSale(sale) && !isReversedSale(sale) && (
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              className="text-muted-foreground hover:text-destructive"
+                              onClick={() => setPendingReverse(sale)}
+                              aria-label="Reverse sale"
+                              title="Reverse sale (Admin correction)"
+                            >
+                              <Undo2 />
+                            </Button>
+                          )}
+                          {lockReason(sale) && (
+                            <span className="grid h-6 w-6 place-items-center text-muted-foreground" title={lockReason(sale)} aria-label={lockReason(sale)}>
+                              <Lock className="h-3.5 w-3.5" />
+                            </span>
+                          )}
+                          {canEdit && !lockReason(sale) && (
                             <Button
                               size="icon-sm"
                               variant="ghost"
@@ -166,7 +201,7 @@ export function SalesTable({
                               <Pencil />
                             </Button>
                           )}
-                          {canDelete && (
+                          {canDelete && !lockReason(sale) && (
                             <Button
                               size="icon-sm"
                               variant="ghost"
@@ -201,7 +236,7 @@ export function SalesTable({
                                   <TableRow key={item.id} className="hover:bg-transparent">
                                     <TableCell className="font-medium">{item.productName}</TableCell>
                                     <TableCell className="text-muted-foreground">{item.meshSizeName}</TableCell>
-                                    <TableCell numeric>{item.bags}</TableCell>
+                                    <TableCell numeric>{item.meshSizeId ? item.bags : '—'}</TableCell>
                                     <TableCell numeric>{item.weightTon.toFixed(2)}</TableCell>
                                     {canViewRate && <TableCell numeric>{formatCurrency(item.ratePerTon)}</TableCell>}
                                     <TableCell numeric className="font-medium">{formatCurrency(item.amount)}</TableCell>
@@ -209,6 +244,19 @@ export function SalesTable({
                                 ))}
                               </TableBody>
                             </Table>
+                            {isReversedSale(sale) && (
+                              <p className="mt-2 text-xs font-medium text-destructive">
+                                Reversed on {formatDate(sale.reversedOn ?? '')}
+                                {sale.reversalReason ? ` — ${sale.reversalReason}` : ''}. Kept as history; its reversal entries
+                                cancel it on the customer ledger{isRawMaterialSale(sale) ? ' and return the tons to raw stock' : ''}.
+                              </p>
+                            )}
+                            {isRawMaterialSale(sale) && (
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                Raw material sale — weighbridge gross {formatNumber(sale.grossWeightKg)} kg − tare {formatNumber(sale.tareWeightKg)} kg ={' '}
+                                {formatNumber(saleNetWeightKg(sale))} kg net, deducted from raw stock.
+                              </p>
+                            )}
                             {sale.notes && <p className="mt-2 text-xs text-muted-foreground">Note: {sale.notes}</p>}
                           </div>
                         </TableCell>
@@ -237,6 +285,24 @@ export function SalesTable({
           )}
         </>
       )}
+
+      <ReverseDialog
+        open={pendingReverse !== null}
+        onOpenChange={(open) => !open && setPendingReverse(null)}
+        title={pendingReverse ? `Reverse ${pendingReverse.invoiceNo}?` : ''}
+        description={
+          <>
+            The sale stays on record, marked Reversed. On the reversal date a credit cancels its{' '}
+            {pendingReverse ? formatCurrency(pendingReverse.totalAmount) : ''} on the customer ledger and its tons return to raw stock in
+            the open shipment cycle — the closed cycle keeps its figures. Money already paid stays as the customer's advance (no cash is
+            refunded). This cannot be undone.
+          </>
+        }
+        confirmLabel="Reverse sale"
+        onReverse={async (input) => {
+          if (pendingReverse && onReverse) await onReverse(pendingReverse, input)
+        }}
+      />
 
       <ConfirmDialog
         open={pendingDelete !== null}

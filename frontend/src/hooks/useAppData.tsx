@@ -9,7 +9,8 @@ import {
   type ReactNode,
 } from 'react'
 import { toast } from 'sonner'
-import type { AppData, ID } from '@/types'
+import type { AppData, ID, SaleType } from '@/types'
+import { netWeightKgOf } from '@/utils/weighbridge'
 import { repository, type DataSlice } from '@/services/repository'
 import { storageIsPersistent } from '@/services/storageService'
 import { now, uid } from '@/utils/id'
@@ -19,6 +20,8 @@ import { backupService } from '@/services/api/backupService'
 import { customerService } from '@/services/api/customerService'
 import { ledgerService } from '@/services/api/ledgerService'
 import { salesService } from '@/services/api/salesService'
+import { productionService } from '@/services/api/productionService'
+import { wastageService } from '@/services/api/wastageService'
 import { shipmentService, type ShipmentInput } from '@/services/api/shipmentService'
 import { syncSlice } from '@/services/api/sync'
 import { ApiError, getToken, onTokenChange } from '@/services/api/httpClient'
@@ -54,15 +57,44 @@ export interface SaleItemInput {
   actualWeightTon?: number
 }
 
+/**
+ * One shape for both kinds of sale. A finished-product sale sends `items`;
+ * a raw material sale sends `rawMaterial` instead (its one line is built from
+ * it server-side — net weight = gross − tare, billed and deducted from raw stock).
+ */
 export interface SaleInput {
+  saleType?: SaleType
   date: string
   customerId: ID
   truckNo?: string
+  grossWeightKg?: number
+  tareWeightKg?: number
   notes?: string
   paidAtSale?: number
   /** Which Cash & Bank account a "paid at sale" amount lands in — falls back to the system Cash account when omitted. */
   accountId?: ID
   items: SaleItemInput[]
+  /** Raw material sales only — gross/tare above are required with it. */
+  rawMaterial?: { productId: ID; ratePerTon: number }
+}
+
+/**
+ * The lines a sale is saved with. A raw material sale has exactly one, built
+ * the same way the server builds it: no mesh, no bags, billed on the
+ * weighbridge net (gross − tare, kg ÷ 1000).
+ */
+function saleLinesOf(input: SaleInput): Array<Omit<SaleItemInput, 'meshSizeId'> & { meshSizeId: ID | null }> {
+  if (input.saleType !== 'raw_material' || !input.rawMaterial) return input.items
+  const netKg = netWeightKgOf(input.grossWeightKg, input.tareWeightKg) ?? 0
+  return [
+    {
+      productId: input.rawMaterial.productId,
+      meshSizeId: null,
+      bags: 0,
+      ratePerTon: input.rawMaterial.ratePerTon,
+      actualWeightTon: Math.round((netKg / 1000) * 100_000) / 100_000,
+    },
+  ]
 }
 
 export interface PaymentInput {
@@ -135,6 +167,12 @@ interface AppDataValue {
   /** Edit an invoice in place — same invoice number; its ledger and Cash & Bank rows are rewritten to match. */
   updateSale: (saleId: ID, input: SaleInput) => Promise<void>
   deleteSale: (saleId: ID) => Promise<void>
+  /** Admin correction: cancel a sale by offsetting entries dated `date`, keeping the sale itself as history. */
+  reverseSale: (saleId: ID, input: { reason: string; date: string }) => Promise<void>
+  /** Admin correction for a production/wastage entry in a closed shipment cycle — the entry is kept, its effect undone on `date`. */
+  reverseStockEntry: (kind: 'production' | 'wastage', id: ID, input: { reason: string; date: string }) => Promise<void>
+  /** Admin-only: reopen a closed shipment cycle, with the reason recorded on the audit trail. */
+  reopenShipmentCycle: (cycleId: ID, reason: string) => Promise<void>
   recordPayment: (input: PaymentInput) => Promise<{ reference: string }>
   /** Edit a Cash In already recorded — never the customer it belongs to, only when/how much/how. */
   updatePayment: (customerTransactionId: ID, input: PaymentUpdateInput) => Promise<void>
@@ -272,13 +310,16 @@ function useLocalAppData(): AppDataValue {
         invoiceNo,
         date: input.date,
         customerId: input.customerId,
+        saleType: input.saleType ?? ('finished_product' as SaleType),
         truckNo: input.truckNo,
+        grossWeightKg: input.grossWeightKg,
+        tareWeightKg: input.tareWeightKg,
         notes: input.notes,
         paidAtSale: input.paidAtSale ?? 0,
         createdAt: stamp,
       }
 
-      const items = input.items.map((item) => ({
+      const items = saleLinesOf(input).map((item) => ({
         id: uid(),
         saleId,
         productId: item.productId,
@@ -288,7 +329,7 @@ function useLocalAppData(): AppDataValue {
         actualWeightTon: item.actualWeightTon,
       }))
 
-      const bagKgOf = (meshSizeId: ID) => current.meshSizes.find((m) => m.id === meshSizeId)?.bagKg ?? 0
+      const bagKgOf = (meshSizeId: ID | null) => current.meshSizes.find((m) => m.id === meshSizeId)?.bagKg ?? 0
       const totalAmount = items.reduce((sum, item) => {
         const calculated = (item.bags * bagKgOf(item.meshSizeId)) / 1000
         const weightTon = item.actualWeightTon && item.actualWeightTon > 0 ? item.actualWeightTon : calculated
@@ -371,12 +412,15 @@ function useLocalAppData(): AppDataValue {
         ...existing,
         date: input.date,
         customerId: input.customerId,
+        saleType: input.saleType ?? ('finished_product' as SaleType),
         truckNo: input.truckNo,
+        grossWeightKg: input.grossWeightKg,
+        tareWeightKg: input.tareWeightKg,
         notes: input.notes,
         paidAtSale: input.paidAtSale ?? 0,
       }
 
-      const items = input.items.map((item) => ({
+      const items = saleLinesOf(input).map((item) => ({
         id: uid(),
         saleId,
         productId: item.productId,
@@ -386,7 +430,7 @@ function useLocalAppData(): AppDataValue {
         actualWeightTon: item.actualWeightTon,
       }))
 
-      const bagKgOf = (meshSizeId: ID) => current.meshSizes.find((m) => m.id === meshSizeId)?.bagKg ?? 0
+      const bagKgOf = (meshSizeId: ID | null) => current.meshSizes.find((m) => m.id === meshSizeId)?.bagKg ?? 0
       const totalAmount = items.reduce((sum, item) => {
         const calculated = (item.bags * bagKgOf(item.meshSizeId)) / 1000
         const weightTon = item.actualWeightTon && item.actualWeightTon > 0 ? item.actualWeightTon : calculated
@@ -467,6 +511,72 @@ function useLocalAppData(): AppDataValue {
         // The linked Cash & Bank row a "paid at sale" amount posted, if any —
         // otherwise deleting the invoice would leave cash-in-hand overstated.
         transactions: current.transactions.filter((t) => t.referenceSaleId !== saleId),
+      })
+    },
+    [updateMany],
+  )
+
+  const reverseSale = useCallback(
+    async (saleId: ID, input: { reason: string; date: string }) => {
+      const current = dataRef.current
+      const sale = current.sales.find((s) => s.id === saleId)
+      if (!sale || sale.reversedOn) return
+      const bagKgOf = (meshSizeId: ID | null) => current.meshSizes.find((m) => m.id === meshSizeId)?.bagKg ?? 0
+      const total = current.saleItems
+        .filter((i) => i.saleId === saleId)
+        .reduce((sum, i) => {
+          const calculated = (i.bags * bagKgOf(i.meshSizeId)) / 1000
+          const weightTon = i.actualWeightTon && i.actualWeightTon > 0 ? i.actualWeightTon : calculated
+          return sum + weightTon * (i.ratePerTon ?? 0)
+        }, 0)
+
+      // Same shape the server writes: the sale is kept and marked, and one
+      // credit naming it cancels it on the reversal date.
+      updateMany({
+        sales: current.sales.map((s) => (s.id === saleId ? { ...s, reversedOn: input.date, reversalReason: input.reason } : s)),
+        customerTransactions: [
+          ...current.customerTransactions,
+          {
+            id: uid(),
+            customerId: sale.customerId,
+            date: input.date,
+            type: 'sale_reversal',
+            reference: `${sale.invoiceNo}-REV`,
+            description: `Reversal of ${sale.invoiceNo}`,
+            debit: 0,
+            credit: total,
+            referenceSaleId: saleId,
+            createdAt: now(),
+          },
+        ],
+      })
+    },
+    [updateMany],
+  )
+
+  const reverseStockEntry = useCallback(
+    async (kind: 'production' | 'wastage', id: ID, input: { reason: string; date: string }) => {
+      const current = dataRef.current
+      const mark = <T extends { id: ID }>(rows: T[]) =>
+        rows.map((r) => (r.id === id ? { ...r, reversedOn: input.date, reversalReason: input.reason } : r))
+      updateMany(
+        kind === 'production'
+          ? { productionEntries: mark(current.productionEntries) }
+          : { wastageEntries: mark(current.wastageEntries) },
+      )
+    },
+    [updateMany],
+  )
+
+  const reopenShipmentCycle = useCallback(
+    async (cycleId: ID, _reason: string) => {
+      const current = dataRef.current
+      updateMany({
+        shipmentCycles: current.shipmentCycles.map((c) => {
+          if (c.id !== cycleId) return c
+          const { closing: _closing, ...rest } = c
+          return { ...rest, status: 'open' as const }
+        }),
       })
     },
     [updateMany],
@@ -721,6 +831,9 @@ function useLocalAppData(): AppDataValue {
       createSale,
       updateSale,
       deleteSale,
+      reverseSale,
+      reverseStockEntry,
+      reopenShipmentCycle,
       recordPayment,
       updatePayment,
       deletePayment,
@@ -740,6 +853,9 @@ function useLocalAppData(): AppDataValue {
       createSale,
       updateSale,
       deleteSale,
+      reverseSale,
+      reverseStockEntry,
+      reopenShipmentCycle,
       recordPayment,
       updatePayment,
       deletePayment,
@@ -892,6 +1008,42 @@ function useApiAppData(): AppDataValue {
     async (saleId: ID) => {
       await salesService.remove(saleId)
       await refresh()
+    },
+    [refresh],
+  )
+
+  const reverseSale = useCallback(
+    async (saleId: ID, input: { reason: string; date: string }) => {
+      try {
+        await salesService.reverse(saleId, input)
+        await refresh()
+      } catch (error) {
+        throw new Error(errorMessage(error) ?? 'Could not reverse the sale.')
+      }
+    },
+    [refresh],
+  )
+
+  const reverseStockEntry = useCallback(
+    async (kind: 'production' | 'wastage', id: ID, input: { reason: string; date: string }) => {
+      try {
+        await (kind === 'production' ? productionService : wastageService).reverse(id, input)
+        await refresh()
+      } catch (error) {
+        throw new Error(errorMessage(error) ?? 'Could not reverse the entry.')
+      }
+    },
+    [refresh],
+  )
+
+  const reopenShipmentCycle = useCallback(
+    async (cycleId: ID, reason: string) => {
+      try {
+        await shipmentService.reopenCycle(cycleId, reason)
+        await refresh()
+      } catch (error) {
+        throw new Error(errorMessage(error) ?? 'Could not reopen the shipment.')
+      }
     },
     [refresh],
   )
@@ -1053,6 +1205,9 @@ function useApiAppData(): AppDataValue {
       createSale,
       updateSale,
       deleteSale,
+      reverseSale,
+      reverseStockEntry,
+      reopenShipmentCycle,
       recordPayment,
       updatePayment,
       deletePayment,
@@ -1072,6 +1227,9 @@ function useApiAppData(): AppDataValue {
       createSale,
       updateSale,
       deleteSale,
+      reverseSale,
+      reverseStockEntry,
+      reopenShipmentCycle,
       recordPayment,
       updatePayment,
       deletePayment,

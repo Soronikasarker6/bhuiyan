@@ -174,7 +174,8 @@ async function syncRawMaterialImports(current: RawMaterialImport[], next: RawMat
 
 /**
  * A shipment *cycle*'s only ever-changing field, from here, is its status —
- * closing or reopening it. A cycle is otherwise created implicitly by
+ * closing it. Reopening is not synced from a diff: it needs a reason and is
+ * Admin-only, so it goes through `reopenShipmentCycle` in useAppData instead. A cycle is otherwise created implicitly by
  * `syncRawMaterialImports` above (via `receiveStock()`), never directly, so
  * a "created" entry in this diff is always the optimistic local cycle
  * `ImportPage` adds alongside a first import — a no-op here, since the
@@ -186,8 +187,6 @@ async function syncShipmentCycles(current: ShipmentCycle[], next: ShipmentCycle[
   for (const { before, after } of updated) {
     if (after.status === 'closed' && before.status !== 'closed') {
       await shipmentService.closeCycle(after.id)
-    } else if (after.status !== 'closed' && before.status === 'closed') {
-      await shipmentService.reopenCycle(after.id)
     }
   }
 }

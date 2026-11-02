@@ -14,11 +14,13 @@ export const SALE_STATUS_LABEL: Record<PaymentStatus, string> = {
   // already holding rather than by money received for it — worth saying,
   // because "Paid" would imply a receipt that does not exist.
   advance: 'No due · Advance',
+  reversed: 'Reversed',
 }
 
-export const SALE_STATUS_VARIANT: Record<PaymentStatus, 'success' | 'brass' | 'destructive'> = {
+export const SALE_STATUS_VARIANT: Record<PaymentStatus, 'success' | 'brass' | 'destructive' | 'outline'> = {
   paid: 'success',
   partial: 'brass',
   due: 'destructive',
   advance: 'success',
+  reversed: 'outline',
 }

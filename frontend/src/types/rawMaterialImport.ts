@@ -27,6 +27,8 @@ export interface ShipmentClosing {
   receivedTon: number
   consumedTon: number
   wastageTon: number
+  /** Raw material sold within the cycle. Absent on cycles closed before raw material sales existed — read as 0. */
+  rawSaleTon?: number
   closingTon: number
   closedAt: string
 }
@@ -92,7 +94,15 @@ export interface WastageEntry {
   date: ISODate
   productId: ID
   quantityKg: number
+  /** Why the stone was wasted — not to be confused with `reversalReason`. */
   reason?: string
+  /**
+   * Set once an Admin reverses the entry (it sat in a closed shipment cycle,
+   * where edit/delete are refused). The entry stays as recorded; its effect
+   * is undone on this date instead — never in the original, frozen cycle.
+   */
+  reversedOn?: ISODate | null
+  reversalReason?: string | null
   createdAt: string
 }
 
@@ -123,8 +133,10 @@ export interface RawMaterialStock {
   importedTon: number
   wastageTon: number
   producedTon: number
+  /** Raw material sold straight from the yard — never part of `producedTon`. */
+  rawSaleTon: number
   /**
-   * `importedTon − producedTon − wastageTon` — the tonnage physically in the
+   * `importedTon − producedTon − wastageTon − rawSaleTon` — the tonnage physically in the
    * yard right now, and the headline figure on the Raw Material Stock cards.
    * Equals `closingTon` while every shipment is open; where a frozen closed
    * shipment makes the two differ, this is the one that describes the yard.
@@ -139,6 +151,8 @@ export interface RawMaterialStock {
   consumedTon: number
   /** Wastage within the current cycle's window — see `wastageTon` above for the all-time figure. */
   cycleWastageTon: number
+  /** Raw material sold within the current cycle's window. */
+  cycleRawSaleTon: number
   /** = `availableTon`; kept alongside it because "Closing" is the label used on screen. */
   closingTon: number
   shipmentCount: number
@@ -169,6 +183,8 @@ export interface RawStockSummary {
   productionTon: number
   /** Tons lost as wastage — raw material that left *without* being bagged — within the window. */
   wastageTon: number
+  /** Tons sold as raw material (weighbridge net), within the window — never production. */
+  rawSaleTon: number
   /** The headline: tons physically available right now (or at the window's end). */
   currentRawStockTon: number
   /** Weighted average of priced imports — undefined if nothing has been priced yet. */
@@ -199,7 +215,9 @@ export interface ShipmentCycleRow {
   consumedTon: number
   /** Wastage dated within this cycle's window. */
   wastageTon: number
-  /** `availableTon − consumedTon − wastageTon`; frozen once the shipment is closed. */
+  /** Raw material sold, dated within this cycle's window. */
+  rawSaleTon: number
+  /** `availableTon − consumedTon − wastageTon − rawSaleTon`; frozen once the shipment is closed. */
   closingTon: number
   status: ShipmentStatus
   closedAt?: string

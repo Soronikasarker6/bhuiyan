@@ -38,6 +38,7 @@ import {
 import { downloadTextFile } from '@/utils/download'
 import { formatDate, formatNumber, formatTons, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
+import { rawMaterialSaleMovements } from '@/utils/sales'
 
 const ALL = '__all__'
 
@@ -52,7 +53,9 @@ const ALL = '__all__'
  * the product filter below is how it is narrowed to one type at a time.
  */
 export default function ImportPage() {
-  const { data, loading, update, updateMany, updateRawMaterialImport } = useAppData()
+  const { data, loading, update, updateMany, updateRawMaterialImport, reverseStockEntry, reopenShipmentCycle } = useAppData()
+  // Raw material sold straight from the yard — subtracted from raw stock beside production and wastage, never as either.
+  const rawSales = useMemo(() => rawMaterialSaleMovements(data.sales, data.saleItems), [data.sales, data.saleItems])
   const { print } = usePrint()
   const canCreate = usePermission(PERMISSIONS.RAW_MATERIAL_CREATE)
   const [productFilter, setProductFilter] = useState(ALL)
@@ -97,8 +100,9 @@ export default function ImportPage() {
         (meshId) => bagKgOf(data.meshSizes, meshId),
         from || undefined,
         to || undefined,
+        rawSales,
       ),
-    [products, productFilter, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes, from, to],
+    [products, productFilter, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes, from, to, rawSales],
   )
 
   // The live, all-time position — what the entry forms must validate against,
@@ -112,8 +116,9 @@ export default function ImportPage() {
         data.wastageEntries,
         data.productionEntries,
         (meshId) => bagKgOf(data.meshSizes, meshId),
+        rawSales,
       ),
-    [data.products, data.shipmentCycles, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes],
+    [data.products, data.shipmentCycles, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes, rawSales],
   )
 
   // §2/§3 — one row per shipment cycle, never one per import.
@@ -126,8 +131,9 @@ export default function ImportPage() {
         data.wastageEntries,
         data.productionEntries,
         (meshId) => bagKgOf(data.meshSizes, meshId),
+        rawSales,
       ),
-    [data.products, data.shipmentCycles, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes],
+    [data.products, data.shipmentCycles, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes, rawSales],
   )
   const shipmentRows = useMemo(
     () => allCycles.filter((c) => (productFilter === ALL || c.productId === productFilter) && inWindow(c.openedOn)),
@@ -166,20 +172,15 @@ export default function ImportPage() {
   )
 
   const reopenShipment = useCallback(
-    async (row: ShipmentCycleRow) => {
-      const cycle = data.shipmentCycles.find((c) => c.id === row.id)
-      if (!cycle) return
-
-      const { closing: _closing, ...rest } = cycle
-      const updated: ShipmentCycle = { ...rest, status: 'open' }
-
-      const ok = await update(
-        'shipmentCycles',
-        data.shipmentCycles.map((c) => (c.id === cycle.id ? updated : c)),
-      )
-      if (ok) toast.success('Shipment reopened', { description: 'Its balance is live again, and later imports of this material will join it again.' })
+    async (row: ShipmentCycleRow, reason: string) => {
+      try {
+        await reopenShipmentCycle(row.id, reason)
+        toast.success('Shipment reopened', { description: 'Its balance is live again, and later imports of this material will join it again.' })
+      } catch (error) {
+        toast.error('Could not reopen the shipment', { description: error instanceof Error ? error.message : undefined })
+      }
     },
-    [data.shipmentCycles, update],
+    [reopenShipmentCycle],
   )
 
   const pricesForProduct = useCallback(
@@ -348,6 +349,28 @@ export default function ImportPage() {
       if (ok) toast.success('Entry deleted')
     },
     [data.wastageEntries, update],
+  )
+
+  /** Mirrors InventoryService::assertConsumptionCorrectable() — the server refuses these regardless. */
+  const wastageLockReason = useCallback(
+    (row: WastageEntry) => {
+      if (row.reversedOn) return 'Reversed — kept as history'
+      if (wastageCycleClosed(row.productId, row.date)) return 'In a closed shipment cycle — an Admin can reverse it'
+      return undefined
+    },
+    [wastageCycleClosed],
+  )
+
+  const reverseWastage = useCallback(
+    async (row: WastageEntry, input: { reason: string; date: string }) => {
+      try {
+        await reverseStockEntry('wastage', row.id, input)
+        toast.success('Wastage entry reversed', { description: `${formatNumber(row.quantityKg)} kg returned to raw stock.` })
+      } catch (error) {
+        toast.error('Could not reverse the entry', { description: error instanceof Error ? error.message : undefined })
+      }
+    },
+    [reverseStockEntry],
   )
 
   const buildRegisterPayload = useCallback(
@@ -616,7 +639,7 @@ export default function ImportPage() {
               onSubmit={addWastage}
             />
           )}
-          <WastageTable rows={wastageRows} onDelete={deleteWastage} />
+          <WastageTable rows={wastageRows} onDelete={deleteWastage} lockReason={wastageLockReason} onReverse={reverseWastage} />
         </TabsContent>
 
         <TabsContent value="history">

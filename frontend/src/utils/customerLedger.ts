@@ -204,15 +204,17 @@ export function buildCustomerLedgerStatementRows(
     })),
   )
 
+  // A reversal is a credit too: the reversed invoice stays on the statement
+  // (it was raised), and this row cancels it on the date it was reversed.
   const paymentRows = transactions
-    .filter((t) => t.type === 'payment')
+    .filter((t) => t.type === 'payment' || t.type === 'sale_reversal')
     .map((t) => ({
       id: t.id,
       date: t.date,
       createdAt: t.createdAt,
-      invoice: 'CASH/BANK',
+      invoice: t.type === 'sale_reversal' ? t.reference : 'CASH/BANK',
       customerName: customerNameOfId(t.customerId),
-      detail: 'PAYMENT',
+      detail: t.type === 'sale_reversal' ? 'SALE REVERSAL' : 'PAYMENT',
       credit: t.credit,
     }))
 
@@ -547,7 +549,11 @@ export function customerBalanceMagnitude(balance: number): number {
 
 /** A customer's financial summary — everything derived from the one running balance. */
 export function customerTotals(transactions: CustomerTransaction[]): CustomerTotals {
-  const totalSales = transactions.filter((t) => t.type === 'sale').reduce((s, t) => s + t.debit, 0)
+  // Net of reversals, so Balance = Total Sales − Total Payments still holds
+  // once a sale has been reversed by a `sale_reversal` credit.
+  const totalSales =
+    transactions.filter((t) => t.type === 'sale').reduce((s, t) => s + t.debit, 0) -
+    transactions.filter((t) => t.type === 'sale_reversal').reduce((s, t) => s + t.credit, 0)
   const totalPaid = transactions.filter((t) => t.type === 'payment').reduce((s, t) => s + t.credit, 0)
   const balance = customerBalance(transactions)
   const dates = transactions.map((t) => t.date).sort()
@@ -570,6 +576,7 @@ const REFERENCE_PREFIX: Record<Exclude<CustomerTxnType, 'sale'>, string> = {
   refund: 'REF',
   opening_balance: 'OPN',
   other: 'OTH',
+  sale_reversal: 'REV',
 }
 
 /** "PAY-014" — sequential per type, never reused. */

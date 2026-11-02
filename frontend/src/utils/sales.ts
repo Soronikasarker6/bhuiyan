@@ -2,18 +2,22 @@ import type {
   Customer,
   CustomerTransaction,
   ID,
+  ISODate,
   MeshSize,
   PaymentStatus,
   Product,
+  RawMaterialSaleMovement,
   Sale,
   SaleItem,
   SaleItemRow,
   SaleSummary,
+  SaleType,
 } from '@/types'
 import { bagKgOf, meshSizeNameOf, productNameOf } from './products'
 import { allocateCreditByCustomer, customerNameOf } from './customerLedger'
 import { isWithin } from './format'
 import { kgToTons } from './imports'
+import { netWeightKgOf, weighbridgeWeights, type WeighbridgeWeights } from './weighbridge'
 
 /**
  * Sales.
@@ -34,7 +38,64 @@ import { kgToTons } from './imports'
  * weight, so the truck/weighbridge's actual reading (`actualWeightTon`) can
  * override it; amount always follows whichever weight is actually billable,
  * never the theoretical one.
+ *
+ * A raw material sale (`saleType: 'raw_material'`) is the same header with
+ * one line that has no mesh and no bags: its billable weight is the
+ * weighbridge net (gross − tare on the header), which the server writes onto
+ * the line as `actualWeightTon`. Every amount, ledger and report figure below
+ * therefore reads it exactly like any other line.
  */
+
+/** Old rows (recorded before sale types existed) carry no type — they are all finished-product sales. */
+export function saleTypeOf(sale: Pick<Sale, 'saleType'>): SaleType {
+  return sale.saleType ?? 'finished_product'
+}
+
+export function isRawMaterialSale(sale: Pick<Sale, 'saleType'>): boolean {
+  return saleTypeOf(sale) === 'raw_material'
+}
+
+/** Cancelled by an Admin reversal — kept as history, but no longer a sale that stands. */
+export function isReversedSale(sale: Pick<Sale, 'reversedOn'>): boolean {
+  return Boolean(sale.reversedOn)
+}
+
+/**
+ * The sales that still stand — reversed ones dropped. What every total,
+ * aggregate and chart sums, so a reversed invoice is listed (as Reversed)
+ * but never counted.
+ */
+export function standingSales<T extends Pick<Sale, 'reversedOn'>>(sales: T[]): T[] {
+  return sales.filter((s) => !isReversedSale(s))
+}
+
+export const SALE_TYPE_LABEL: Record<SaleType, string> = {
+  finished_product: 'Finished product',
+  raw_material: 'Raw material',
+}
+
+/** A raw material line's "mesh" column — it has none, it is sold loose by weight. */
+export const RAW_MATERIAL_MESH_LABEL = 'Loose (raw)'
+
+/**
+ * Every raw material sale as a raw-stock movement — what `utils/rawMaterial.ts`
+ * subtracts alongside production and wastage. Kept apart from both: raw
+ * material sold is never production consumption.
+ *
+ * A reversed sale adds a second, negative movement on its reversal date: the
+ * tons come back in whichever cycle is open then, never in the original
+ * (possibly closed) one. Mirrors InventoryService::rawSaleLines().
+ */
+export function rawMaterialSaleMovements(sales: Sale[], saleItems: SaleItem[]): RawMaterialSaleMovement[] {
+  const rawSales = new Map(sales.filter(isRawMaterialSale).map((s) => [s.id, s]))
+  return saleItems.flatMap((item) => {
+    const sale = rawSales.get(item.saleId)
+    if (!sale) return []
+    const ton = Number(item.actualWeightTon) || 0
+    const sold = { saleId: sale.id, productId: item.productId, date: sale.date, ton }
+    return sale.reversedOn ? [sold, { ...sold, date: sale.reversedOn, ton: -ton }] : [sold]
+  })
+}
 
 /** The theoretical weight from bag count alone — never what gets billed once an actual reading exists. */
 export function saleItemWeightTon(bags: number, bagKg: number): number {
@@ -61,14 +122,16 @@ export function buildSaleItemRows(
   meshSizes: MeshSize[],
 ): SaleItemRow[] {
   return items.map((item) => {
-    const bagKg = bagKgOf(meshSizes, item.meshSizeId)
-    const calculatedWeightTon = saleItemWeightTon(item.bags, bagKg)
+    // A raw material line has no mesh: no bag weight, and its billable
+    // weight is the weighbridge net already on `actualWeightTon`.
+    const bagKg = item.meshSizeId ? bagKgOf(meshSizes, item.meshSizeId) : 0
+    const calculatedWeightTon = item.meshSizeId ? saleItemWeightTon(item.bags, bagKg) : Number(item.actualWeightTon) || 0
     const weightTon = billableWeightTon(calculatedWeightTon, item.actualWeightTon)
 
     return {
       ...item,
       productName: productNameOf(products, item.productId),
-      meshSizeName: meshSizeNameOf(meshSizes, item.meshSizeId),
+      meshSizeName: item.meshSizeId ? meshSizeNameOf(meshSizes, item.meshSizeId) : RAW_MATERIAL_MESH_LABEL,
       bagKg,
       calculatedWeightTon,
       weightTon,
@@ -157,6 +220,24 @@ export function buildSaleSummaries(
       const totalAmount = itemsTotal(items)
 
       const settlement = settlements.get(sale.customerId)
+
+      // A reversed sale is settled by its own reversal credit — neither owed
+      // nor "paid". It shows only the money actually taken with it at sale
+      // (now the customer's advance), mirroring SaleController::present().
+      if (isReversedSale(sale)) {
+        return {
+          ...sale,
+          customerName: customerNameOf(customers, sale.customerId),
+          items,
+          totalAmount,
+          totalWeightTon: itemsWeightTotal(items),
+          amountPaid: Math.min(totalAmount, sale.paidAtSale),
+          amountDue: 0,
+          coveredByAdvance: 0,
+          status: 'reversed' as const,
+        }
+      }
+
       const amountPaid = Math.min(totalAmount, settlement?.paidBySale.get(sale.id) ?? 0)
       const coveredByAdvance = settlement?.advanceBySale.get(sale.id) ?? 0
       const amountDue = saleAmountDue(totalAmount, amountPaid)
@@ -254,6 +335,7 @@ export interface SaleFilters {
   productId?: ID
   meshSizeId?: ID
   truckNo?: string
+  saleType?: SaleType
   status?: PaymentStatus
   search?: string
 }
@@ -266,6 +348,7 @@ export function filterSaleSummaries(sales: SaleSummary[], filters: SaleFilters =
     if (filters.customerId && sale.customerId !== filters.customerId) return false
     if (filters.status && sale.status !== filters.status) return false
     if (filters.truckNo && sale.truckNo !== filters.truckNo) return false
+    if (filters.saleType && saleTypeOf(sale) !== filters.saleType) return false
     if (filters.productId && !sale.items.some((i) => i.productId === filters.productId)) return false
     if (filters.meshSizeId && !sale.items.some((i) => i.meshSizeId === filters.meshSizeId)) return false
 
@@ -353,25 +436,77 @@ export function salesByCustomer(
     .sort((a, b) => b.amount - a.amount)
 }
 
-/** Sales revenue per truck, biggest first — "truck-wise sales". */
-export function salesByTruck(
-  sales: SaleSummary[],
-): Array<{ truckNo: string; amount: number; count: number }> {
-  const totals = new Map<string, { amount: number; count: number }>()
+/** Net kg off a sale's weighbridge slip — see utils/weighbridge.ts. Undefined unless both weights were recorded. */
+export function saleNetWeightKg(sale: Pick<Sale, 'grossWeightKg' | 'tareWeightKg'>): number | undefined {
+  return netWeightKgOf(sale.grossWeightKg, sale.tareWeightKg)
+}
 
-  for (const sale of sales) {
-    const truck = sale.truckNo?.trim()
-    if (!truck) continue
+/**
+ * One row of the truck-wise weight report — the same shape for both sale
+ * types, so one builder, one set of columns and one totals rule serve the
+ * Truck-wise Sales report and the Raw Material Sales report alike.
+ *
+ * One row per *sale*, never per item: the weighbridge slip belongs to the
+ * truck's whole load on the sale header, so a sale with several items still
+ * contributes its weights exactly once.
+ */
+export interface TruckWeightRow {
+  saleId: ID
+  date: ISODate
+  invoiceNo: string
+  customerName: string
+  truckNo?: string
+  saleType: SaleType
+  /** Product / material names, de-duplicated across the sale's items. */
+  productLabel: string
+  weights: WeighbridgeWeights
+  /** The billable ton — a separate business figure, carried alongside for reference, never replaced by `weights.netTon`. */
+  billableTon: number
+  reversed: boolean
+}
 
-    const existing = totals.get(truck) ?? { amount: 0, count: 0 }
-    existing.amount += sale.totalAmount
-    existing.count += 1
-    totals.set(truck, existing)
+export function truckWeightRows(sales: SaleSummary[]): TruckWeightRow[] {
+  return sales.map((sale) => ({
+    saleId: sale.id,
+    date: sale.date,
+    invoiceNo: sale.invoiceNo,
+    customerName: sale.customerName,
+    truckNo: sale.truckNo?.trim() || undefined,
+    saleType: saleTypeOf(sale),
+    productLabel: [...new Set(sale.items.map((i) => i.productName))].join(', ') || '—',
+    weights: weighbridgeWeights(sale),
+    billableTon: sale.totalWeightTon,
+    reversed: isReversedSale(sale),
+  }))
+}
+
+export interface TruckWeightTotals {
+  rowCount: number
+  /** Rows with a complete slip (gross and tare) — the only ones the weight totals sum. */
+  weighedCount: number
+  grossKg?: number
+  tareKg?: number
+  netKg?: number
+  netTon?: number
+}
+
+/**
+ * Totals over complete slips only, so Gross − Tare = Net holds on the total
+ * line too. Undefined (shown "—") when no row has a complete slip — never 0.
+ */
+export function truckWeightTotals(rows: TruckWeightRow[]): TruckWeightTotals {
+  const weighed = rows.filter((r) => r.weights.netKg !== undefined)
+  if (weighed.length === 0) return { rowCount: rows.length, weighedCount: 0 }
+  const sum = (pick: (w: WeighbridgeWeights) => number | undefined) => weighed.reduce((t, r) => t + (pick(r.weights) ?? 0), 0)
+  const netKg = Math.round(sum((w) => w.netKg) * 100) / 100
+  return {
+    rowCount: rows.length,
+    weighedCount: weighed.length,
+    grossKg: sum((w) => w.grossKg),
+    tareKg: sum((w) => w.tareKg),
+    netKg,
+    netTon: kgToTons(netKg),
   }
-
-  return [...totals.entries()]
-    .map(([truckNo, v]) => ({ truckNo, ...v }))
-    .sort((a, b) => b.amount - a.amount)
 }
 
 /** Sales revenue per mesh size, biggest first — "mesh-wise sales". */
@@ -382,6 +517,8 @@ export function salesByMeshSize(
 
   for (const sale of sales) {
     for (const item of sale.items) {
+      // Raw material lines carry no mesh — they are not mesh-wise sales.
+      if (!item.meshSizeId) continue
       const key = item.meshSizeName
       const existing = totals.get(key) ?? { bags: 0, amount: 0, weightTon: 0 }
       existing.bags += Number(item.bags) || 0

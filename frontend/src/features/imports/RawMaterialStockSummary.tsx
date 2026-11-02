@@ -15,6 +15,7 @@ import { cn } from '@/utils/cn'
  *     Total Imported
  *   − Production
  *   − Wastage
+ *   − Raw material sold (shown only once there is some)
  *   ─────────────────
  *   = Current Raw Stock
  *
@@ -84,6 +85,8 @@ function MaterialCard({ row }: { row: RawStockSummary }) {
         <Row label="Total imported" value={row.importedTon} tone="positive" />
         <Row label="Production" value={row.productionTon} tone="negative" />
         <Row label="Wastage" value={row.wastageTon} tone="negative" />
+        {/* Raw limestone sold straight from the yard — its own line, never folded into Production. */}
+        {row.rawSaleTon > 0 && <Row label="Raw material sold" value={row.rawSaleTon} tone="negative" />}
         <div className="flex items-center justify-between gap-2 border-t border-border pt-1.5">
           <dt className="font-semibold text-foreground">Current raw stock</dt>
           <dd className="font-mono tabular font-bold text-foreground">{formatTons(row.currentRawStockTon)}</dd>

@@ -37,7 +37,9 @@ class DashboardController extends Controller
 
         $todaysSales = Sale::where('date', $today)->get();
         $allSales = Sale::with('items.meshSize')->get();
-        $totalSalesAmount = $allSales->sum(fn (Sale $s) => $s->items->sum(fn ($i) => $i->amount()));
+        // Reversed sales no longer stand — their reversal credit offsets them.
+        $totalSalesAmount = $allSales->reject(fn (Sale $s) => $s->isReversed())
+            ->sum(fn (Sale $s) => $s->items->sum(fn ($i) => $i->amount()));
         $todaysSalesAmount = $todaysSales->load('items.meshSize')
             ->sum(fn (Sale $s) => $s->items->sum(fn ($i) => $i->amount()));
 

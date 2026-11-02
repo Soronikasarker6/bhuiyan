@@ -27,4 +27,8 @@ export const wastageService = {
   async remove(id: ID): Promise<void> {
     await http.delete(`/wastage-entries/${id}`)
   },
+  /** Admin-only (RAW_MATERIAL_REVERSE): undo an entry on `date` — returns its tons; the entry is kept. */
+  async reverse(id: ID, input: { reason: string; date: string }): Promise<void> {
+    await http.post(`/wastage-entries/${id}/reverse`, input)
+  },
 }

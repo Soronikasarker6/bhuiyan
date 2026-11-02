@@ -139,7 +139,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('shipment-cycles/{shipment}/close', [ShipmentCycleController::class, 'close'])
         ->middleware('permission:'.P::RAW_MATERIAL_EDIT);
     Route::post('shipment-cycles/{shipment}/reopen', [ShipmentCycleController::class, 'reopen'])
-        ->middleware('permission:'.P::RAW_MATERIAL_EDIT);
+        ->middleware('permission:'.P::RAW_MATERIAL_REOPEN);
 
     Route::apiResource('shipments', ShipmentController::class)->except('show')
         ->middlewareFor('index', 'permission:'.P::RAW_MATERIAL_VIEW)
@@ -151,12 +151,16 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middlewareFor('index', 'permission:'.P::RAW_MATERIAL_VIEW)
         ->middlewareFor('store', 'permission:'.P::RAW_MATERIAL_CREATE)
         ->middlewareFor('destroy', 'permission:'.P::RAW_MATERIAL_DELETE);
+    Route::post('wastage-entries/{wastageEntry}/reverse', [WastageEntryController::class, 'reverse'])
+        ->middleware('permission:'.P::RAW_MATERIAL_REVERSE);
 
     Route::apiResource('production-entries', ProductionEntryController::class)->only(['index', 'store', 'update', 'destroy'])
         ->middlewareFor('index', 'permission:'.P::PRODUCTION_VIEW)
         ->middlewareFor('store', 'permission:'.P::PRODUCTION_CREATE)
         ->middlewareFor('update', 'permission:'.P::PRODUCTION_EDIT)
         ->middlewareFor('destroy', 'permission:'.P::PRODUCTION_DELETE);
+    Route::post('production-entries/{productionEntry}/reverse', [ProductionEntryController::class, 'reverse'])
+        ->middleware('permission:'.P::PRODUCTION_REVERSE);
     Route::middleware('permission:'.P::PRODUCTION_VIEW)->group(function () {
         Route::get('products/{product}/mesh-stock', [ProductStockController::class, 'meshStock']);
         Route::get('products/{product}/stock-ledger', [ProductStockController::class, 'stockLedger']);
@@ -169,6 +173,8 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middlewareFor('store', 'permission:'.P::SALES_CREATE)
         ->middlewareFor('update', 'permission:'.P::SALES_EDIT)
         ->middlewareFor('destroy', 'permission:'.P::SALES_DELETE);
+    Route::post('sales/{sale}/reverse', [SaleController::class, 'reverse'])
+        ->middleware('permission:'.P::SALES_REVERSE);
 
     Route::post('transactions/transfer', [TransactionController::class, 'transfer'])
         ->middleware('permission:'.P::LEDGER_CREATE);

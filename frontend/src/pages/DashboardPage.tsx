@@ -28,7 +28,7 @@ import { useAppData } from '@/hooks/useAppData'
 import { usePageHeader } from '@/hooks/usePageHeader'
 import { buildImportRows, importTotals, todaysImports } from '@/utils/imports'
 import { allMeshStock, todaysProductionBags, totalProductionBags, totalStockTon } from '@/utils/productionStock'
-import { buildSaleSummaries, monthlySalesSeries } from '@/utils/sales'
+import { buildSaleSummaries, monthlySalesSeries, standingSales } from '@/utils/sales'
 import { customerTotals, outstandingCustomers, transactionsForCustomer } from '@/utils/customerLedger'
 import { monthlyProfit, yearlyProfit } from '@/utils/profit'
 import { MONTHS_SHORT, formatDate, formatNumber, formatTons, todayISO } from '@/utils/format'
@@ -120,7 +120,8 @@ export default function DashboardPage() {
   const stockTon = useMemo(() => totalStockTon(stock), [stock])
 
   const sales = useMemo(
-    () => buildSaleSummaries(data.sales, data.saleItems, data.products, data.meshSizes, data.customers, data.customerTransactions),
+    // Reversed sales no longer stand — none of the dashboard's figures count them.
+    () => standingSales(buildSaleSummaries(data.sales, data.saleItems, data.products, data.meshSizes, data.customers, data.customerTransactions)),
     [data.sales, data.saleItems, data.products, data.meshSizes, data.customers, data.customerTransactions],
   )
   const todaySales = useMemo(() => sales.filter((s) => s.date === today), [sales, today])

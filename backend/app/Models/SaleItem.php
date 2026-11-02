@@ -35,9 +35,17 @@ class SaleItem extends Model
         return $this->belongsTo(MeshSize::class);
     }
 
-    /** Theoretical weight from bag count — never billed once an actual reading exists. */
+    /**
+     * Theoretical weight from bag count — never billed once an actual reading
+     * exists. A raw material line has no mesh and no bags, so its only weight
+     * is the weighbridge net it was recorded with.
+     */
     public function calculatedWeightTon(): float
     {
+        if ($this->mesh_size_id === null) {
+            return (float) ($this->actual_weight_ton ?? 0);
+        }
+
         return ((float) $this->bags * (float) $this->meshSize->bag_kg) / 1000;
     }
 

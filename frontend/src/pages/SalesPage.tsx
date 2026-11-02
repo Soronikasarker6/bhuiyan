@@ -11,6 +11,8 @@ import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { SaleForm, type SaleFormValues, type SaleSubmit } from '@/features/sales/SaleForm'
+import { RawMaterialSaleForm, type RawMaterialSaleValues } from '@/features/sales/RawMaterialSaleForm'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SalesTable } from '@/features/sales/SalesTable'
 import { EditSaleDialog } from '@/features/sales/EditSaleDialog'
 import { usePrint, printPayloadToCsv, type PrintPayload } from '@/features/reports/PrintSheet'
@@ -18,10 +20,23 @@ import { useAppData } from '@/hooks/useAppData'
 import { usePageHeader } from '@/hooks/usePageHeader'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
-import type { SaleSummary } from '@/types'
+import type { SaleSummary, SaleType } from '@/types'
 import { activeProducts, activeMeshSizes } from '@/utils/products'
-import { buildSaleSummaries, filterSaleSummaries, nextInvoiceNo } from '@/utils/sales'
-import { customerDisplayLabel } from '@/utils/customerLedger'
+import {
+  buildSaleSummaries,
+  filterSaleSummaries,
+  isRawMaterialSale,
+  isReversedSale,
+  nextInvoiceNo,
+  standingSales,
+  rawMaterialSaleMovements,
+  saleNetWeightKg,
+  SALE_TYPE_LABEL,
+} from '@/utils/sales'
+import { customerDisplayLabel, customerTotals, transactionsForCustomer } from '@/utils/customerLedger'
+import { currentRawStockTon, cycleStatusForDate } from '@/utils/rawMaterial'
+import { weighbridgeWeights } from '@/utils/weighbridge'
+import { bagKgOf } from '@/utils/products'
 import { availableBags as availableBagsFor } from '@/utils/productionStock'
 import { downloadTextFile } from '@/utils/download'
 import { defaultCashAccountId } from '@/utils/ledger'
@@ -37,15 +52,31 @@ import {
 
 const ALL = '__all__'
 
+/** An optional numeric form field: blank → undefined (not recorded), never 0. */
+const optionalNumber = (value: unknown): number | undefined =>
+  value === '' || value === null || value === undefined || !Number.isFinite(Number(value)) ? undefined : Number(value)
+
 /**
  * Sales — how much stone we sold, to whom, at what rate, and on which truck.
  *
- * Deliberately separate from Production: this page never touches gross/tare
- * weight. One invoice can carry several products or mesh sizes as line
- * items, which is why a sale is a header plus items rather than a flat row.
+ * Two kinds of sale share this page, the customer ledger and the cash rails:
+ *
+ * - **Finished product** — bagged, mesh-wise stock out of production. One
+ *   invoice can carry several products or mesh sizes as line items, which is
+ *   why a sale is a header plus items rather than a flat row.
+ * - **Raw material** — raw limestone sold straight from the yard by
+ *   weighbridge net weight. Deducted from raw stock, never from bags, and
+ *   never recorded as production.
  */
 export default function SalesPage() {
-  const { data, loading, createSale: persistSale, updateSale: persistUpdateSale, deleteSale: persistDeleteSale } = useAppData()
+  const {
+    data,
+    loading,
+    createSale: persistSale,
+    updateSale: persistUpdateSale,
+    deleteSale: persistDeleteSale,
+    reverseSale: persistReverseSale,
+  } = useAppData()
   const { print } = usePrint()
   const canCreate = usePermission(PERMISSIONS.SALES_CREATE)
 
@@ -73,6 +104,7 @@ export default function SalesPage() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [customerFilter, setCustomerFilter] = useState(ALL)
+  const [saleTypeFilter, setSaleTypeFilter] = useState<SaleType | typeof ALL>(ALL)
 
   const filteredSales = useMemo(
     () =>
@@ -80,9 +112,13 @@ export default function SalesPage() {
         from: from || undefined,
         to: to || undefined,
         customerId: customerFilter === ALL ? undefined : customerFilter,
+        saleType: saleTypeFilter === ALL ? undefined : saleTypeFilter,
       }),
-    [sales, from, to, customerFilter],
+    [sales, from, to, customerFilter, saleTypeFilter],
   )
+
+  /** Which kind of sale the create form records. */
+  const [newSaleType, setNewSaleType] = useState<SaleType>('finished_product')
 
   const thisYear = new Date().getFullYear()
   const thisMonth = new Date().getMonth()
@@ -92,17 +128,80 @@ export default function SalesPage() {
     { label: 'This month', from: firstDayOfMonth(thisYear, thisMonth), to: todayISO() },
   ]
 
-  /** The five figures the register must show, all responding to the date/customer filter above (§13). */
-  const totalAmount = useMemo(() => filteredSales.reduce((sum, s) => sum + s.totalAmount, 0), [filteredSales])
-  const totalTonSold = useMemo(() => filteredSales.reduce((sum, s) => sum + s.totalWeightTon, 0), [filteredSales])
-  const totalPaid = useMemo(() => filteredSales.reduce((sum, s) => sum + s.amountPaid, 0), [filteredSales])
-  const totalDue = useMemo(() => filteredSales.reduce((sum, s) => sum + s.amountDue, 0), [filteredSales])
+  /**
+   * The five figures the register must show, all responding to the date/customer filter above (§13).
+   * Reversed sales stay listed (marked Reversed) but are never counted.
+   */
+  const countedSales = useMemo(() => standingSales(filteredSales), [filteredSales])
+  const totalAmount = useMemo(() => countedSales.reduce((sum, s) => sum + s.totalAmount, 0), [countedSales])
+  const totalTonSold = useMemo(() => countedSales.reduce((sum, s) => sum + s.totalWeightTon, 0), [countedSales])
+  const totalPaid = useMemo(() => countedSales.reduce((sum, s) => sum + s.amountPaid, 0), [countedSales])
+  const totalDue = useMemo(() => countedSales.reduce((sum, s) => sum + s.amountDue, 0), [countedSales])
 
   /** The same function the Production & Stock page's cards use — a sale can never be accepted against a different number than the stock it's checking. */
   const availableBags = useCallback(
     (productId: string, meshSizeId: string) =>
       availableBagsFor(productId, meshSizeId, data.productionEntries, data.saleItems, data.sales),
     [data.productionEntries, data.saleItems, data.sales],
+  )
+
+  // ------------------------------------------------------------ raw material sales
+  /**
+   * Current raw stock for one material — the same `currentRawStockTon` the
+   * Raw Material page's cards use. `excludeSaleId` lets an edit count the
+   * sale's own tons as available again (they are being replaced, not added to).
+   */
+  const rawStockFor = useCallback(
+    (productId: string, excludeSaleId?: string) =>
+      currentRawStockTon(
+        productId,
+        data.rawMaterialImports,
+        data.wastageEntries,
+        data.productionEntries,
+        (meshId) => bagKgOf(data.meshSizes, meshId),
+        undefined,
+        rawMaterialSaleMovements(data.sales, data.saleItems).filter((m) => m.saleId !== excludeSaleId),
+      ),
+    [data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes, data.sales, data.saleItems],
+  )
+
+  const customerAdvance = useCallback(
+    (customerId: string) => customerTotals(transactionsForCustomer(data.customerTransactions, customerId)).availableAdvance,
+    [data.customerTransactions],
+  )
+
+  const toRawSaleInput = (values: RawMaterialSaleValues) => {
+    const paidAtSale = values.paidAtSale ?? 0
+    return {
+      saleType: 'raw_material' as const,
+      date: values.date,
+      customerId: values.customerId,
+      truckNo: values.truckNo?.trim() || undefined,
+      grossWeightKg: Number(values.grossWeightKg),
+      tareWeightKg: Number(values.tareWeightKg),
+      notes: values.notes?.trim() || undefined,
+      paidAtSale,
+      accountId: paidAtSale > 0 ? values.accountId : undefined,
+      items: [],
+      rawMaterial: { productId: values.productId, ratePerTon: Number(values.ratePerTon) },
+    }
+  }
+
+  const addRawSale = useCallback(
+    async (values: RawMaterialSaleValues) => {
+      try {
+        const { invoiceNo: recordedInvoiceNo } = await persistSale(toRawSaleInput(values))
+        const netTon = weighbridgeWeights(values).netTon ?? 0
+        toast.success(`${recordedInvoiceNo} recorded`, {
+          description: `${formatTons(netTon)} Ton deducted from raw stock.`,
+        })
+      } catch (error) {
+        toast.error('Could not record the raw material sale', {
+          description: error instanceof Error ? error.message : undefined,
+        })
+      }
+    },
+    [persistSale],
   )
 
   const addSale = useCallback(
@@ -133,6 +232,9 @@ export default function SalesPage() {
           date: values.date,
           customerId: values.customerId,
           truckNo: values.truckNo?.trim() || undefined,
+          // Weighbridge slip — stored as entered, never derived from or fed into the billable ton.
+          grossWeightKg: optionalNumber(values.grossWeightKg),
+          tareWeightKg: optionalNumber(values.tareWeightKg),
           notes: values.notes?.trim() || undefined,
           paidAtSale,
           // Only meaningful once something was actually collected at sale —
@@ -179,18 +281,21 @@ export default function SalesPage() {
   )
 
   const editInitialValues = useMemo<SaleFormValues | null>(() => {
-    if (!editing) return null
+    if (!editing || isRawMaterialSale(editing)) return null
     const cashRow = data.transactions.find((t) => t.referenceSaleId === editing.id)
     return {
       date: editing.date,
       customerId: editing.customerId,
       truckNo: editing.truckNo ?? '',
+      // Older sales have no slip: the fields open blank, and saving leaves them blank.
+      grossWeightKg: editing.grossWeightKg ?? ('' as unknown as number),
+      tareWeightKg: editing.tareWeightKg ?? ('' as unknown as number),
       notes: editing.notes ?? '',
       paidAtSale: editing.paidAtSale > 0 ? editing.paidAtSale : ('' as unknown as number),
       accountId: cashRow?.accountId ?? defaultCashAccountId(data.accounts) ?? data.accounts[0]?.id ?? '',
       items: editing.items.map((item) => ({
         productId: item.productId,
-        meshSizeId: item.meshSizeId,
+        meshSizeId: item.meshSizeId ?? '',
         bags: item.bags,
         ratePerTon: item.ratePerTon ?? 0,
         actualWeightTon: item.weightTon,
@@ -207,6 +312,9 @@ export default function SalesPage() {
           date: values.date,
           customerId: values.customerId,
           truckNo: values.truckNo?.trim() || undefined,
+          // Weighbridge slip — stored as entered, never derived from or fed into the billable ton.
+          grossWeightKg: optionalNumber(values.grossWeightKg),
+          tareWeightKg: optionalNumber(values.tareWeightKg),
           notes: values.notes?.trim() || undefined,
           paidAtSale,
           accountId: paidAtSale > 0 ? values.accountId : undefined,
@@ -229,6 +337,76 @@ export default function SalesPage() {
     [editing, persistUpdateSale],
   )
 
+  const editRawInitialValues = useMemo<RawMaterialSaleValues | null>(() => {
+    if (!editing || !isRawMaterialSale(editing)) return null
+    const cashRow = data.transactions.find((t) => t.referenceSaleId === editing.id)
+    const line = editing.items[0]
+    return {
+      date: editing.date,
+      customerId: editing.customerId,
+      productId: line?.productId ?? '',
+      truckNo: editing.truckNo ?? '',
+      grossWeightKg: Number(editing.grossWeightKg) || ('' as unknown as number),
+      tareWeightKg: editing.tareWeightKg ?? ('' as unknown as number),
+      ratePerTon: line?.ratePerTon ?? ('' as unknown as number),
+      paidAtSale: editing.paidAtSale > 0 ? editing.paidAtSale : ('' as unknown as number),
+      accountId: cashRow?.accountId ?? defaultCashAccountId(data.accounts) ?? data.accounts[0]?.id ?? '',
+      notes: editing.notes ?? '',
+    }
+  }, [editing, data.transactions, data.accounts])
+
+  const editRawStockFor = useCallback((productId: string) => rawStockFor(productId, editing?.id), [rawStockFor, editing])
+
+  const saveRawEdit = useCallback(
+    async (values: RawMaterialSaleValues) => {
+      if (!editing) return
+      try {
+        await persistUpdateSale(editing.id, toRawSaleInput(values))
+        toast.success(`${editing.invoiceNo} updated`, { description: 'Raw stock re-calculated for the new weight.' })
+        setEditing(null)
+      } catch (error) {
+        toast.error('Could not update the sale', {
+          description: error instanceof Error ? error.message : undefined,
+        })
+      }
+    },
+    [editing, persistUpdateSale],
+  )
+
+  /**
+   * Why a sale can no longer be edited or deleted — mirrors
+   * SalesService::assertCorrectable(). A raw material sale dated inside a
+   * closed shipment cycle is corrected by an Admin reversal instead.
+   */
+  const lockReason = useCallback(
+    (sale: SaleSummary) => {
+      if (isReversedSale(sale)) return 'Reversed — kept as history'
+      if (!isRawMaterialSale(sale)) return undefined
+      const productId = sale.items[0]?.productId
+      if (productId && cycleStatusForDate(productId, sale.date, data.shipmentCycles) === 'closed') {
+        return 'In a closed shipment cycle — an Admin can reverse it'
+      }
+      return undefined
+    },
+    [data.shipmentCycles],
+  )
+
+  const reverseSale = useCallback(
+    async (sale: SaleSummary, input: { reason: string; date: string }) => {
+      try {
+        await persistReverseSale(sale.id, input)
+        toast.success(`${sale.invoiceNo} reversed`, {
+          description: 'The receivable was cancelled and the tons returned to raw stock.',
+        })
+      } catch (error) {
+        toast.error('Could not reverse the sale', {
+          description: error instanceof Error ? error.message : undefined,
+        })
+      }
+    },
+    [persistReverseSale],
+  )
+
   const deleteSale = useCallback(
     async (saleId: string) => {
       try {
@@ -249,11 +427,32 @@ export default function SalesPage() {
 
       return {
         title: `Invoice ${sale.invoiceNo}`,
-        subtitle: `${customer ? customerDisplayLabel(customer) : sale.customerName}${sale.truckNo ? ` · Truck ${sale.truckNo}` : ''}`,
-        meta: [{ label: 'Date', value: formatDate(sale.date) }],
+        subtitle: customer ? customerDisplayLabel(customer) : sale.customerName,
+        meta: [
+          { label: 'Date', value: formatDate(sale.date) },
+          ...(sale.truckNo ? [{ label: 'Truck No.', value: sale.truckNo }] : []),
+        ],
         // Rate/Ton and Amount are confidential business information and
         // never appear on the customer-facing invoice, even when an Admin
         // prints it — this is a dispatch record, not a priced bill.
+        ...(isRawMaterialSale(sale)
+          ? {
+              columns: [
+                { key: 'material', label: 'Raw Material' },
+                { key: 'gross', label: 'Gross (KG)', align: 'right' as const },
+                { key: 'tare', label: 'Tare (KG)', align: 'right' as const },
+                { key: 'netKg', label: 'Net (KG)', align: 'right' as const },
+                { key: 'netTon', label: 'Net (Ton)', align: 'right' as const },
+              ],
+              rows: sale.items.map((item) => ({
+                material: item.productName,
+                gross: formatNumber(sale.grossWeightKg),
+                tare: formatNumber(sale.tareWeightKg),
+                netKg: formatNumber(saleNetWeightKg(sale)),
+                netTon: formatTons(item.weightTon),
+              })),
+            }
+          : {
         columns: [
           { key: 'product', label: 'Product' },
           { key: 'mesh', label: 'Mesh' },
@@ -266,6 +465,7 @@ export default function SalesPage() {
           bags: formatNumber(item.bags),
           weight: formatTons(item.weightTon),
         })),
+            }),
         footnote: sale.notes,
       }
     },
@@ -330,8 +530,8 @@ export default function SalesPage() {
         <StatCard label="Total invoices" icon={Receipt} accent="neutral" value={<Num value={filteredSales.length} size="2xl" className="font-bold" />} />
       </StatGrid>
 
-      <Section title="Date & customer filter" className="mb-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <Section title="Date, customer & type filter" className="mb-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label htmlFor="sales-date-range" className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Date range</label>
             <DateRangePicker id="sales-date-range" from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
@@ -343,6 +543,17 @@ export default function SalesPage() {
               <SelectContent>
                 <SelectItem value={ALL}>All customers</SelectItem>
                 {data.customers.map((c) => <SelectItem key={c.id} value={c.id}>{customerDisplayLabel(c)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Sale type</label>
+            <Select value={saleTypeFilter} onValueChange={(v) => setSaleTypeFilter(v as SaleType | typeof ALL)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All sales</SelectItem>
+                <SelectItem value="finished_product">{SALE_TYPE_LABEL.finished_product} sales</SelectItem>
+                <SelectItem value="raw_material">{SALE_TYPE_LABEL.raw_material} sales</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -365,17 +576,34 @@ export default function SalesPage() {
       </Section>
 
       {canCreate && (
-        <div className="mb-4">
-          <SaleForm
-            customers={data.customers}
-            products={products}
-            meshSizes={meshSizes}
-            accounts={data.accounts}
-            nextInvoiceNo={invoiceNo}
-            availableBags={availableBags}
-            onSubmit={addSale}
-          />
-        </div>
+        <Tabs value={newSaleType} onValueChange={(v) => setNewSaleType(v as SaleType)} className="mb-4">
+          <TabsList className="mb-3">
+            <TabsTrigger value="finished_product">{SALE_TYPE_LABEL.finished_product} sale</TabsTrigger>
+            <TabsTrigger value="raw_material">{SALE_TYPE_LABEL.raw_material} sale</TabsTrigger>
+          </TabsList>
+          <TabsContent value="finished_product">
+            <SaleForm
+              customers={data.customers}
+              products={products}
+              meshSizes={meshSizes}
+              accounts={data.accounts}
+              nextInvoiceNo={invoiceNo}
+              availableBags={availableBags}
+              onSubmit={addSale}
+            />
+          </TabsContent>
+          <TabsContent value="raw_material">
+            <RawMaterialSaleForm
+              customers={data.customers}
+              products={products}
+              accounts={data.accounts}
+              nextInvoiceNo={invoiceNo}
+              availableRawTon={rawStockFor}
+              customerAdvance={customerAdvance}
+              onSubmit={addRawSale}
+            />
+          </TabsContent>
+        </Tabs>
       )}
 
       <SalesTable
@@ -384,6 +612,8 @@ export default function SalesPage() {
         onEdit={setEditing}
         onExportCsv={exportInvoiceCsv}
         onExportPdf={printInvoice}
+        lockReason={lockReason}
+        onReverse={reverseSale}
       />
 
       <EditSaleDialog
@@ -396,6 +626,10 @@ export default function SalesPage() {
         availableBags={editAvailableBags}
         onOpenChange={(open) => !open && setEditing(null)}
         onSubmit={saveEdit}
+        rawInitialValues={editRawInitialValues}
+        availableRawTon={editRawStockFor}
+        customerAdvance={customerAdvance}
+        onSubmitRaw={saveRawEdit}
       />
     </div>
   )

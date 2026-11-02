@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Boxes, Factory, Package, Receipt, Pencil, Scale, Trash2 } from 'lucide-react'
+import { Boxes, Factory, Lock, Package, Receipt, Pencil, Scale, Trash2, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Section } from '@/components/PageHeader'
 import { StatCard, StatGrid } from '@/components/StatCard'
@@ -9,6 +9,8 @@ import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { ReverseDialog } from '@/components/ReverseDialog'
+import { Badge } from '@/components/ui/misc'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ProductionEntryForm, type ProductionSubmit } from '@/features/production/ProductionEntryForm'
@@ -35,6 +37,7 @@ import {
 import { currentRawStockTon, cycleStatusForDate } from '@/utils/rawMaterial'
 import { formatDate, formatNumber, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
+import { rawMaterialSaleMovements } from '@/utils/sales'
 
 /**
  * Production & Stock — how much of each limestone is bagged, mesh by mesh,
@@ -46,7 +49,9 @@ import { now, uid } from '@/utils/id'
  * sold, never an amount or a customer.
  */
 export default function ProductionPage() {
-  const { data, loading, update } = useAppData()
+  const { data, loading, update, reverseStockEntry } = useAppData()
+  // Raw material sold straight from the yard — subtracted from raw stock beside production and wastage, never as either.
+  const rawSales = useMemo(() => rawMaterialSaleMovements(data.sales, data.saleItems), [data.sales, data.saleItems])
   const canCreate = usePermission(PERMISSIONS.PRODUCTION_CREATE)
   const canEdit = usePermission(PERMISSIONS.PRODUCTION_EDIT)
   const canDelete = usePermission(PERMISSIONS.PRODUCTION_DELETE)
@@ -61,6 +66,8 @@ export default function ProductionPage() {
   const [activeProductId, setActiveProductId] = useState(products[0]?.id ?? '')
   const selectedProductId = products.some((p) => p.id === activeProductId) ? activeProductId : products[0]?.id ?? ''
   const [pendingDelete, setPendingDelete] = useState<ProductionEntry | null>(null)
+  const [pendingReverse, setPendingReverse] = useState<ProductionEntry | null>(null)
+  const canReverse = usePermission(PERMISSIONS.PRODUCTION_REVERSE)
   const [editing, setEditing] = useState<ProductionEntry | null>(null)
 
   const today = todayISO()
@@ -108,13 +115,39 @@ export default function ProductionPage() {
         data.wastageEntries,
         data.productionEntries,
         (meshId) => bagKgOf(data.meshSizes, meshId),
+        undefined,
+        rawSales,
       ),
-    [data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes],
+    [data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes, rawSales],
   )
 
   const rawMaterialCycleClosed = useCallback(
     (productId: string, date: string) => cycleStatusForDate(productId, date, data.shipmentCycles) === 'closed',
     [data.shipmentCycles],
+  )
+
+  /** Mirrors InventoryService::assertConsumptionCorrectable() — the server refuses these regardless. */
+  const lockReason = useCallback(
+    (entry: ProductionEntry) => {
+      if (entry.reversedOn) return 'Reversed — kept as history'
+      if (rawMaterialCycleClosed(entry.productId, entry.date)) return 'In a closed shipment cycle — an Admin can reverse it'
+      return undefined
+    },
+    [rawMaterialCycleClosed],
+  )
+
+  const reverseEntry = useCallback(
+    async (entry: ProductionEntry, input: { reason: string; date: string }) => {
+      try {
+        await reverseStockEntry('production', entry.id, input)
+        toast.success('Production entry reversed', {
+          description: `${formatNumber(entry.bags)} bags removed from stock; their raw tons returned.`,
+        })
+      } catch (error) {
+        toast.error('Could not reverse the entry', { description: error instanceof Error ? error.message : undefined })
+      }
+    },
+    [reverseStockEntry],
   )
 
   const addEntry = useCallback(
@@ -145,8 +178,10 @@ export default function ProductionPage() {
         data.wastageEntries,
         data.productionEntries.filter((e) => e.id !== editing?.id),
         (meshId) => bagKgOf(data.meshSizes, meshId),
+        undefined,
+        rawSales,
       ),
-    [data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes, editing],
+    [data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes, editing, rawSales],
   )
 
   const editShortfall = useCallback(
@@ -290,27 +325,45 @@ export default function ProductionPage() {
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(entry.date)}</TableCell>
                     <TableCell className="font-medium">{meshSizeNameOf(data.meshSizes, entry.meshId)}</TableCell>
                     <TableCell numeric>{formatNumber(entry.bags)}</TableCell>
-                    <TableCell className="max-w-[16rem] truncate text-muted-foreground">{entry.notes || '—'}</TableCell>
+                    <TableCell className="max-w-[16rem] truncate text-muted-foreground">
+                      {entry.reversedOn && (
+                        <Badge variant="outline" className="mr-1.5" title={entry.reversalReason ?? undefined}>
+                          Reversed {formatDate(entry.reversedOn)}
+                        </Badge>
+                      )}
+                      {entry.notes || '—'}
+                    </TableCell>
                     <TableCell numeric>
                       <div className="flex justify-end gap-1">
-                        {canEdit && (
+                        {canReverse && !entry.reversedOn && lockReason(entry) && (
                           <Button
                             size="icon-sm"
                             variant="ghost"
-                            className="text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={() => setPendingReverse(entry)}
+                            aria-label="Reverse entry"
+                            title="Reverse entry (Admin correction)"
+                          >
+                            <Undo2 />
+                          </Button>
+                        )}
+                        {lockReason(entry) && (
+                          <span className="grid h-6 w-6 place-items-center text-muted-foreground" title={lockReason(entry)} aria-label={lockReason(entry)}>
+                            <Lock className="h-3.5 w-3.5" />
+                          </span>
+                        )}
+                        {canEdit && !lockReason(entry) && (
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="text-muted-foreground hover:text-foreground"
                             onClick={() => setEditing(entry)}
-                            disabled={rawMaterialCycleClosed(entry.productId, entry.date)}
                             aria-label="Edit entry"
-                            title={
-                              rawMaterialCycleClosed(entry.productId, entry.date)
-                                ? 'Shipment closed — reopen it in Raw Material Import first'
-                                : undefined
-                            }
                           >
                             <Pencil />
                           </Button>
                         )}
-                        {canDelete && (
+                        {canDelete && !lockReason(entry) && (
                           <Button
                             size="icon-sm"
                             variant="ghost"
@@ -342,6 +395,24 @@ export default function ProductionPage() {
         soldShortfall={editShortfall}
         onOpenChange={(open) => !open && setEditing(null)}
         onSubmit={editEntry}
+      />
+
+      <ReverseDialog
+        open={pendingReverse !== null}
+        onOpenChange={(open) => !open && setPendingReverse(null)}
+        title="Reverse this production entry?"
+        description={
+          <>
+            The entry stays on record, marked Reversed. On the reversal date its{' '}
+            {pendingReverse ? `${formatNumber(pendingReverse.bags)} bags` : ''} come out of bag stock and their raw tons return to stock in
+            the open shipment cycle — the closed cycle keeps its figures. Refused if those bags have already been sold. This cannot be
+            undone.
+          </>
+        }
+        confirmLabel="Reverse entry"
+        onReverse={async (input) => {
+          if (pendingReverse) await reverseEntry(pendingReverse, input)
+        }}
       />
 
       <ConfirmDialog

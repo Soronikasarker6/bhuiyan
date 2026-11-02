@@ -81,6 +81,39 @@ class WastageEntryController extends Controller
         return response()->json(null, 204);
     }
 
+    /**
+     * Admin-only correction for an entry that can no longer be edited or
+     * deleted (inside a closed shipment cycle) — see
+     * InventoryService::reverseConsumption(). The entry stays, marked reversed.
+     */
+    public function reverse(Request $request, WastageEntry $wastageEntry)
+    {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:255'],
+            'date' => ['nullable', 'date', 'before_or_equal:today'],
+        ]);
+
+        $before = $this->auditSnapshot($wastageEntry);
+
+        $entry = $this->inventory->reverseConsumption(
+            'wastage',
+            $wastageEntry->id,
+            $validated['date'] ?? now()->toDateString(),
+            $validated['reason'],
+            $request->user()?->id,
+        );
+
+        $this->audit->record(AuditEntity::WASTAGE_ENTRY, $entry->id, AuditAction::REVERSE, [
+            'record' => $this->reference($entry),
+            'before' => $before,
+            'after' => $this->auditSnapshot($entry) + ['reversed_on' => $entry->reversed_on->toDateString()],
+            'reason' => $validated['reason'],
+            'summary' => sprintf('Reversed %s TON wastage on %s', number_format($entry->quantityTon(), 3), $entry->reversed_on->toDateString()),
+        ]);
+
+        return response()->json($entry);
+    }
+
     private function auditSnapshot(WastageEntry $entry): array
     {
         $entry->loadMissing('product');

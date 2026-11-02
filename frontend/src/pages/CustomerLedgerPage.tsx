@@ -37,6 +37,7 @@ const TYPE_OPTIONS: Array<{ value: CustomerTxnType | typeof ALL; label: string }
   { value: 'payment', label: 'Payment' },
   { value: 'refund', label: 'Refund' },
   { value: 'opening_balance', label: 'Opening Balance' },
+  { value: 'sale_reversal', label: 'Sale Reversal' },
   { value: 'other', label: 'Other' },
 ]
 
@@ -139,12 +140,12 @@ export default function CustomerLedgerPage() {
 
   const exportPayments = useMemo(
     () =>
+      // Payments and sale reversals — every credit against the statement's invoices.
       filterCustomerTransactions(data.customerTransactions, {
         customerId: customerId === ALL ? undefined : customerId,
-        type: 'payment',
         from: from || undefined,
         to: to || undefined,
-      }),
+      }).filter((t) => t.type === 'payment' || t.type === 'sale_reversal'),
     [data.customerTransactions, customerId, from, to],
   )
 

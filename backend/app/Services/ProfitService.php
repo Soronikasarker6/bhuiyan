@@ -36,6 +36,21 @@ class ProfitService
             }
         }
 
+        // A reversal comes off in the month it was booked, never the month of
+        // the original sale — so a month already reported (or closed) keeps
+        // its figures, and the correction shows where it happened.
+        $reversed = Sale::with('items.meshSize')
+            ->whereYear('reversed_on', $year)->whereMonth('reversed_on', $monthIndex + 1)
+            ->get();
+
+        foreach ($reversed as $sale) {
+            foreach ($sale->items as $item) {
+                $totalSales -= $item->amount();
+                $tonsSoldByProduct[$item->product_id] = ($tonsSoldByProduct[$item->product_id] ?? 0)
+                    - $item->billableWeightTon();
+            }
+        }
+
         $costOfGoodsSold = 0.0;
         foreach ($tonsSoldByProduct as $productId => $tons) {
             $avgCost = $this->inventory->averageCostPerTon((int) $productId);
