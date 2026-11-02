@@ -1,16 +1,19 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  ArrowRight,
   Boxes,
   CheckCircle2,
   ChevronRight,
   Factory,
+  Mail,
+  MapPin,
   Menu,
+  Phone,
   Receipt,
   ShieldCheck,
   Tractor,
   Truck,
+  UserRound,
   Warehouse,
   Wheat,
   X,
@@ -18,6 +21,7 @@ import {
 import { StoneMark } from '@/components/StoneMark'
 import { Button } from '@/components/ui/button'
 import { useCompanyProfile } from '@/hooks/useCompanyProfile'
+import type { CompanyProfile } from '@/types'
 import '@/styles/landing-theme.css'
 
 /**
@@ -88,6 +92,28 @@ const WORKFLOW_STEPS = [
   { label: 'Sales & Distribution', icon: Truck },
 ]
 
+/** The address the site has always published — used only if the profile request fails. */
+const FALLBACK_EMAIL = 'admin@bhuiyanindustry.com'
+
+/**
+ * The profile's phone field as entered in Settings, split into callable
+ * numbers ("+880 1716-808811 & +008 1777-809012" → two). Each is shown
+ * exactly as entered; only the `tel:` link strips it to digits.
+ */
+function phoneNumbers(profile: CompanyProfile): Array<{ label: string; href: string }> {
+  return profile.phone
+    .split(/&|,|\//)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((label) => ({ label, href: `tel:${label.startsWith('+') ? '+' : ''}${label.replace(/\D/g, '')}` }))
+}
+
+function contactOf(profile: CompanyProfile) {
+  const phones = phoneNumbers(profile)
+  const email = profile.email || FALLBACK_EMAIL
+  return { phones, primaryPhone: phones[0], email }
+}
+
 function Nav() {
   const [open, setOpen] = useState(false)
   const { profile } = useCompanyProfile()
@@ -130,9 +156,12 @@ function Nav() {
           ))}
         </nav>
 
-        <div className="hidden md:block">
+        <div className="hidden items-center gap-2 md:flex">
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/login">Staff Login</Link>
+          </Button>
           <Button asChild>
-            <Link to="/login">Management Login</Link>
+            <a href="#contact">Contact Us</a>
           </Button>
         </div>
 
@@ -164,8 +193,13 @@ function Nav() {
               </a>
             ))}
             <Button asChild className="mt-2">
-              <Link to="/login">Management Login</Link>
+              <a href="#contact" onClick={() => setOpen(false)}>
+                Contact Us
+              </a>
             </Button>
+            <Link to="/login" className="rounded-md px-2 py-2 text-center text-sm text-muted-foreground hover:bg-secondary/60">
+              Staff Login
+            </Link>
           </div>
         </nav>
       )}
@@ -174,8 +208,13 @@ function Nav() {
 }
 
 function Hero() {
+  const { profile } = useCompanyProfile()
+  const { primaryPhone, email } = contactOf(profile)
+
   return (
-    <section id="top" className="landing-hero relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-20 sm:px-6">
+    // Shorter on phones so the products and contact details are a short
+    // scroll away instead of a full screen below.
+    <section id="top" className="landing-hero relative flex min-h-[78vh] items-center justify-center overflow-hidden px-4 py-16 sm:min-h-screen sm:px-6 sm:py-20">
       <div className="landing-fade-in mx-auto max-w-[900px] text-center">
         <p className="text-2xs font-semibold uppercase tracking-[0.2em] text-brass-300">
           Bhuiyan Industry
@@ -186,16 +225,30 @@ function Hero() {
         <p className="mx-auto mt-5 max-w-[640px] text-base text-white/75 sm:text-lg">
           Reliable limestone manufacturing and supply for modern business needs.
         </p>
+        <p className="mx-auto mt-3 max-w-[640px] text-[0.9375rem] leading-relaxed text-white/85">
+          Vietnam White, Oman Red and Grey limestone — bagged by mesh size or supplied loose by weight — from
+          our works in Demra, Dhaka.
+        </p>
 
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <Button asChild size="lg" className="px-6">
-            <a href="#contact">
-              Contact Us
-              <ArrowRight className="h-4 w-4" />
+        <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
+          {primaryPhone && (
+            <Button asChild size="lg" className="px-6">
+              <a href={primaryPhone.href}>
+                <Phone className="h-4 w-4" aria-hidden />
+                Call {primaryPhone.label}
+              </a>
+            </Button>
+          )}
+          <Button
+            asChild
+            size="lg"
+            variant={primaryPhone ? 'outline' : 'default'}
+            className={primaryPhone ? 'border-white/25 bg-transparent px-6 text-white hover:bg-white/10 hover:text-white' : 'px-6'}
+          >
+            <a href={`mailto:${email}`}>
+              <Mail className="h-4 w-4" aria-hidden />
+              Email an Inquiry
             </a>
-          </Button>
-          <Button asChild size="lg" variant="outline" className="border-white/25 bg-transparent px-6 text-white hover:bg-white/10 hover:text-white">
-            <Link to="/login">Management Login</Link>
           </Button>
         </div>
       </div>
@@ -273,6 +326,13 @@ function Products() {
     <section id="products" className="px-4 py-16 sm:px-6 sm:py-20">
       <div className="mx-auto max-w-[1100px]">
         <SectionHeading eyebrow="What we produce" title="Our Products" />
+        <p className="mx-auto mt-4 max-w-[640px] text-center text-[0.9375rem] leading-relaxed text-muted-foreground">
+          Available bagged by mesh size, or supplied loose by weight on the truck.{' '}
+          <a href="#contact" className="font-medium text-primary-700 underline-offset-4 hover:underline">
+            Ask us about availability
+          </a>
+          .
+        </p>
         <div className="mt-9 grid grid-cols-1 gap-4 sm:grid-cols-3">
           {PRODUCTS.map((product) => (
             <ProductCard key={product.name} {...product} />
@@ -352,11 +412,79 @@ function ManagementCta() {
   )
 }
 
-function Footer() {
+function ContactRow({ icon: Icon, label, children }: { icon: typeof Phone; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-3.5">
+      <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-100 text-primary-700">
+        <Icon className="h-4 w-4" aria-hidden />
+      </span>
+      <div className="min-w-0">
+        <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+        <div className="mt-0.5 break-words text-[0.9375rem] font-medium text-foreground">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * How to reach the company — every detail from the live company profile
+ * (Settings → Company Profile), so it changes the moment the office edits it.
+ */
+function Contact() {
   const { profile } = useCompanyProfile()
+  const { phones, email } = contactOf(profile)
+  const mapUrl = profile.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(profile.address)}` : undefined
 
   return (
-    <footer id="contact" className="landing-hero no-print px-4 py-10 sm:px-6">
+    <section id="contact" className="stone-field px-4 py-16 sm:px-6 sm:py-20">
+      <div className="mx-auto max-w-[900px]">
+        <SectionHeading eyebrow="Get in touch" title="Contact Bhuiyan Industry" />
+        <p className="mx-auto mt-4 max-w-[560px] text-center text-[0.9375rem] leading-relaxed text-muted-foreground">
+          For product inquiries and orders, call or email us.
+        </p>
+
+        <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {phones.length > 0 && (
+            <ContactRow icon={Phone} label="Phone">
+              {phones.map((phone, index) => (
+                <span key={phone.href}>
+                  {index > 0 && <span className="text-muted-foreground"> · </span>}
+                  <a href={phone.href} className="whitespace-nowrap text-primary-700 underline-offset-4 hover:underline">
+                    {phone.label}
+                  </a>
+                </span>
+              ))}
+            </ContactRow>
+          )}
+          <ContactRow icon={Mail} label="Email">
+            <a href={`mailto:${email}`} className="text-primary-700 underline-offset-4 hover:underline">
+              {email}
+            </a>
+          </ContactRow>
+          {profile.address && (
+            <ContactRow icon={MapPin} label="Address">
+              <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="underline-offset-4 hover:underline">
+                {profile.address}
+              </a>
+            </ContactRow>
+          )}
+          {profile.ownerName && (
+            <ContactRow icon={UserRound} label={profile.designation || 'Founder'}>
+              {profile.ownerName}
+            </ContactRow>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function Footer() {
+  const { profile } = useCompanyProfile()
+  const { email } = contactOf(profile)
+
+  return (
+    <footer className="landing-hero landing-footer no-print px-4 py-10 sm:px-6">
       <div className="mx-auto max-w-[1100px] text-center">
         <div className="flex items-center justify-center gap-3 text-brass-300/60">
           <Wheat className="h-5 w-5" />
@@ -368,10 +496,10 @@ function Footer() {
         <p className="mt-1 text-sm text-sidebar-muted">Agro-Based Limestone Manufacturing Company</p>
 
         <a
-          href="mailto:admin@bhuiyanindustry.com"
+          href={`mailto:${email}`}
           className="mt-3 inline-block text-xs text-sidebar-muted hover:text-sidebar-foreground hover:underline"
         >
-          admin@bhuiyanindustry.com
+          {email}
         </a>
 
         <div className="mx-auto mt-6 h-px w-16 bg-sidebar-border" />
@@ -395,6 +523,7 @@ export default function LandingPage() {
         <Products />
         <WhyUs />
         <Workflow />
+        <Contact />
         <ManagementCta />
       </main>
       <Footer />

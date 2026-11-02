@@ -50,9 +50,18 @@ export default defineConfig({
             // Recharts is by far the heaviest dependency and only the
             // dashboard and reports need it; splitting keeps first paint on
             // the entry screens fast on a factory-office connection.
-            manualChunks: {
-              charts: ['recharts'],
-              vendor: ['react', 'react-dom', 'react-router-dom'],
+            //
+            // Matched by path, not by package list: `charts: ['recharts']`
+            // also swept recharts' small shared dependencies (clsx among
+            // them) into the charts chunk, and since the entry uses clsx too,
+            // every visitor — the public landing page included — ended up
+            // downloading all ~400 KB of charting code for one helper.
+            manualChunks(id) {
+              if (/node_modules\/(recharts|d3-[^/]+|victory-vendor|internmap|decimal\.js-light)\//.test(id)) return 'charts'
+              // clsx is shared by recharts and the app's own `cn()`; naming it
+              // here keeps Rollup from pulling it into the charts chunk.
+              if (/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler|clsx)\//.test(id)) return 'vendor'
+              return undefined
             },
           },
     },

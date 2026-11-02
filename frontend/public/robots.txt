@@ -1,0 +1,12 @@
+# The public website is the homepage. Everything else on this domain is the
+# company's internal management system (login required) and the API.
+User-agent: *
+Allow: /$
+Allow: /favicon.ico
+Allow: /favicon-48.png
+Allow: /icon-192.png
+Allow: /apple-touch-icon.png
+Allow: /assets/
+Disallow: /
+
+Sitemap: https://bhuiyanindustry.com/sitemap.xml
