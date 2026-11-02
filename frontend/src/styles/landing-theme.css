@@ -12,7 +12,7 @@
  * from (see `.stone-rail` in `stone-shell.css`), but without that class's
  * cairn photograph — sized for a narrow tall rail, it would mis-scale badly
  * across a full-width hero, so this repeats just the gradient on its own.
- * `#top` and `#contact` below layer their own photograph on top of it.
+ * `#top` and `.landing-footer` below layer their own photograph on top of it.
  */
 .landing-hero {
   background-color: hsl(88 20% 18%);
@@ -42,7 +42,7 @@
  * would crop a short wide band down to almost nothing recognisable) keeps
  * the whole stack visible as a quiet accent behind the copy, not a hero image.
  */
-#contact.landing-hero {
+.landing-footer.landing-hero {
   background-image:
     linear-gradient(178deg, hsl(88 18% 20% / 0.88) 0%, hsl(88 20% 15% / 0.9) 55%, hsl(90 24% 9% / 0.93) 100%),
     url('../assets/stone-cairn.jpg');

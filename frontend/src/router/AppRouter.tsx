@@ -1,5 +1,5 @@
-import { Suspense, lazy } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Suspense, lazy, useEffect } from 'react'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppLayout } from '@/layouts/AppLayout'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { PERMISSIONS } from '@/constants/permissions'
@@ -44,6 +44,39 @@ const ReportsPage = lazy(() => import('@/pages/ReportsPage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 const AuditHistoryPage = lazy(() => import('@/pages/AuditHistoryPage'))
 const CustomerInternalLedgerPage = lazy(() => import('@/pages/CustomerInternalLedgerPage'))
+
+const PUBLIC_TITLE = 'Bhuiyan Industry — Limestone Manufacturer in Demra, Dhaka'
+const APP_TITLE = 'BHUIYAN INDUSTRY — Accounts & Production'
+
+/**
+ * index.html is written for the public homepage (title, description,
+ * structured data). Every other route is the internal system: it gets its own
+ * tab title and a `noindex`, so a login screen or an app page that a crawler
+ * reaches anyway is never listed in search results. robots.txt asks crawlers
+ * to stay out in the first place; this covers the ones that arrive regardless.
+ */
+function SeoForRoute() {
+  const { pathname } = useLocation()
+  const isPublic = !__OFFLINE__ && pathname === '/'
+
+  useEffect(() => {
+    document.title = isPublic ? PUBLIC_TITLE : APP_TITLE
+
+    let robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]')
+    if (isPublic) {
+      robots?.remove()
+      return
+    }
+    if (!robots) {
+      robots = document.createElement('meta')
+      robots.name = 'robots'
+      document.head.appendChild(robots)
+    }
+    robots.content = 'noindex, nofollow'
+  }, [isPublic])
+
+  return null
+}
 
 function Lazy({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<PageSkeleton />}>{children}</Suspense>
@@ -107,14 +140,22 @@ export function AppRouter() {
   )
 
   if (__OFFLINE__) {
-    return <Routes>{appRoutes}</Routes>
+    return (
+      <>
+        <SeoForRoute />
+        <Routes>{appRoutes}</Routes>
+      </>
+    )
   }
 
   return (
-    <Routes>
-      <Route path="/" element={<Lazy><LandingPage /></Lazy>} />
-      <Route path="/login" element={<Lazy><LoginPage /></Lazy>} />
-      <Route element={<RequireAuth />}>{appRoutes}</Route>
-    </Routes>
+    <>
+      <SeoForRoute />
+      <Routes>
+        <Route path="/" element={<Lazy><LandingPage /></Lazy>} />
+        <Route path="/login" element={<Lazy><LoginPage /></Lazy>} />
+        <Route element={<RequireAuth />}>{appRoutes}</Route>
+      </Routes>
+    </>
   )
 }
