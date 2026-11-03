@@ -132,8 +132,28 @@ class RawMaterialSaleTest extends TestCase
 
         // Amount is ton × rate, unrounded, exactly as for finished-product sales.
         $this->assertEqualsWithDelta(10_274.70, $response->json('total_amount'), 0.000001);
-        // 175 − 5.13735, reported at the stock figure's usual 3 decimals.
-        $this->assertEqualsWithDelta(169.863, $this->stock(), 0.0000001);
+        // 175 − 5.13735 — the stock keeps every fractional ton, never rounded to 3 decimals.
+        $this->assertEqualsWithDelta(169.86265, $this->stock(), 0.0000001);
+        $this->assertEqualsWithDelta(169.86265, $this->inventory()->rawStockSummary($this->white->id)['current_raw_stock_ton'], 0.0000001);
+        $this->assertEqualsWithDelta(169.86265, $this->inventory()->getCurrentStock($this->white->id)['current_raw_stock_ton'], 0.0000001);
+
+        // The audit ledger row keeps the same precision as the sale line.
+        $movement = InventoryTransaction::where('source_type', 'raw_material_sale')->sole();
+        $this->assertEqualsWithDelta(5.13735, (float) $movement->quantity_ton, 0.0000001);
+        $this->assertEqualsWithDelta(169.86265, (float) $movement->balance_after_ton, 0.0000001);
+    }
+
+    public function test_the_exact_fractional_remainder_can_be_sold(): void
+    {
+        // 175 − 5.13766 leaves 169.86234 Ton; selling exactly that must not be
+        // refused against a stock figure rounded down to 169.862.
+        $this->postJson('/api/sales', $this->payload(['net_weight_kg' => 5_137.66]))->assertCreated();
+        $this->postJson('/api/sales', $this->payload(['net_weight_kg' => 169_862.34]))->assertCreated();
+
+        $this->assertEqualsWithDelta(0, $this->stock(), 0.0000001);
+
+        // …and not one kilogram more.
+        $this->postJson('/api/sales', $this->payload(['net_weight_kg' => 0.01]))->assertUnprocessable();
     }
 
     public function test_deducts_raw_stock_and_files_a_raw_material_sale_movement(): void

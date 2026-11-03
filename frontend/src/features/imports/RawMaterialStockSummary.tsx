@@ -13,11 +13,13 @@ import { cn } from '@/utils/cn'
  * the order they subtract, with a rule above the result:
  *
  *     Total Imported
- *   − Production
+ *   − Total Sold   (production consumption + raw material sold straight from the yard)
  *   − Wastage
- *   − Raw material sold (shown only once there is some)
  *   ─────────────────
  *   = Current Raw Stock
+ *
+ * Total Sold is shown with its two parts underneath, so it is visible that each
+ * outflow is counted once: a ton bagged by production is never also a raw sale.
  *
  * Wastage is listed separately from Production because they are two *different*
  * ways material leaves the yard — bagged into finished stock, versus lost — and
@@ -83,10 +85,11 @@ function MaterialCard({ row }: { row: RawStockSummary }) {
       <dl className="mt-3 space-y-1.5 border-t border-border pt-3 text-2xs">
         {hasOpening && <Row label="Opening" value={row.openingTon} />}
         <Row label="Total imported" value={row.importedTon} tone="positive" />
-        <Row label="Production" value={row.productionTon} tone="negative" />
+        <Row label="Total sold" value={row.productionTon + row.rawSaleTon} tone="negative" />
+        {/* The two disjoint parts of Total sold — each ton is in exactly one. */}
+        <Row label="Production" value={row.productionTon} indent />
+        <Row label="Raw material sold" value={row.rawSaleTon} indent />
         <Row label="Wastage" value={row.wastageTon} tone="negative" />
-        {/* Raw limestone sold straight from the yard — its own line, never folded into Production. */}
-        {row.rawSaleTon > 0 && <Row label="Raw material sold" value={row.rawSaleTon} tone="negative" />}
         <div className="flex items-center justify-between gap-2 border-t border-border pt-1.5">
           <dt className="font-semibold text-foreground">Current raw stock</dt>
           <dd className="font-mono tabular font-bold text-foreground">{formatTons(row.currentRawStockTon)}</dd>
@@ -100,18 +103,21 @@ function Row({
   label,
   value,
   tone = 'neutral',
+  indent = false,
 }: {
   label: string
   value: number
   tone?: 'neutral' | 'positive' | 'negative'
+  /** A breakdown line under the row above — already counted there, so not subtracted again. */
+  indent?: boolean
 }) {
   const toneClass =
     tone === 'positive' ? 'text-success-700' : tone === 'negative' ? 'text-primary-700' : 'text-foreground'
 
   return (
-    <div className="flex items-center justify-between gap-2">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className={cn('font-mono tabular font-medium', toneClass)}>
+    <div className={cn('flex items-center justify-between gap-2', indent && 'pl-3 opacity-80')}>
+      <dt className="text-muted-foreground">{indent ? `↳ ${label}` : label}</dt>
+      <dd className={cn('font-mono tabular', indent ? 'font-normal' : 'font-medium', toneClass)}>
         {/* A minus in front of what was taken out, so the column reads as the subtraction it is. */}
         {tone === 'negative' && value > 0 ? '−' : ''}
         {formatTons(value)}

@@ -42,6 +42,17 @@ const GROUPED_2 = new Intl.NumberFormat('en-IN', {
   maximumFractionDigits: 2,
 })
 
+/**
+ * Tons: at least 2 decimals, and up to 6 when the figure really has them, so
+ * a fractional quantity (a raw sale of 1,234.56 kg = 1.23456 Ton) is never
+ * shown rounded away. Six decimals is the same gram-level precision the
+ * backend keeps; beyond it is only floating-point noise.
+ */
+const GROUPED_TON = new Intl.NumberFormat('en-IN', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 6,
+})
+
 const safe = (value: number | null | undefined): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : 0
 
@@ -96,10 +107,10 @@ export function formatBags(value: number | null | undefined): string {
   return formatNumber(Math.round(safe(value)))
 }
 
-/** Tons carry two decimals and no more — beyond that is false precision. */
+/** Tons, with every real fractional digit kept — see GROUPED_TON. */
 export function formatTons(value: number | null | undefined): string {
   const n = safe(value)
-  return n < 0 ? `−${GROUPED_2.format(Math.abs(n))}` : GROUPED_2.format(n)
+  return n < 0 ? `−${GROUPED_TON.format(Math.abs(n))}` : GROUPED_TON.format(n)
 }
 
 export function formatPercent(value: number | null | undefined, places = 1): string {
