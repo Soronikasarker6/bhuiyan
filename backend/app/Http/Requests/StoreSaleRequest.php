@@ -3,7 +3,6 @@
 namespace App\Http\Requests;
 
 use App\Models\Sale;
-use App\Support\Weighbridge;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -23,20 +22,17 @@ class StoreSaleRequest extends FormRequest
             'customer_id' => ['required', 'exists:customers,id'],
             'sale_type' => ['nullable', Rule::in(Sale::TYPES)],
             'truck_no' => ['nullable', 'string', 'max:40'],
-            // Weighbridge slip. Optional on a finished-product sale (a record
-            // beside the billable weight on the items); required on a raw
-            // material sale, where the net *is* the billable weight.
-            'gross_weight_kg' => [$raw ? 'required' : 'nullable', 'numeric', 'gte:0'],
-            'tare_weight_kg' => [$raw ? 'required' : 'nullable', 'numeric', 'gte:0'],
             'notes' => ['nullable', 'string', 'max:500'],
             'paid_at_sale' => ['nullable', 'numeric', 'gte:0'],
             // Which Cash & Bank account a "paid at sale" amount lands in — falls
             // back to the system Cash account when omitted (see SalesService).
             'account_id' => ['nullable', 'exists:accounts,id'],
         ] + ($raw ? [
-            // Raw material sale: one material, one rate. The line is built
-            // server-side from these (see SalesService::withRawMaterialLine).
+            // Raw material sale: one material, its net weight as entered at
+            // billing, one rate. The line is built server-side from these
+            // (see SalesService::withRawMaterialLine).
             'product_id' => ['required', 'exists:products,id'],
+            'net_weight_kg' => ['required', 'numeric', 'gt:0'],
             'rate_per_ton' => ['required', 'numeric', 'gt:0'],
         ] : [
             'items' => ['required', 'array', 'min:1'],
@@ -53,7 +49,7 @@ class StoreSaleRequest extends FormRequest
         return $this->input('sale_type') === Sale::TYPE_RAW_MATERIAL;
     }
 
-    /** Cannot collect more at sale time than the invoice total; gross must exceed tare (net weight positive). */
+    /** Cannot collect more at sale time than the invoice total. */
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
@@ -73,14 +69,8 @@ class StoreSaleRequest extends FormRequest
                 $total += $weight * (float) $item['rate_per_ton'];
             }
 
-            $gross = $this->input('gross_weight_kg');
-            $tare = $this->input('tare_weight_kg');
-            if (is_numeric($gross) && is_numeric($tare) && (float) $gross <= (float) $tare) {
-                $validator->errors()->add('gross_weight_kg', 'Gross weight must be greater than tare weight.');
-            }
-
-            if ($this->isRawMaterial() && is_numeric($gross) && is_numeric($tare) && is_numeric($this->input('rate_per_ton'))) {
-                $total = Weighbridge::netTon($gross, $tare) * (float) $this->input('rate_per_ton');
+            if ($this->isRawMaterial() && is_numeric($this->input('net_weight_kg')) && is_numeric($this->input('rate_per_ton'))) {
+                $total = ((float) $this->input('net_weight_kg') / 1000) * (float) $this->input('rate_per_ton');
             }
 
             $paid = (float) $this->input('paid_at_sale', 0);

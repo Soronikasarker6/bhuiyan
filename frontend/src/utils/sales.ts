@@ -17,7 +17,6 @@ import { bagKgOf, meshSizeNameOf, productNameOf } from './products'
 import { allocateCreditByCustomer, customerNameOf } from './customerLedger'
 import { isWithin } from './format'
 import { kgToTons } from './imports'
-import { netWeightKgOf, weighbridgeWeights, type WeighbridgeWeights } from './weighbridge'
 
 /**
  * Sales.
@@ -40,9 +39,9 @@ import { netWeightKgOf, weighbridgeWeights, type WeighbridgeWeights } from './we
  * never the theoretical one.
  *
  * A raw material sale (`saleType: 'raw_material'`) is the same header with
- * one line that has no mesh and no bags: its billable weight is the
- * weighbridge net (gross − tare on the header), which the server writes onto
- * the line as `actualWeightTon`. Every amount, ledger and report figure below
+ * one line that has no mesh and no bags: its billable weight is the net
+ * weight entered at billing, which the server writes onto the line as
+ * `actualWeightTon`. Every amount, ledger and report figure below
  * therefore reads it exactly like any other line.
  */
 
@@ -123,7 +122,7 @@ export function buildSaleItemRows(
 ): SaleItemRow[] {
   return items.map((item) => {
     // A raw material line has no mesh: no bag weight, and its billable
-    // weight is the weighbridge net already on `actualWeightTon`.
+    // weight is the net weight already on `actualWeightTon`.
     const bagKg = item.meshSizeId ? bagKgOf(meshSizes, item.meshSizeId) : 0
     const calculatedWeightTon = item.meshSizeId ? saleItemWeightTon(item.bags, bagKg) : Number(item.actualWeightTon) || 0
     const weightTon = billableWeightTon(calculatedWeightTon, item.actualWeightTon)
@@ -436,9 +435,24 @@ export function salesByCustomer(
     .sort((a, b) => b.amount - a.amount)
 }
 
-/** Net kg off a sale's weighbridge slip — see utils/weighbridge.ts. Undefined unless both weights were recorded. */
-export function saleNetWeightKg(sale: Pick<Sale, 'grossWeightKg' | 'tareWeightKg'>): number | undefined {
-  return netWeightKgOf(sale.grossWeightKg, sale.tareWeightKg)
+/**
+ * A sale's net weight as recorded at billing, in kg: the sum of its lines'
+ * stored Actual / Billable Ton (`actualWeightTon`) — the same figure every
+ * invoice, the customer ledger, stock and COGS already use, so the report can
+ * never disagree with what was billed.
+ *
+ * Undefined when any line has no stored weight (an older line billed straight
+ * from bags × bag weight): that sale shows "—" rather than an estimate.
+ */
+export function saleBilledNetKg(sale: { items: Array<Pick<SaleItem, 'actualWeightTon'>> }): number | undefined {
+  if (sale.items.length === 0) return undefined
+  let tons = 0
+  for (const item of sale.items) {
+    const actual = Number(item.actualWeightTon)
+    if (item.actualWeightTon === undefined || item.actualWeightTon === null || !(actual > 0)) return undefined
+    tons += actual
+  }
+  return Math.round(tons * 1000 * 100) / 100
 }
 
 /**
@@ -446,9 +460,8 @@ export function saleNetWeightKg(sale: Pick<Sale, 'grossWeightKg' | 'tareWeightKg
  * types, so one builder, one set of columns and one totals rule serve the
  * Truck-wise Sales report and the Raw Material Sales report alike.
  *
- * One row per *sale*, never per item: the weighbridge slip belongs to the
- * truck's whole load on the sale header, so a sale with several items still
- * contributes its weights exactly once.
+ * One row per *sale*: its lines' billed weights are summed once, so a sale
+ * with several items is never counted twice.
  */
 export interface TruckWeightRow {
   saleId: ID
@@ -459,54 +472,44 @@ export interface TruckWeightRow {
   saleType: SaleType
   /** Product / material names, de-duplicated across the sale's items. */
   productLabel: string
-  weights: WeighbridgeWeights
-  /** The billable ton — a separate business figure, carried alongside for reference, never replaced by `weights.netTon`. */
-  billableTon: number
+  /** Net weight as recorded at billing — undefined (shown "—") when not stored. */
+  netKg?: number
+  netTon?: number
   reversed: boolean
 }
 
 export function truckWeightRows(sales: SaleSummary[]): TruckWeightRow[] {
-  return sales.map((sale) => ({
-    saleId: sale.id,
-    date: sale.date,
-    invoiceNo: sale.invoiceNo,
-    customerName: sale.customerName,
-    truckNo: sale.truckNo?.trim() || undefined,
-    saleType: saleTypeOf(sale),
-    productLabel: [...new Set(sale.items.map((i) => i.productName))].join(', ') || '—',
-    weights: weighbridgeWeights(sale),
-    billableTon: sale.totalWeightTon,
-    reversed: isReversedSale(sale),
-  }))
+  return sales.map((sale) => {
+    const netKg = saleBilledNetKg(sale)
+    return {
+      saleId: sale.id,
+      date: sale.date,
+      invoiceNo: sale.invoiceNo,
+      customerName: sale.customerName,
+      truckNo: sale.truckNo?.trim() || undefined,
+      saleType: saleTypeOf(sale),
+      productLabel: [...new Set(sale.items.map((i) => i.productName))].join(', ') || '—',
+      netKg,
+      netTon: netKg === undefined ? undefined : kgToTons(netKg),
+      reversed: isReversedSale(sale),
+    }
+  })
 }
 
 export interface TruckWeightTotals {
   rowCount: number
-  /** Rows with a complete slip (gross and tare) — the only ones the weight totals sum. */
+  /** Rows with a stored net weight — the only ones the totals sum. */
   weighedCount: number
-  grossKg?: number
-  tareKg?: number
   netKg?: number
   netTon?: number
 }
 
-/**
- * Totals over complete slips only, so Gross − Tare = Net holds on the total
- * line too. Undefined (shown "—") when no row has a complete slip — never 0.
- */
+/** Totals over rows with a stored net weight. Undefined (shown "—") when none has one — never 0. */
 export function truckWeightTotals(rows: TruckWeightRow[]): TruckWeightTotals {
-  const weighed = rows.filter((r) => r.weights.netKg !== undefined)
+  const weighed = rows.filter((r) => r.netKg !== undefined)
   if (weighed.length === 0) return { rowCount: rows.length, weighedCount: 0 }
-  const sum = (pick: (w: WeighbridgeWeights) => number | undefined) => weighed.reduce((t, r) => t + (pick(r.weights) ?? 0), 0)
-  const netKg = Math.round(sum((w) => w.netKg) * 100) / 100
-  return {
-    rowCount: rows.length,
-    weighedCount: weighed.length,
-    grossKg: sum((w) => w.grossKg),
-    tareKg: sum((w) => w.tareKg),
-    netKg,
-    netTon: kgToTons(netKg),
-  }
+  const netKg = Math.round(weighed.reduce((t, r) => t + (r.netKg ?? 0), 0) * 100) / 100
+  return { rowCount: rows.length, weighedCount: weighed.length, netKg, netTon: kgToTons(netKg) }
 }
 
 /** Sales revenue per mesh size, biggest first — "mesh-wise sales". */

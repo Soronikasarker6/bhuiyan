@@ -79,7 +79,7 @@ class RawMaterialSaleTest extends TestCase
         Sanctum::actingAs($user, ['*']);
     }
 
-    /** 20 Ton net (32,450 − 12,450 kg) of white limestone @ 3,000 = 60,000. */
+    /** 20 Ton net (20,000 kg, as entered at billing) of white limestone @ 3,000 = 60,000. */
     private function payload(array $overrides = []): array
     {
         return array_merge([
@@ -88,8 +88,7 @@ class RawMaterialSaleTest extends TestCase
             'customer_id' => $this->customer->id,
             'product_id' => $this->white->id,
             'truck_no' => 'DMT-24-5398',
-            'gross_weight_kg' => 32_450,
-            'tare_weight_kg' => 12_450,
+            'net_weight_kg' => 20_000,
             'rate_per_ton' => 3_000,
         ], $overrides);
     }
@@ -116,7 +115,6 @@ class RawMaterialSaleTest extends TestCase
         $response = $this->postJson('/api/sales', $this->payload())->assertCreated();
 
         $response->assertJsonPath('sale_type', 'raw_material')
-            ->assertJsonPath('net_weight_kg', 20000)
             ->assertJsonPath('total_weight_ton', 20)
             ->assertJsonPath('total_amount', 60000)
             ->assertJsonPath('items.0.mesh_size_id', null)
@@ -126,10 +124,10 @@ class RawMaterialSaleTest extends TestCase
 
     public function test_ton_keeps_decimal_precision(): void
     {
-        // 18,237.55 − 13,100.20 = 5,137.35 kg = 5.13735 Ton @ 2,000 = 10,274.70
-        $response = $this->postJson('/api/sales', $this->payload(['gross_weight_kg' => 18_237.55, 'tare_weight_kg' => 13_100.20, 'rate_per_ton' => 2_000]))
+        // 5,137.35 kg = 5.13735 Ton @ 2,000 = 10,274.70
+        $response = $this->postJson('/api/sales', $this->payload(['net_weight_kg' => 5_137.35, 'rate_per_ton' => 2_000]))
             ->assertCreated()
-            ->assertJsonPath('net_weight_kg', 5137.35)
+            ->assertJsonPath('items.0.actual_weight_ton', 5.13735)
             ->assertJsonPath('total_weight_ton', 5.13735);
 
         // Amount is ton × rate, unrounded, exactly as for finished-product sales.
@@ -179,7 +177,7 @@ class RawMaterialSaleTest extends TestCase
     public function test_rejects_a_sale_larger_than_raw_stock(): void
     {
         // 176 Ton against 175 in the yard.
-        $this->postJson('/api/sales', $this->payload(['gross_weight_kg' => 188_450]))
+        $this->postJson('/api/sales', $this->payload(['net_weight_kg' => 176_000]))
             ->assertUnprocessable()
             ->assertJsonPath('message', fn (string $m) => str_contains($m, 'raw stock negative'));
 
@@ -190,12 +188,15 @@ class RawMaterialSaleTest extends TestCase
 
     public function test_rejects_invalid_weights(): void
     {
-        $this->postJson('/api/sales', $this->payload(['gross_weight_kg' => 10_000, 'tare_weight_kg' => 10_000]))
-            ->assertUnprocessable()->assertJsonValidationErrors(['gross_weight_kg']);
-        $this->postJson('/api/sales', $this->payload(['gross_weight_kg' => -5, 'tare_weight_kg' => -10]))
-            ->assertUnprocessable()->assertJsonValidationErrors(['gross_weight_kg', 'tare_weight_kg']);
-        $this->postJson('/api/sales', $this->payload(['gross_weight_kg' => null]))
-            ->assertUnprocessable()->assertJsonValidationErrors(['gross_weight_kg']);
+        $this->postJson('/api/sales', $this->payload(['net_weight_kg' => 0]))
+            ->assertUnprocessable()->assertJsonValidationErrors(['net_weight_kg']);
+        $this->postJson('/api/sales', $this->payload(['net_weight_kg' => -5]))
+            ->assertUnprocessable()->assertJsonValidationErrors(['net_weight_kg']);
+        $this->postJson('/api/sales', $this->payload(['net_weight_kg' => null]))
+            ->assertUnprocessable()->assertJsonValidationErrors(['net_weight_kg']);
+        // Gross/tare are not part of a sale any more — sending them changes nothing.
+        $this->postJson('/api/sales', $this->payload(['net_weight_kg' => null, 'gross_weight_kg' => 30_000, 'tare_weight_kg' => 10_000]))
+            ->assertUnprocessable()->assertJsonValidationErrors(['net_weight_kg']);
         $this->postJson('/api/sales', $this->payload(['product_id' => null, 'rate_per_ton' => 0]))
             ->assertUnprocessable()->assertJsonValidationErrors(['product_id', 'rate_per_ton']);
 
@@ -275,7 +276,7 @@ class RawMaterialSaleTest extends TestCase
         $invoiceNo = Sale::find($saleId)->invoice_no;
 
         // 20 → 30 Ton, rate 3,000 → 2,500 = 75,000.
-        $this->putJson("/api/sales/{$saleId}", $this->payload(['gross_weight_kg' => 42_450, 'rate_per_ton' => 2_500, 'paid_at_sale' => 15_000]))
+        $this->putJson("/api/sales/{$saleId}", $this->payload(['net_weight_kg' => 30_000, 'rate_per_ton' => 2_500, 'paid_at_sale' => 15_000]))
             ->assertOk()
             ->assertJsonPath('id', $saleId)
             ->assertJsonPath('invoice_no', $invoiceNo)
@@ -306,8 +307,8 @@ class RawMaterialSaleTest extends TestCase
         $saleId = $this->postJson('/api/sales', $this->payload())->json('id');
 
         // The sale's own 20 Ton count as available again: 175 is the ceiling, 176 is not.
-        $this->putJson("/api/sales/{$saleId}", $this->payload(['gross_weight_kg' => 187_450]))->assertOk();
-        $this->putJson("/api/sales/{$saleId}", $this->payload(['gross_weight_kg' => 188_450]))->assertUnprocessable();
+        $this->putJson("/api/sales/{$saleId}", $this->payload(['net_weight_kg' => 175_000]))->assertOk();
+        $this->putJson("/api/sales/{$saleId}", $this->payload(['net_weight_kg' => 176_000]))->assertUnprocessable();
 
         $this->assertEqualsWithDelta(0, $this->stock(), 0.0001, 'rolled back to the 175 Ton edit');
         $this->assertSame(1, Sale::find($saleId)->items()->count());

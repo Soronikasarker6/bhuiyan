@@ -4,10 +4,53 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light" />
+    <!--
+      Written for the public homepage — the one page here search engines
+      should index. Every fact below is from the company profile the site
+      already publishes (/api/public/company-profile) and the landing page's
+      own product list; nothing is invented. The internal app's routes set
+      their own title and a noindex tag at runtime (see SeoForRoute in
+      src/router/AppRouter.tsx), and robots.txt keeps crawlers out of them.
+    -->
     <meta
       name="description"
-      content="BHUIYAN INDUSTRY — internal accounts and production management system."
+      content="Bhuiyan Industry is an agro-based limestone manufacturing company in Demra, Dhaka, supplying Vietnam White, Oman Red and Grey limestone. Call +880 1716-808811 or email admin@bhuiyanindustry.com."
     />
+    <link rel="canonical" href="https://bhuiyanindustry.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Bhuiyan Industry" />
+    <meta property="og:title" content="Bhuiyan Industry — Limestone Manufacturer in Demra, Dhaka" />
+    <meta
+      property="og:description"
+      content="Agro-based limestone manufacturing company supplying Vietnam White, Oman Red and Grey limestone from Demra, Dhaka."
+    />
+    <meta property="og:url" content="https://bhuiyanindustry.com/" />
+    <meta property="og:image" content="https://bhuiyanindustry.com/icon-192.png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "Bhuiyan Industry",
+        "description": "Agro-Based Limestone Manufacturing Company",
+        "url": "https://bhuiyanindustry.com/",
+        "logo": "https://bhuiyanindustry.com/icon-192.png",
+        "email": "admin@bhuiyanindustry.com",
+        "telephone": "+880 1716-808811",
+        "founder": { "@type": "Person", "name": "Aminul Islam Bhuiyan", "jobTitle": "Founder & CEO" },
+        "address": {
+          "@type": "PostalAddress",
+          "streetAddress": "Shukurshi Bhuiyan Bari, Sarulia",
+          "addressLocality": "Demra, Dhaka",
+          "postalCode": "1361",
+          "addressCountry": "BD"
+        },
+        "makesOffer": [
+          { "@type": "Offer", "itemOffered": { "@type": "Product", "name": "Vietnam White Limestone" } },
+          { "@type": "Offer", "itemOffered": { "@type": "Product", "name": "Oman Red Limestone" } },
+          { "@type": "Offer", "itemOffered": { "@type": "Product", "name": "Grey Limestone" } }
+        ]
+      }
+    </script>
     <!--
       The house mark — the same stacked stones the sidebar draws (`StoneStack`
       in src/layouts/Sidebar.tsx), so the browser tab is identifiable at a
@@ -43,7 +86,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <title>BHUIYAN INDUSTRY — Accounts &amp; Production</title>
+    <title>Bhuiyan Industry — Limestone Manufacturer in Demra, Dhaka</title>
     <script type="text/javascript">
       // Undoes the redirect 404.html made for a deep link or a hard refresh
       // on GitHub Pages (e.g. /bhuiyan/sales) — restores the real path via
@@ -67,6 +110,26 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- For visitors and crawlers without JavaScript: the essentials, from the same confirmed profile. -->
+    <noscript>
+      <main style="font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6">
+        <h1>Bhuiyan Industry</h1>
+        <p>Agro-Based Limestone Manufacturing Company in Demra, Dhaka.</p>
+        <h2>Products</h2>
+        <ul>
+          <li>Vietnam White Limestone</li>
+          <li>Oman Red Limestone</li>
+          <li>Grey Limestone</li>
+        </ul>
+        <h2>Contact</h2>
+        <p>
+          Phone: <a href="tel:+8801716808811">+880 1716-808811</a><br />
+          Email: <a href="mailto:admin@bhuiyanindustry.com">admin@bhuiyanindustry.com</a><br />
+          Address: Shukurshi Bhuiyan Bari, Sarulia, Demra, Dhaka-1361<br />
+          Founder &amp; CEO: Aminul Islam Bhuiyan
+        </p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

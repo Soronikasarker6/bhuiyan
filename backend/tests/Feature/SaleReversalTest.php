@@ -94,7 +94,7 @@ class SaleReversalTest extends TestCase
         return array_merge([
             'sale_type' => 'raw_material', 'date' => '2026-02-01', 'customer_id' => $this->customer->id,
             'product_id' => $this->white->id, 'truck_no' => 'DMT-1',
-            'gross_weight_kg' => 32_450, 'tare_weight_kg' => 12_450, 'rate_per_ton' => 3_000,
+            'net_weight_kg' => 20_000, 'rate_per_ton' => 3_000,
         ], $overrides);
     }
 
@@ -130,7 +130,7 @@ class SaleReversalTest extends TestCase
 
     public function test_a_raw_sale_in_a_closed_cycle_cannot_be_edited(): void
     {
-        $this->putJson("/api/sales/{$this->saleId}", $this->payload(['gross_weight_kg' => 22_450]))
+        $this->putJson("/api/sales/{$this->saleId}", $this->payload(['net_weight_kg' => 10_000]))
             ->assertUnprocessable()
             ->assertJsonPath('message', fn (string $m) => str_contains($m, 'closed shipment cycle') && str_contains($m, 'reverse'));
 

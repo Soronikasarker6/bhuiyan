@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Plus, Receipt, Scale, Trash2 } from 'lucide-react'
+import { Plus, Receipt, Trash2 } from 'lucide-react'
 import type { Account, Customer, MeshSize, Product } from '@/types'
 import { Section } from '@/components/PageHeader'
 import { Field } from '@/components/Field'
@@ -15,8 +15,6 @@ import { Money } from '@/components/Money'
 import { SaleTotalsSummary } from '@/features/sales/SaleTotalsSummary'
 import { bagKgOf, meshSizeNameOf } from '@/utils/products'
 import { billableWeightTon, saleItemAmount, saleItemWeightTon } from '@/utils/sales'
-import { netWeightKgOf } from '@/utils/weighbridge'
-import { kgToTons } from '@/utils/imports'
 import { defaultCashAccountId } from '@/utils/ledger'
 import { customerDisplayLabel } from '@/utils/customerLedger'
 import { formatCurrency, formatNumber, formatTons, todayISO } from '@/utils/format'
@@ -40,11 +38,6 @@ import { formatCurrency, formatNumber, formatTons, todayISO } from '@/utils/form
  * it's the truck's own figure, and nothing here silently recalculates over
  * it again (tracked via react-hook-form's own per-field `dirtyFields`, not
  * a separate flag).
- *
- * **Gross / Tare (kg)** are the truck's weighbridge slip for the whole load —
- * optional, recorded alongside the invoice, and deliberately kept apart from
- * Actual/Billable Ton. Net weight (gross − tare) is shown for reference and
- * printed on the truck-wise report; it never changes what is billed.
  */
 
 const itemSchema = z.object({
@@ -62,16 +55,6 @@ const itemSchema = z.object({
     .positive('Actual/Billable Ton must be more than zero.'),
 })
 
-/** Blank → undefined, so an optional kg field left empty is "not recorded", never 0. */
-const optionalKg = (label: string) =>
-  z.preprocess(
-    (value) => (value === '' || value === null || value === undefined ? undefined : value),
-    z.coerce
-      .number({ invalid_type_error: `Enter the ${label} in kg.` })
-      .min(0, `${label[0].toUpperCase()}${label.slice(1)} cannot be negative.`)
-      .optional(),
-  )
-
 function buildSchema(
   availableBags: (productId: string, meshSizeId: string) => number,
   meshName: (meshSizeId: string) => string,
@@ -81,8 +64,6 @@ function buildSchema(
       date: z.string().min(1, 'Pick the date.'),
       customerId: z.string().min(1, 'Choose a customer.'),
       truckNo: z.string().max(40).optional(),
-      grossWeightKg: optionalKg('gross weight'),
-      tareWeightKg: optionalKg('tare weight'),
       notes: z.string().max(300).optional(),
       paidAtSale: z.coerce.number().min(0, 'Cannot be negative.').optional(),
       /** Which Cash & Bank account a "paid at sale" amount lands in — only meaningful once paidAtSale > 0. */
@@ -90,14 +71,6 @@ function buildSchema(
       items: z.array(itemSchema).min(1, 'Add at least one item.'),
     })
     .superRefine((values, ctx) => {
-      if (values.grossWeightKg !== undefined && values.tareWeightKg !== undefined && values.grossWeightKg <= values.tareWeightKg) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['grossWeightKg'],
-          message: 'Gross weight must be greater than tare weight.',
-        })
-      }
-
       // §7: never allow a sale to exceed available stock. Bags requested
       // against the same (product, mesh) accumulate across lines in this one
       // invoice — two lines selling the same grade must be checked together,
@@ -144,9 +117,6 @@ export type SaleFormValues = {
   date: string
   customerId: string
   truckNo?: string
-  /** Weighbridge slip, kg — optional; blank means not recorded. */
-  grossWeightKg?: number
-  tareWeightKg?: number
   notes?: string
   paidAtSale?: number
   accountId?: string
@@ -196,8 +166,6 @@ export function SaleForm({
       date: todayISO(),
       customerId: customers[0]?.id ?? '',
       truckNo: '',
-      grossWeightKg: '' as unknown as number,
-      tareWeightKg: '' as unknown as number,
       notes: '',
       paidAtSale: '' as unknown as number,
       accountId: defaultAccountId,
@@ -261,11 +229,6 @@ export function SaleForm({
     return { bagKg, calculatedWeightTon, weightTon, amount }
   }
 
-  const grossInput = watch('grossWeightKg')
-  const tareInput = watch('tareWeightKg')
-  const slipNetKg = netWeightKgOf(grossInput, tareInput)
-  const billedTon = items.reduce((sum, item) => sum + itemCalcs(item).weightTon, 0)
-
   const total = items.reduce((sum, item) => sum + itemCalcs(item).amount, 0)
 
   const submit = handleSubmit(async (values) => {
@@ -275,8 +238,6 @@ export function SaleForm({
       date: values.date,
       customerId: values.customerId,
       truckNo: '',
-      grossWeightKg: '' as unknown as number,
-      tareWeightKg: '' as unknown as number,
       notes: '',
       paidAtSale: '' as unknown as number,
       accountId: defaultAccountId,
@@ -318,54 +279,6 @@ export function SaleForm({
             <Input id={`${idPrefix}-truck`} placeholder="DHA-1234" {...register('truckNo')} />
           </Field>
         </div>
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          <Field label="Gross weight (kg, optional)" error={errors.grossWeightKg?.message} htmlFor={`${idPrefix}-gross`}>
-            <Input
-              id={`${idPrefix}-gross`}
-              type="number"
-              min={0}
-              step="0.01"
-              inputMode="decimal"
-              placeholder="18250"
-              {...register('grossWeightKg')}
-            />
-          </Field>
-
-          <Field label="Tare weight (kg, optional)" error={errors.tareWeightKg?.message} htmlFor={`${idPrefix}-tare`}>
-            <Input
-              id={`${idPrefix}-tare`}
-              type="number"
-              min={0}
-              step="0.01"
-              inputMode="decimal"
-              placeholder="13100"
-              {...register('tareWeightKg')}
-            />
-          </Field>
-
-          <Field label="Net weight" hint="Gross − Tare. For the weighbridge record only — billing uses Actual/Billable Ton.">
-            <div
-              className="flex h-9 items-center justify-between gap-2 rounded-md border border-border bg-secondary/40 px-3 font-mono tabular text-sm"
-              aria-live="polite"
-            >
-              <Scale className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-              {slipNetKg === undefined || slipNetKg <= 0 ? (
-                <span className="text-muted-foreground">—</span>
-              ) : (
-                <span>
-                  {formatNumber(slipNetKg)} kg · {formatTons(kgToTons(slipNetKg))} Ton
-                </span>
-              )}
-            </div>
-          </Field>
-        </div>
-
-        {slipNetKg !== undefined && slipNetKg > 0 && billedTon > 0 && Math.abs(kgToTons(slipNetKg) - billedTon) >= 0.001 && (
-          <p className="mt-2 text-2xs text-muted-foreground">
-            Weighbridge net ({formatTons(kgToTons(slipNetKg))} Ton) differs from the billable total ({formatTons(billedTon)} Ton). Both are kept as entered — the invoice is billed on the billable ton.
-          </p>
-        )}
 
         <div className="mt-5 space-y-3">
           <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Items</p>

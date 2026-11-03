@@ -30,12 +30,12 @@ import {
   nextInvoiceNo,
   standingSales,
   rawMaterialSaleMovements,
-  saleNetWeightKg,
+  saleBilledNetKg,
   SALE_TYPE_LABEL,
 } from '@/utils/sales'
 import { customerDisplayLabel, customerTotals, transactionsForCustomer } from '@/utils/customerLedger'
 import { currentRawStockTon, cycleStatusForDate } from '@/utils/rawMaterial'
-import { weighbridgeWeights } from '@/utils/weighbridge'
+import { kgToTons } from '@/utils/imports'
 import { bagKgOf } from '@/utils/products'
 import { availableBags as availableBagsFor } from '@/utils/productionStock'
 import { downloadTextFile } from '@/utils/download'
@@ -52,10 +52,6 @@ import {
 
 const ALL = '__all__'
 
-/** An optional numeric form field: blank → undefined (not recorded), never 0. */
-const optionalNumber = (value: unknown): number | undefined =>
-  value === '' || value === null || value === undefined || !Number.isFinite(Number(value)) ? undefined : Number(value)
-
 /**
  * Sales — how much stone we sold, to whom, at what rate, and on which truck.
  *
@@ -65,7 +61,7 @@ const optionalNumber = (value: unknown): number | undefined =>
  *   invoice can carry several products or mesh sizes as line items, which is
  *   why a sale is a header plus items rather than a flat row.
  * - **Raw material** — raw limestone sold straight from the yard by
- *   weighbridge net weight. Deducted from raw stock, never from bags, and
+ *   net weight (entered at billing). Deducted from raw stock, never from bags, and
  *   never recorded as production.
  */
 export default function SalesPage() {
@@ -177,13 +173,11 @@ export default function SalesPage() {
       date: values.date,
       customerId: values.customerId,
       truckNo: values.truckNo?.trim() || undefined,
-      grossWeightKg: Number(values.grossWeightKg),
-      tareWeightKg: Number(values.tareWeightKg),
       notes: values.notes?.trim() || undefined,
       paidAtSale,
       accountId: paidAtSale > 0 ? values.accountId : undefined,
       items: [],
-      rawMaterial: { productId: values.productId, ratePerTon: Number(values.ratePerTon) },
+      rawMaterial: { productId: values.productId, netWeightKg: Number(values.netWeightKg), ratePerTon: Number(values.ratePerTon) },
     }
   }
 
@@ -191,7 +185,7 @@ export default function SalesPage() {
     async (values: RawMaterialSaleValues) => {
       try {
         const { invoiceNo: recordedInvoiceNo } = await persistSale(toRawSaleInput(values))
-        const netTon = weighbridgeWeights(values).netTon ?? 0
+        const netTon = kgToTons(Number(values.netWeightKg))
         toast.success(`${recordedInvoiceNo} recorded`, {
           description: `${formatTons(netTon)} Ton deducted from raw stock.`,
         })
@@ -232,9 +226,6 @@ export default function SalesPage() {
           date: values.date,
           customerId: values.customerId,
           truckNo: values.truckNo?.trim() || undefined,
-          // Weighbridge slip — stored as entered, never derived from or fed into the billable ton.
-          grossWeightKg: optionalNumber(values.grossWeightKg),
-          tareWeightKg: optionalNumber(values.tareWeightKg),
           notes: values.notes?.trim() || undefined,
           paidAtSale,
           // Only meaningful once something was actually collected at sale —
@@ -287,9 +278,6 @@ export default function SalesPage() {
       date: editing.date,
       customerId: editing.customerId,
       truckNo: editing.truckNo ?? '',
-      // Older sales have no slip: the fields open blank, and saving leaves them blank.
-      grossWeightKg: editing.grossWeightKg ?? ('' as unknown as number),
-      tareWeightKg: editing.tareWeightKg ?? ('' as unknown as number),
       notes: editing.notes ?? '',
       paidAtSale: editing.paidAtSale > 0 ? editing.paidAtSale : ('' as unknown as number),
       accountId: cashRow?.accountId ?? defaultCashAccountId(data.accounts) ?? data.accounts[0]?.id ?? '',
@@ -312,9 +300,6 @@ export default function SalesPage() {
           date: values.date,
           customerId: values.customerId,
           truckNo: values.truckNo?.trim() || undefined,
-          // Weighbridge slip — stored as entered, never derived from or fed into the billable ton.
-          grossWeightKg: optionalNumber(values.grossWeightKg),
-          tareWeightKg: optionalNumber(values.tareWeightKg),
           notes: values.notes?.trim() || undefined,
           paidAtSale,
           accountId: paidAtSale > 0 ? values.accountId : undefined,
@@ -346,8 +331,8 @@ export default function SalesPage() {
       customerId: editing.customerId,
       productId: line?.productId ?? '',
       truckNo: editing.truckNo ?? '',
-      grossWeightKg: Number(editing.grossWeightKg) || ('' as unknown as number),
-      tareWeightKg: editing.tareWeightKg ?? ('' as unknown as number),
+      // The net weight it was billed on — the line's stored billable ton, in kg.
+      netWeightKg: saleBilledNetKg(editing) ?? ('' as unknown as number),
       ratePerTon: line?.ratePerTon ?? ('' as unknown as number),
       paidAtSale: editing.paidAtSale > 0 ? editing.paidAtSale : ('' as unknown as number),
       accountId: cashRow?.accountId ?? defaultCashAccountId(data.accounts) ?? data.accounts[0]?.id ?? '',
@@ -439,16 +424,12 @@ export default function SalesPage() {
           ? {
               columns: [
                 { key: 'material', label: 'Raw Material' },
-                { key: 'gross', label: 'Gross (KG)', align: 'right' as const },
-                { key: 'tare', label: 'Tare (KG)', align: 'right' as const },
                 { key: 'netKg', label: 'Net (KG)', align: 'right' as const },
                 { key: 'netTon', label: 'Net (Ton)', align: 'right' as const },
               ],
               rows: sale.items.map((item) => ({
                 material: item.productName,
-                gross: formatNumber(sale.grossWeightKg),
-                tare: formatNumber(sale.tareWeightKg),
-                netKg: formatNumber(saleNetWeightKg(sale)),
+                netKg: formatNumber(saleBilledNetKg(sale)),
                 netTon: formatTons(item.weightTon),
               })),
             }

@@ -34,7 +34,7 @@ const cycles: ShipmentCycle[] = [
 function scenario(reversed: boolean) {
   const sale: Sale = {
     id: 'r1', invoiceNo: 'INV-2026-001', date: '2026-02-01', customerId: 'c1', saleType: 'raw_material',
-    grossWeightKg: 32_450, tareWeightKg: 12_450, paidAtSale: 25_000, createdAt: '2026-02-01T08:00:00.000Z',
+    paidAtSale: 25_000, createdAt: '2026-02-01T08:00:00.000Z',
     ...(reversed ? { reversedOn: '2026-03-10', reversalReason: 'Wrong customer' } : {}),
   }
   const item: SaleItem = { id: 'it1', saleId: 'r1', productId: 'p1', meshSizeId: null, bags: 0, ratePerTon: 3_000, actualWeightTon: 20 }

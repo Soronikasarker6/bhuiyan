@@ -12,22 +12,21 @@ export interface SaleItemInput {
 /**
  * One shape for both kinds of sale. A finished-product sale sends `items`;
  * a raw material sale sends `rawMaterial` instead (its one line is built from
- * it server-side — net weight = gross − tare, billed and deducted from raw stock).
+ * it server-side — the net weight entered at billing, billed and deducted
+ * from raw stock).
  */
 export interface SaleInput {
   saleType?: SaleType
   date: string
   customerId: ID
   truckNo?: string
-  grossWeightKg?: number
-  tareWeightKg?: number
   notes?: string
   paidAtSale?: number
   /** Which Cash & Bank account a "paid at sale" amount lands in — the backend falls back to the system Cash account when omitted. */
   accountId?: ID
   items: SaleItemInput[]
-  /** Raw material sales only — gross/tare above are required with it. */
-  rawMaterial?: { productId: ID; ratePerTon: number }
+  /** Raw material sales only: the material, its net weight in kg as entered at billing, and the rate. */
+  rawMaterial?: { productId: ID; netWeightKg: number; ratePerTon: number }
 }
 
 function toPayload(data: SaleInput) {
@@ -37,10 +36,9 @@ function toPayload(data: SaleInput) {
       date: data.date,
       customer_id: data.customerId,
       product_id: data.rawMaterial.productId,
+      net_weight_kg: data.rawMaterial.netWeightKg,
       rate_per_ton: data.rawMaterial.ratePerTon,
       truck_no: data.truckNo,
-      gross_weight_kg: data.grossWeightKg,
-      tare_weight_kg: data.tareWeightKg,
       notes: data.notes,
       paid_at_sale: data.paidAtSale ?? 0,
       account_id: data.accountId,
@@ -52,8 +50,6 @@ function toPayload(data: SaleInput) {
     date: data.date,
     customer_id: data.customerId,
     truck_no: data.truckNo,
-    gross_weight_kg: data.grossWeightKg ?? null,
-    tare_weight_kg: data.tareWeightKg ?? null,
     notes: data.notes,
     paid_at_sale: data.paidAtSale ?? 0,
     account_id: data.accountId,

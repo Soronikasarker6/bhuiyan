@@ -155,7 +155,7 @@ class InventoryService
      * WastageEntry of its own. So production and wastage are two disjoint ways
      * raw material leaves the yard, and subtracting both is subtracting each
      * ton once — see the "A vs. B" distinction in the plan's §4. Raw material
-     * sold straight from the yard (a raw_material sale's weighbridge net) is a
+     * sold straight from the yard (a raw_material sale's net weight) is a
      * fourth, equally disjoint way out: it is never bagged, so it is never
      * production, and it is never filed as wastage.
      *
@@ -276,7 +276,7 @@ class InventoryService
     }
 
     /**
-     * Net tons sold as raw material: the billable (weighbridge net) weight of
+     * Net tons sold as raw material: the billable (net) weight of
      * raw_material sale lines by sale date, less any of those sales reversed
      * by reversal date. A reversal returns the tons on the day it is booked —
      * never on the original sale date, which may sit in a closed cycle.

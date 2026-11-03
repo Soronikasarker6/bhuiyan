@@ -13,28 +13,25 @@ import { DatePicker } from '@/components/ui/date-picker'
 import { Money } from '@/components/Money'
 import { SaleTotalsSummary } from '@/features/sales/SaleTotalsSummary'
 import { saleItemAmount } from '@/utils/sales'
-import { netWeightKgOf, weighbridgeWeights } from '@/utils/weighbridge'
 import { kgToTons } from '@/utils/imports'
 import { defaultCashAccountId } from '@/utils/ledger'
 import { customerDisplayLabel } from '@/utils/customerLedger'
-import { formatCurrency, formatNumber, formatTons, todayISO } from '@/utils/format'
+import { formatCurrency, formatTons, todayISO } from '@/utils/format'
 
 /**
  * Record a raw material sale — raw limestone sold straight from the yard,
  * never through production.
  *
- *     Net Weight (KG)  = Gross Weight − Tare Weight
+ *     Net Weight (KG)  — entered directly, and editable at billing
  *     Net Weight (TON) = Net Weight (KG) ÷ 1000
  *     Total Amount     = Net Weight (TON) × Rate / TON
  *
- * Unlike a finished-product sale there are no bags and no mesh: the
- * weighbridge net *is* what is billed and what leaves raw stock. The form
+ * Unlike a finished-product sale there are no bags and no mesh: the net
+ * weight *is* what is billed (it becomes the line's billable ton) and what
+ * leaves raw stock. The form
  * checks it against the material's current raw stock as you type; the server
  * re-checks it inside the same database transaction that saves the sale.
  */
-
-const kg = (label: string) =>
-  z.coerce.number({ invalid_type_error: `Enter the ${label} in kg.` }).min(0, `${label[0].toUpperCase()}${label.slice(1)} cannot be negative.`)
 
 function buildSchema(availableTon: (productId: string) => number) {
   return z
@@ -43,25 +40,21 @@ function buildSchema(availableTon: (productId: string) => number) {
       customerId: z.string().min(1, 'Choose a customer.'),
       productId: z.string().min(1, 'Choose the raw material.'),
       truckNo: z.string().max(40).optional(),
-      grossWeightKg: kg('gross weight'),
-      tareWeightKg: kg('tare weight'),
+      netWeightKg: z.coerce
+        .number({ invalid_type_error: 'Enter the net weight in kg.' })
+        .positive('Net weight must be more than zero.'),
       ratePerTon: z.coerce.number({ invalid_type_error: 'Enter the rate.' }).positive('Rate must be more than zero.'),
       paidAtSale: z.coerce.number().min(0, 'Cannot be negative.').optional(),
       accountId: z.string().optional(),
       notes: z.string().max(300).optional(),
     })
     .superRefine((values, ctx) => {
-      const netKg = netWeightKgOf(values.grossWeightKg, values.tareWeightKg) ?? 0
-      if (netKg <= 0) {
-        ctx.addIssue({ code: 'custom', path: ['grossWeightKg'], message: 'Gross weight must be greater than tare weight.' })
-        return
-      }
-
+      const netKg = values.netWeightKg
       const available = availableTon(values.productId)
       if (kgToTons(netKg) > available + 1e-9) {
         ctx.addIssue({
           code: 'custom',
-          path: ['grossWeightKg'],
+          path: ['netWeightKg'],
           message: `Insufficient raw stock. Only ${formatTons(available)} Ton is currently available.`,
         })
       }
@@ -77,8 +70,8 @@ export type RawMaterialSaleValues = {
   customerId: string
   productId: string
   truckNo?: string
-  grossWeightKg: number
-  tareWeightKg: number
+  /** Net weight in kg as entered at billing — becomes the line's billable ton. */
+  netWeightKg: number
   ratePerTon: number
   paidAtSale?: number
   accountId?: string
@@ -119,8 +112,7 @@ export function RawMaterialSaleForm({
     customerId: customers[0]?.id ?? '',
     productId: products[0]?.id ?? '',
     truckNo: '',
-    grossWeightKg: '' as unknown as number,
-    tareWeightKg: '' as unknown as number,
+    netWeightKg: '' as unknown as number,
     ratePerTon: '' as unknown as number,
     paidAtSale: '' as unknown as number,
     accountId: defaultAccountId,
@@ -146,10 +138,8 @@ export function RawMaterialSaleForm({
   const paidAtSale = Number(watch('paidAtSale')) || 0
   const rate = Number(watch('ratePerTon')) || 0
 
-  const grossInput = watch('grossWeightKg')
-  const tareInput = watch('tareWeightKg')
-  const { netKg, netTon: slipNetTon } = weighbridgeWeights({ grossWeightKg: grossInput, tareWeightKg: tareInput })
-  const netTon = netKg !== undefined && netKg > 0 ? (slipNetTon ?? 0) : 0
+  const netKg = Number(watch('netWeightKg')) || 0
+  const netTon = netKg > 0 ? kgToTons(netKg) : 0
   const total = saleItemAmount(netTon, rate)
   const available = productId ? availableRawTon(productId) : 0
 
@@ -230,38 +220,22 @@ export function RawMaterialSaleForm({
       <div className="mt-4 rounded-lg border border-border bg-secondary/30 p-3">
         <p className="mb-2.5 flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
           <Scale className="h-3.5 w-3.5" aria-hidden />
-          Weighbridge
+          Weight
         </p>
-        <div className="grid gap-3 sm:grid-cols-5 sm:items-end">
-          <Field label="Gross weight (kg)" error={errors.grossWeightKg?.message} htmlFor={`${idPrefix}-gross`}>
+        <div className="grid gap-3 sm:grid-cols-3 sm:items-end">
+          <Field label="Net weight (kg)" error={errors.netWeightKg?.message} htmlFor={`${idPrefix}-net`} hint="Edit to the final billing quantity.">
             <Input
-              id={`${idPrefix}-gross`}
+              id={`${idPrefix}-net`}
               type="number"
               min={0}
               step="0.01"
               inputMode="decimal"
-              placeholder="32450"
-              {...register('grossWeightKg')}
+              placeholder="20000"
+              {...register('netWeightKg')}
             />
           </Field>
 
-          <Field label="Tare weight (kg)" error={errors.tareWeightKg?.message} htmlFor={`${idPrefix}-tare`}>
-            <Input
-              id={`${idPrefix}-tare`}
-              type="number"
-              min={0}
-              step="0.01"
-              inputMode="decimal"
-              placeholder="12450"
-              {...register('tareWeightKg')}
-            />
-          </Field>
-
-          <Field label="Net weight (kg)" hint="Gross − Tare">
-            <div className={readout}>{netTon > 0 ? formatNumber(netKg) : '—'}</div>
-          </Field>
-
-          <Field label="Net weight (Ton)" hint="Billed and deducted">
+          <Field label="Net weight (Ton)" hint="Billed and deducted from raw stock">
             <div className={readout}>{netTon > 0 ? formatTons(netTon) : '—'}</div>
           </Field>
 
@@ -349,7 +323,7 @@ export function RawMaterialSaleForm({
   return (
     <Section
       title={`New raw material sale — ${nextInvoiceNo}`}
-      description="Raw limestone sold straight from the yard, by weighbridge net weight. Deducted from raw stock, not from bagged stock."
+      description="Raw limestone sold straight from the yard, by net weight. Deducted from raw stock, not from bagged stock."
     >
       {form}
     </Section>
