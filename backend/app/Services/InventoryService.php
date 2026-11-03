@@ -446,13 +446,17 @@ class InventoryService
     }
 
     /**
-     * Rounds a computed ton figure to the same 3-decimal precision the DECIMAL(15,3)
-     * columns already hold — this only clears IEEE-754 float noise (e.g.
-     * 2.3500000000000014), it never discards real precision the data actually has.
+     * Clears IEEE-754 float noise from a computed ton figure (e.g.
+     * 2.3500000000000014) without discarding any real precision. Six decimals
+     * is a gram — finer than any input the system stores: kg weights with up
+     * to 3 decimals, bag_kg with 3, and raw sale tons with 5 (kg with 2). A
+     * coarser rounding here (this used to be 3 decimals) silently dropped part
+     * of every fractional raw sale, and let the stock guard compare an exact
+     * sale weight against a rounded-down balance and refuse it.
      */
     private function round(float $value): float
     {
-        return round($value, 3);
+        return round($value, 6);
     }
 
     /** @return Collection<int, array> */
@@ -551,7 +555,7 @@ class InventoryService
             if ($tons > $available) {
                 $product = Product::find($productId);
                 throw new InsufficientStockException(
-                    "This would take {$product?->name} raw stock negative. Only ".round($available, 3).' Ton is currently available.'
+                    "This would take {$product?->name} raw stock negative. Only ".round($available, 6).' Ton is currently available.'
                 );
             }
 
@@ -633,7 +637,7 @@ class InventoryService
             if ($availableAfterEdit < 0) {
                 $product = Product::find($productId);
                 throw new InsufficientStockException(
-                    "This edit would take {$product?->name} raw stock negative by ".round(abs($availableAfterEdit), 3)
+                    "This edit would take {$product?->name} raw stock negative by ".round(abs($availableAfterEdit), 6)
                     .' Ton — production or wastage already recorded against this shipment exceeds the new weight.'
                 );
             }
@@ -702,7 +706,7 @@ class InventoryService
             if ($available < 0) {
                 $product = Product::find($newProductId);
                 throw new InsufficientStockException(
-                    "This edit would take {$product?->name} raw stock negative by ".round(abs($available), 3).' Ton.'
+                    "This edit would take {$product?->name} raw stock negative by ".round(abs($available), 6).' Ton.'
                 );
             }
 
