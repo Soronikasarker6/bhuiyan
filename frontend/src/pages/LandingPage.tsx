@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Factory,
   Mail,
-  MapPin,
   Menu,
   Phone,
   Receipt,
@@ -95,23 +94,8 @@ const WORKFLOW_STEPS = [
 /** The address the site has always published — used only if the profile request fails. */
 const FALLBACK_EMAIL = 'admin@bhuiyanindustry.com'
 
-/**
- * The profile's phone field as entered in Settings, split into callable
- * numbers ("+880 1716-808811 & +008 1777-809012" → two). Each is shown
- * exactly as entered; only the `tel:` link strips it to digits.
- */
-function phoneNumbers(profile: CompanyProfile): Array<{ label: string; href: string }> {
-  return profile.phone
-    .split(/&|,|\//)
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((label) => ({ label, href: `tel:${label.startsWith('+') ? '+' : ''}${label.replace(/\D/g, '')}` }))
-}
-
 function contactOf(profile: CompanyProfile) {
-  const phones = phoneNumbers(profile)
-  const email = profile.email || FALLBACK_EMAIL
-  return { phones, primaryPhone: phones[0], email }
+  return { email: profile.email || FALLBACK_EMAIL }
 }
 
 function Nav() {
@@ -209,7 +193,7 @@ function Nav() {
 
 function Hero() {
   const { profile } = useCompanyProfile()
-  const { primaryPhone, email } = contactOf(profile)
+  const { email } = contactOf(profile)
 
   return (
     // Shorter on phones so the products and contact details are a short
@@ -231,20 +215,7 @@ function Hero() {
         </p>
 
         <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
-          {primaryPhone && (
-            <Button asChild size="lg" className="px-6">
-              <a href={primaryPhone.href}>
-                <Phone className="h-4 w-4" aria-hidden />
-                Call {primaryPhone.label}
-              </a>
-            </Button>
-          )}
-          <Button
-            asChild
-            size="lg"
-            variant={primaryPhone ? 'outline' : 'default'}
-            className={primaryPhone ? 'border-white/25 bg-transparent px-6 text-white hover:bg-white/10 hover:text-white' : 'px-6'}
-          >
+          <Button asChild size="lg" className="px-6">
             <a href={`mailto:${email}`}>
               <Mail className="h-4 w-4" aria-hidden />
               Email an Inquiry
@@ -432,42 +403,22 @@ function ContactRow({ icon: Icon, label, children }: { icon: typeof Phone; label
  */
 function Contact() {
   const { profile } = useCompanyProfile()
-  const { phones, email } = contactOf(profile)
-  const mapUrl = profile.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(profile.address)}` : undefined
+  const { email } = contactOf(profile)
 
   return (
     <section id="contact" className="stone-field px-4 py-16 sm:px-6 sm:py-20">
       <div className="mx-auto max-w-[900px]">
         <SectionHeading eyebrow="Get in touch" title="Contact Bhuiyan Industry" />
         <p className="mx-auto mt-4 max-w-[560px] text-center text-[0.9375rem] leading-relaxed text-muted-foreground">
-          For product inquiries and orders, call or email us.
+          For product inquiries and orders, email us.
         </p>
 
         <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {phones.length > 0 && (
-            <ContactRow icon={Phone} label="Phone">
-              {phones.map((phone, index) => (
-                <span key={phone.href}>
-                  {index > 0 && <span className="text-muted-foreground"> · </span>}
-                  <a href={phone.href} className="whitespace-nowrap text-primary-700 underline-offset-4 hover:underline">
-                    {phone.label}
-                  </a>
-                </span>
-              ))}
-            </ContactRow>
-          )}
           <ContactRow icon={Mail} label="Email">
             <a href={`mailto:${email}`} className="text-primary-700 underline-offset-4 hover:underline">
               {email}
             </a>
           </ContactRow>
-          {profile.address && (
-            <ContactRow icon={MapPin} label="Address">
-              <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="underline-offset-4 hover:underline">
-                {profile.address}
-              </a>
-            </ContactRow>
-          )}
           {profile.ownerName && (
             <ContactRow icon={UserRound} label={profile.designation || 'Founder'}>
               {profile.ownerName}
