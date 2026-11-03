@@ -38,7 +38,7 @@ class SaleItem extends Model
     /**
      * Theoretical weight from bag count — never billed once an actual reading
      * exists. A raw material line has no mesh and no bags, so its only weight
-     * is the weighbridge net it was recorded with.
+     * is the net weight it was recorded with.
      */
     public function calculatedWeightTon(): float
     {
@@ -49,7 +49,7 @@ class SaleItem extends Model
         return ((float) $this->bags * (float) $this->meshSize->bag_kg) / 1000;
     }
 
-    /** The billable figure: the weighbridge reading if one was taken, else calculated. */
+    /** The billable figure: the net weight entered at billing if there is one, else calculated. */
     public function billableWeightTon(): float
     {
         $actual = (float) ($this->actual_weight_ton ?? 0);

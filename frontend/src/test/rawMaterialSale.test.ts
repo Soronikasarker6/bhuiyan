@@ -6,7 +6,7 @@ import {
   filterSaleSummaries,
   isRawMaterialSale,
   rawMaterialSaleMovements,
-  saleNetWeightKg,
+  saleBilledNetKg,
   salesByMeshSize,
   saleTypeOf,
 } from '@/utils/sales'
@@ -35,11 +35,11 @@ const imports: RawMaterialImport[] = [
 ]
 const cycles: ShipmentCycle[] = [{ id: 's1', productId: 'p1', openedOn: '2026-01-01', status: 'open' }]
 
-function rawSale(id: string, grossWeightKg: number, tareWeightKg: number, rate = 3_000, productId = 'p1', date = '2026-02-01'): [Sale, SaleItem] {
+function rawSale(id: string, netWeightKg: number, rate = 3_000, productId = 'p1', date = '2026-02-01'): [Sale, SaleItem] {
   return [
-    { id, invoiceNo: `INV-${id}`, date, customerId: 'c1', saleType: 'raw_material', truckNo: 'DMT-1', grossWeightKg, tareWeightKg, paidAtSale: 0, createdAt: '' },
-    // What the server stores: no mesh, no bags, billable = net ÷ 1000.
-    { id: `i-${id}`, saleId: id, productId, meshSizeId: null, bags: 0, ratePerTon: rate, actualWeightTon: (grossWeightKg - tareWeightKg) / 1000 },
+    { id, invoiceNo: `INV-${id}`, date, customerId: 'c1', saleType: 'raw_material', truckNo: 'DMT-1', paidAtSale: 0, createdAt: '' },
+    // What the server stores: no mesh, no bags, billable = net kg ÷ 1000.
+    { id: `i-${id}`, saleId: id, productId, meshSizeId: null, bags: 0, ratePerTon: rate, actualWeightTon: netWeightKg / 1000 },
   ]
 }
 
@@ -69,10 +69,10 @@ describe('sale type', () => {
 
 describe('raw material sale amounts', () => {
   it('bills net weight × rate — 20 Ton @ 3,000 = 60,000', () => {
-    const { sales, items } = split([rawSale('r1', 32_450, 12_450)])
+    const { sales, items } = split([rawSale('r1', 20_000)])
     const [summary] = buildSaleSummaries(sales, items, products, meshSizes, customers, [])
 
-    expect(saleNetWeightKg(summary!)).toBe(20_000)
+    expect(saleBilledNetKg(summary!)).toBe(20_000)
     expect(summary!.totalWeightTon).toBe(20)
     expect(summary!.totalAmount).toBe(60_000)
     expect(summary!.items[0]!.bags).toBe(0)
@@ -80,7 +80,7 @@ describe('raw material sale amounts', () => {
   })
 
   it('keeps decimal tons — 5,137.35 kg is 5.13735 Ton', () => {
-    const { sales, items } = split([rawSale('r1', 18_237.55, 13_100.2, 2_000)])
+    const { sales, items } = split([rawSale('r1', 5_137.35, 2_000)])
     const [summary] = buildSaleSummaries(sales, items, products, meshSizes, customers, [])
 
     expect(summary!.totalWeightTon).toBeCloseTo(5.13735, 9)
@@ -88,7 +88,7 @@ describe('raw material sale amounts', () => {
   })
 
   it('posts to the same customer ledger as any sale', () => {
-    const { sales, items } = split([rawSale('r1', 32_450, 12_450)])
+    const { sales, items } = split([rawSale('r1', 20_000)])
     const [summary] = buildSaleSummaries(sales, items, products, meshSizes, customers, [])
     const txns = buildSaleTransactions({ sale: sales[0]!, totalAmount: summary!.totalAmount, paymentReference: 'INV-r1-PD' })
 
@@ -98,11 +98,11 @@ describe('raw material sale amounts', () => {
 })
 
 describe('raw stock', () => {
-  const { sales, items } = split([rawSale('r1', 32_450, 12_450)])
+  const { sales, items } = split([rawSale('r1', 20_000)])
   const movements = rawMaterialSaleMovements(sales, items)
 
   it('turns each raw material sale into one movement, and finished sales into none', () => {
-    const both = split([rawSale('r1', 32_450, 12_450), finishedSale('f1', 100)])
+    const both = split([rawSale('r1', 20_000), finishedSale('f1', 100)])
     expect(rawMaterialSaleMovements(both.sales, both.items)).toEqual([{ saleId: 'r1', productId: 'p1', date: '2026-02-01', ton: 20 }])
   })
 
@@ -112,7 +112,7 @@ describe('raw stock', () => {
   })
 
   it('only from its own material', () => {
-    const red = movementsOf([rawSale('r2', 10_000, 0, 1, 'p2')])
+    const red = movementsOf([rawSale('r2', 10_000, 1, 'p2')])
     expect(currentRawStockTon('p1', imports, [], [], bagKg50, undefined, red)).toBeCloseTo(175, 9)
   })
 
@@ -145,7 +145,7 @@ describe('raw stock', () => {
 
   it('is restored when the sale goes away (delete) and moves with an edit', () => {
     expect(currentRawStockTon('p1', imports, [], [], bagKg50, undefined, [])).toBeCloseTo(175, 9)
-    const edited = movementsOf([rawSale('r1', 42_450, 12_450)])
+    const edited = movementsOf([rawSale('r1', 30_000)])
     expect(currentRawStockTon('p1', imports, [], [], bagKg50, undefined, edited)).toBeCloseTo(145, 9)
   })
 
@@ -159,7 +159,7 @@ describe('finished product sales are unaffected', () => {
   const production: ProductionEntry[] = [{ id: 'e1', date: '2026-01-05', productId: 'p1', meshId: 'm1', bags: 300, createdAt: '' }]
 
   it('raw sales never touch bag stock', () => {
-    const { sales, items } = split([rawSale('r1', 32_450, 12_450)])
+    const { sales, items } = split([rawSale('r1', 20_000)])
     expect(availableBags('p1', 'm1', production, items, sales)).toBe(300)
   })
 
@@ -171,7 +171,7 @@ describe('finished product sales are unaffected', () => {
 })
 
 describe('reports tell the two types apart', () => {
-  const { sales, items } = split([rawSale('r1', 32_450, 12_450), finishedSale('f1', 100)])
+  const { sales, items } = split([rawSale('r1', 20_000), finishedSale('f1', 100)])
   const summaries = buildSaleSummaries(sales, items, products, meshSizes, customers, [])
 
   it('filters by sale type', () => {

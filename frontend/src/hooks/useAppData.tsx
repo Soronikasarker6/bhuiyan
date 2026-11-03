@@ -10,7 +10,6 @@ import {
 } from 'react'
 import { toast } from 'sonner'
 import type { AppData, ID, SaleType } from '@/types'
-import { netWeightKgOf } from '@/utils/weighbridge'
 import { repository, type DataSlice } from '@/services/repository'
 import { storageIsPersistent } from '@/services/storageService'
 import { now, uid } from '@/utils/id'
@@ -60,32 +59,31 @@ export interface SaleItemInput {
 /**
  * One shape for both kinds of sale. A finished-product sale sends `items`;
  * a raw material sale sends `rawMaterial` instead (its one line is built from
- * it server-side — net weight = gross − tare, billed and deducted from raw stock).
+ * it server-side — the net weight entered at billing, billed and deducted
+ * from raw stock).
  */
 export interface SaleInput {
   saleType?: SaleType
   date: string
   customerId: ID
   truckNo?: string
-  grossWeightKg?: number
-  tareWeightKg?: number
   notes?: string
   paidAtSale?: number
   /** Which Cash & Bank account a "paid at sale" amount lands in — falls back to the system Cash account when omitted. */
   accountId?: ID
   items: SaleItemInput[]
-  /** Raw material sales only — gross/tare above are required with it. */
-  rawMaterial?: { productId: ID; ratePerTon: number }
+  /** Raw material sales only: the material, its net weight in kg as entered at billing, and the rate. */
+  rawMaterial?: { productId: ID; netWeightKg: number; ratePerTon: number }
 }
 
 /**
  * The lines a sale is saved with. A raw material sale has exactly one, built
- * the same way the server builds it: no mesh, no bags, billed on the
- * weighbridge net (gross − tare, kg ÷ 1000).
+ * the same way the server builds it: no mesh, no bags, billed on the net
+ * weight entered at billing (kg ÷ 1000).
  */
 function saleLinesOf(input: SaleInput): Array<Omit<SaleItemInput, 'meshSizeId'> & { meshSizeId: ID | null }> {
   if (input.saleType !== 'raw_material' || !input.rawMaterial) return input.items
-  const netKg = netWeightKgOf(input.grossWeightKg, input.tareWeightKg) ?? 0
+  const netKg = Number(input.rawMaterial.netWeightKg) || 0
   return [
     {
       productId: input.rawMaterial.productId,
@@ -312,8 +310,6 @@ function useLocalAppData(): AppDataValue {
         customerId: input.customerId,
         saleType: input.saleType ?? ('finished_product' as SaleType),
         truckNo: input.truckNo,
-        grossWeightKg: input.grossWeightKg,
-        tareWeightKg: input.tareWeightKg,
         notes: input.notes,
         paidAtSale: input.paidAtSale ?? 0,
         createdAt: stamp,
@@ -414,8 +410,6 @@ function useLocalAppData(): AppDataValue {
         customerId: input.customerId,
         saleType: input.saleType ?? ('finished_product' as SaleType),
         truckNo: input.truckNo,
-        grossWeightKg: input.grossWeightKg,
-        tareWeightKg: input.tareWeightKg,
         notes: input.notes,
         paidAtSale: input.paidAtSale ?? 0,
       }

@@ -12,8 +12,9 @@ import { formatDate, formatNumber, formatTons } from '@/utils/format'
  * The payload is what the screen preview, the PDF print and the CSV export all
  * render, so an export always matches the report as filtered.
  *
- * No amounts by default — this is a weight report. Missing gross/tare/net
- * show "—", never 0.
+ * No amounts by default — this is a weight report. Net weight is the figure
+ * recorded at billing (each line's Actual / Billable Ton, summed per sale);
+ * a sale without one shows "—", never 0 and never an estimate.
  */
 
 const DASH = '—'
@@ -27,8 +28,6 @@ export const TRUCK_WEIGHT_COLUMNS: PrintColumn[] = [
   { key: 'truck', label: 'Truck No' },
   { key: 'type', label: 'Sale Type' },
   { key: 'product', label: 'Product / Material' },
-  { key: 'gross', label: 'Gross Weight (KG)', align: 'right' },
-  { key: 'tare', label: 'Tare Weight (KG)', align: 'right' },
   { key: 'netKg', label: 'Net Weight (KG)', align: 'right' },
   { key: 'netTon', label: 'Net Weight (TON)', align: 'right' },
 ]
@@ -41,10 +40,8 @@ export function truckWeightCells(row: TruckWeightRow): Record<string, string> {
     truck: row.truckNo ?? DASH,
     type: SALE_TYPE_LABEL[row.saleType],
     product: row.productLabel,
-    gross: kg(row.weights.grossKg),
-    tare: kg(row.weights.tareKg),
-    netKg: kg(row.weights.netKg),
-    netTon: ton(row.weights.netTon),
+    netKg: kg(row.netKg),
+    netTon: ton(row.netTon),
   }
 }
 
@@ -80,16 +77,14 @@ export function truckWeightReportPayload({
     rows: rows.map((row) => ({ ...truckWeightCells(row), ...(extraCells?.(row) ?? {}) })),
     totals: {
       date: `Total (${totals.rowCount})`,
-      gross: kg(totals.grossKg),
-      tare: kg(totals.tareKg),
       netKg: kg(totals.netKg),
       netTon: ton(totals.netTon),
       ...(extraTotals ?? {}),
     },
     footnote:
       totals.weighedCount < totals.rowCount
-        ? `Weight totals cover the ${totals.weighedCount} of ${totals.rowCount} sales with a complete weighbridge slip (gross and tare). ` +
-          'Sales recorded without one show "—" and are not counted as zero. Net weight is the weighbridge figure; billing uses each line\'s billable ton.'
-        : "Net weight is the weighbridge figure; billing uses each line's billable ton.",
+        ? `Net weight is the weight recorded at billing. Totals cover the ${totals.weighedCount} of ${totals.rowCount} sales that have one; ` +
+          'older sales billed from bag count without a recorded weight show "—" and are not counted.'
+        : 'Net weight is the weight recorded at billing.',
   }
 }

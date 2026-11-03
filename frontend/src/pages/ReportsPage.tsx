@@ -625,7 +625,7 @@ export default function ReportsPage() {
         id: 'raw-material-sales',
         group: 'Sales',
         name: 'Raw Material Sales',
-        description: 'Raw limestone sold straight from the yard — material, truck and weighbridge gross, tare and net per sale.',
+        description: 'Raw limestone sold straight from the yard — material, truck and net weight per sale.',
         icon: Scale,
         count: countedRawSalesInRange.length,
         build: () => {
@@ -719,7 +719,7 @@ export default function ReportsPage() {
         id: 'sales-by-truck',
         group: 'Sales',
         name: 'Truck-wise Sales',
-        description: 'Every sale on a truck — finished product and raw material — with weighbridge gross, tare and net weight. Use the Sale type filter for one kind or both.',
+        description: 'Every sale on a truck — finished product and raw material — with the net weight recorded at billing (KG and TON). Use the Sale type filter for one kind or both.',
         icon: Truck,
         count: truckSalesInRange.length,
         build: () =>

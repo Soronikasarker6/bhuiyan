@@ -149,9 +149,6 @@ class SaleController extends Controller
             'customer' => $sale->customer?->name,
             'sale_type' => $sale->sale_type,
             'truck_no' => $sale->truck_no,
-            'gross_weight_kg' => $sale->gross_weight_kg,
-            'tare_weight_kg' => $sale->tare_weight_kg,
-            'net_weight_kg' => $sale->netWeightKg(),
             'reversed_on' => $sale->reversed_on?->toDateString(),
             'reversal_reason' => $sale->reversal_reason,
             'notes' => $sale->notes,
@@ -255,7 +252,6 @@ class SaleController extends Controller
 
         return array_merge($sale->toArray(), [
             'customer_name' => $sale->customer?->name,
-            'net_weight_kg' => $sale->netWeightKg(),
             'items' => $items,
             'total_amount' => $totalAmount,
             'total_weight_ton' => $totalWeightTon,

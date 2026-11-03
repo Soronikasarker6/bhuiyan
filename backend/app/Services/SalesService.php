@@ -13,7 +13,6 @@ use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\Transaction;
-use App\Support\Weighbridge;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -33,7 +32,7 @@ class SalesService
     public function __construct(private InventoryService $inventory) {}
 
     /**
-     * @param  array{date:string, customer_id:int, truck_no?:string, gross_weight_kg?:float, tare_weight_kg?:float, notes?:string,
+     * @param  array{date:string, customer_id:int, truck_no?:string, notes?:string,
      *   paid_at_sale?:float, account_id?:int, items: array<int, array{product_id:int, mesh_size_id:int,
      *   bags:int, rate_per_ton:float, actual_weight_ton?:float}>} $payload
      */
@@ -52,7 +51,7 @@ class SalesService
 
     /**
      * Raw limestone sold straight from the yard: one line, billed and
-     * deducted by the weighbridge net (gross − tare). Goes through
+     * deducted by its net weight as entered at billing. Goes through
      * InventoryService::consumeStock() — the same closed-cycle and
      * physical-stock guards production and wastage use — filed as a
      * `raw_material_sale` OUT. Bag stock is never touched.
@@ -61,8 +60,8 @@ class SalesService
      * same material racing each other are checked one after the other and
      * cannot both pass against the same remaining stock.
      *
-     * @param  array{date:string, customer_id:int, product_id:int, gross_weight_kg:float,
-     *   tare_weight_kg:float, rate_per_ton:float, truck_no?:string, notes?:string,
+     * @param  array{date:string, customer_id:int, product_id:int, net_weight_kg:float,
+     *   rate_per_ton:float, truck_no?:string, notes?:string,
      *   paid_at_sale?:float, account_id?:int} $payload
      */
     private function createRawMaterialSale(array $payload): Sale
@@ -91,8 +90,6 @@ class SalesService
             'customer_id' => $payload['customer_id'],
             'sale_type' => $payload['sale_type'],
             'truck_no' => $payload['truck_no'] ?? null,
-            'gross_weight_kg' => $payload['gross_weight_kg'] ?? null,
-            'tare_weight_kg' => $payload['tare_weight_kg'] ?? null,
             'notes' => $payload['notes'] ?? null,
             'paid_at_sale' => $payload['paid_at_sale'] ?? 0,
         ]);
@@ -227,8 +224,6 @@ class SalesService
             'date' => $payload['date'],
             'customer_id' => $payload['customer_id'],
             'truck_no' => $payload['truck_no'] ?? null,
-            'gross_weight_kg' => $payload['gross_weight_kg'] ?? null,
-            'tare_weight_kg' => $payload['tare_weight_kg'] ?? null,
             'notes' => $payload['notes'] ?? null,
             'paid_at_sale' => $payload['paid_at_sale'] ?? 0,
         ]);
@@ -424,15 +419,15 @@ class SalesService
 
     /**
      * Builds a raw material sale's single line from its header: no mesh, no
-     * bags, billed on the weighbridge net — gross − tare, in kg, ÷ 1000.
-     * Rounded to the 5 decimals the column holds, which is exact for kg
-     * figures with up to 2 decimals.
+     * bags, billed on the net weight entered at billing — kg ÷ 1000, kept as
+     * the line's billable ton. Rounded to the 5 decimals the column holds,
+     * which is exact for kg figures with up to 2 decimals.
      */
     private function withRawMaterialLine(array $payload): array
     {
-        $netKg = Weighbridge::netKg($payload['gross_weight_kg'], $payload['tare_weight_kg']) ?? 0.0;
+        $netKg = round((float) ($payload['net_weight_kg'] ?? 0), 2);
         if ($netKg <= 0) {
-            throw new BusinessRuleException('Net weight must be more than zero — gross weight must be greater than tare weight.');
+            throw new BusinessRuleException('Net weight must be more than zero.');
         }
 
         $payload['sale_type'] = Sale::TYPE_RAW_MATERIAL;
@@ -441,7 +436,7 @@ class SalesService
             'mesh_size_id' => null,
             'bags' => 0,
             'rate_per_ton' => (float) $payload['rate_per_ton'],
-            'actual_weight_ton' => round(Weighbridge::kgToTon($netKg), 5),
+            'actual_weight_ton' => round($netKg / 1000, 5),
         ]];
 
         return $payload;

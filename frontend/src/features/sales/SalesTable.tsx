@@ -16,7 +16,7 @@ import { CREATED, useSortableSearch } from '@/hooks/useSortableSearch'
 import { usePermission } from '@/hooks/useAuth'
 import { PERMISSIONS } from '@/constants/permissions'
 import { formatCurrency, formatDate, formatNumber, formatTons } from '@/utils/format'
-import { isRawMaterialSale, isReversedSale, itemsBagsTotal, saleNetWeightKg } from '@/utils/sales'
+import { isRawMaterialSale, isReversedSale, itemsBagsTotal, saleBilledNetKg } from '@/utils/sales'
 import { SALE_STATUS_LABEL, SALE_STATUS_VARIANT } from '@/constants/saleStatus'
 
 /** A single-item invoice can show that item's own figure directly; a multi-item one can't collapse to one value. */
@@ -253,8 +253,7 @@ export function SalesTable({
                             )}
                             {isRawMaterialSale(sale) && (
                               <p className="mt-2 text-xs text-muted-foreground">
-                                Raw material sale — weighbridge gross {formatNumber(sale.grossWeightKg)} kg − tare {formatNumber(sale.tareWeightKg)} kg ={' '}
-                                {formatNumber(saleNetWeightKg(sale))} kg net, deducted from raw stock.
+                                Raw material sale — {formatNumber(saleBilledNetKg(sale))} kg net weight, deducted from raw stock.
                               </p>
                             )}
                             {sale.notes && <p className="mt-2 text-xs text-muted-foreground">Note: {sale.notes}</p>}

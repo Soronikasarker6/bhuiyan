@@ -3,8 +3,8 @@ import type { ID, ISODate } from './common'
 /**
  * - `finished_product` — bagged, mesh-wise stock out of production (every
  *   sale before raw material sales existed).
- * - `raw_material` — raw limestone sold straight from the yard by weighbridge
- *   net weight. Deducts raw stock (never bags) and is never production.
+ * - `raw_material` — raw limestone sold straight from the yard by net weight
+ *   (entered at billing). Deducts raw stock (never bags) and is never production.
  */
 export type SaleType = 'finished_product' | 'raw_material'
 
@@ -17,18 +17,6 @@ export interface Sale {
   /** Absent on data recorded before sale types existed — read as `finished_product` (see `saleTypeOf`). */
   saleType?: SaleType
   truckNo?: string
-  /**
-   * The truck's weighbridge slip for the whole load — null on sales recorded
-   * before the slip was captured (never backfilled).
-   *
-   * On a finished-product sale it is optional and only a record of what the
-   * truck carried: net (`gross − tare`, see `saleNetWeightKg`) never feeds
-   * amounts, ledgers or stock — those read the items' billable `weightTon`.
-   * On a raw material sale it is required, and the net *is* the billable
-   * weight: the server writes it onto the sale's one line as `actualWeightTon`.
-   */
-  grossWeightKg?: number | null
-  tareWeightKg?: number | null
   notes?: string
   /** Collected at the moment of sale — a real input, not a derived figure. */
   paidAtSale: number
