@@ -96,14 +96,21 @@ function MaterialCard({ row, ranged }: { row: RawStockSummary; ranged: boolean }
         </div>
       </dl>
 
-      {/* The physical figure — what entries are checked against. */}
+      {/* Where the balance physically is right now. Loose stock is also what
+          production, raw sale and wastage entries are checked against. */}
       <dl className="mt-3 space-y-1.5 rounded-lg bg-secondary/50 px-3 py-2.5 text-2xs">
-        <Row label="Used in production (converted to bags)" value={row.productionTon} />
-        <div className="flex items-center justify-between gap-2">
-          <dt className="font-semibold text-foreground">Loose raw in yard</dt>
-          <dd className={cn('font-mono tabular font-semibold', row.currentRawStockTon < 0 ? 'text-primary-700' : 'text-foreground')}>
-            {formatTons(row.currentRawStockTon)}
-          </dd>
+        <Row label="Loose raw material in yard" value={row.currentRawStockTon} />
+        <Row label="Unsold finished goods (raw material equivalent)" value={row.unsoldFinishedTon} />
+        {/* Only when an invoice's Actual TON was edited away from bags × bag weight. */}
+        {row.billingAdjustmentTon > 1e-9 && (
+          <Row label="Billing adjustment (billed above bag weight)" value={row.billingAdjustmentTon} tone="negative" />
+        )}
+        {row.billingAdjustmentTon < -1e-9 && (
+          <Row label="Billing adjustment (billed below bag weight)" value={-row.billingAdjustmentTon} tone="positive" />
+        )}
+        <div className="flex items-center justify-between gap-2 border-t border-border pt-1.5">
+          <dt className="font-semibold text-foreground">Current Raw Product Balance</dt>
+          <dd className="font-mono tabular font-semibold text-foreground">{formatTons(row.rawProductBalanceTon)}</dd>
         </div>
       </dl>
     </div>

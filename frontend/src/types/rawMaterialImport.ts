@@ -146,6 +146,14 @@ export interface RawMaterialStock {
   finishedSaleTon: number
   /** Imported − Finished sold (billable) − Direct raw sold − Wastage. Production is not subtracted. */
   rawProductBalanceTon: number
+  /** Bags still in finished stock, at each mesh's own bag weight (produced − sold bags × bag kg). */
+  unsoldFinishedTon: number
+  /**
+   * Billable TON invoiced beyond (+) or below (−) the sold bags' own weight —
+   * 0 unless an invoice's Actual TON was edited. Loose + unsold finished −
+   * billing adjustment = Current Raw Product Balance.
+   */
+  billingAdjustmentTon: number
   availableTon: number
   /** This material's current cycle — the latest shipment's opening balance, or 0 with no shipments yet. */
   openingTon: number
@@ -200,6 +208,14 @@ export interface RawStockSummary {
    * Production is not subtracted, so this includes raw material sitting in unsold finished bags.
    */
   rawProductBalanceTon: number
+  /** Bags still in finished stock, at each mesh's own bag weight (produced − sold bags × bag kg). */
+  unsoldFinishedTon: number
+  /**
+   * Billable TON invoiced beyond (+) or below (−) the sold bags' own weight —
+   * 0 unless an invoice's Actual TON was edited. Loose + unsold finished −
+   * billing adjustment = Current Raw Product Balance.
+   */
+  billingAdjustmentTon: number
   /** Weighted average of priced imports — undefined if nothing has been priced yet. */
   averageCostPerTon?: number
   shipmentCount: number

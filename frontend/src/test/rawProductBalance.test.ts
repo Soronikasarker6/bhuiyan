@@ -62,7 +62,7 @@ describe('raw product balance', () => {
 
   it('deducts the edited actual TON, not the bag calculation', () => {
     const { finished } = movements([finishedSale('f1', 200, 10.35)])
-    expect(finished).toEqual([{ saleId: 'f1', productId: 'p1', date: '2026-02-01', ton: 10.35 }])
+    expect(finished).toEqual([{ saleId: 'f1', productId: 'p1', date: '2026-02-01', ton: 10.35, bagTon: 10 }])
     expect(balance([finishedSale('f1', 200, 10.35)])).toBeCloseTo(989.65, 9)
   })
 
@@ -107,5 +107,51 @@ describe('raw product balance', () => {
       openingTon: 900,
       currentRawStockTon: 880,
     })
+  })
+})
+
+describe('balance breakdown: loose + unsold finished − billing adjustment = balance', () => {
+  const meshes: MeshSize[] = [...meshSizes, { id: 'm2', name: '400', bagKg: 25, active: true, createdAt: '' }]
+  const bagKgOfMesh = (id: string) => meshes.find((m) => m.id === id)!.bagKg
+  const mixed: ProductionEntry[] = [
+    { id: 'e1', date: '2026-01-10', productId: 'p1', meshId: 'm1', bags: 1_000, createdAt: '' }, // 50 Ton
+    { id: 'e2', date: '2026-01-10', productId: 'p1', meshId: 'm2', bags: 2_000, createdAt: '' }, // 50 Ton
+  ]
+  function sale(id: string, meshSizeId: string, bags: number, actualWeightTon?: number): [Sale, SaleItem] {
+    return [
+      { id, invoiceNo: `INV-${id}`, date: '2026-02-01', customerId: 'c1', paidAtSale: 0, createdAt: '' },
+      { id: `i-${id}`, saleId: id, productId: 'p1', meshSizeId, bags, ratePerTon: 2_000, actualWeightTon },
+    ]
+  }
+  function stockOf(pairs: Array<[Sale, SaleItem]>) {
+    const sales = pairs.map(([s]) => s)
+    const items = pairs.map(([, i]) => i)
+    const finished = finishedSaleMovements(sales, items, meshes)
+    return rawMaterialStock('p1', products, [], imports, [], mixed, bagKgOfMesh, [], finished)
+  }
+  const reconciles = (s: ReturnType<typeof stockOf>) =>
+    expect(s.currentRawStockTon + s.unsoldFinishedTon - s.billingAdjustmentTon).toBeCloseTo(s.rawProductBalanceTon, 9)
+
+  it('values unsold bags at each mesh’s own bag weight', () => {
+    const stock = stockOf([sale('a', 'm1', 400), sale('b', 'm2', 400)]) // 20 + 10 Ton sold
+    expect(stock.currentRawStockTon).toBe(900)
+    expect(stock.unsoldFinishedTon).toBe(70) // 600 × 50 kg + 1,600 × 25 kg
+    expect(stock.billingAdjustmentTon).toBe(0)
+    expect(stock.rawProductBalanceTon).toBe(970)
+    reconciles(stock)
+  })
+
+  it('keeps an edited billable TON out of unsold goods, as a billing adjustment', () => {
+    const stock = stockOf([sale('a', 'm1', 200, 10.35)]) // bags weigh 10 Ton
+    expect(stock.unsoldFinishedTon).toBe(90)
+    expect(stock.billingAdjustmentTon).toBeCloseTo(0.35, 9)
+    expect(stock.rawProductBalanceTon).toBeCloseTo(989.65, 9)
+    reconciles(stock)
+  })
+
+  it('a billable TON below the bag weight is a negative adjustment', () => {
+    const stock = stockOf([sale('a', 'm1', 200, 9.8)])
+    expect(stock.billingAdjustmentTon).toBeCloseTo(-0.2, 9)
+    reconciles(stock)
   })
 })

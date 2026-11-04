@@ -202,6 +202,31 @@ export function rawProductBalanceTon(
   )
 }
 
+/**
+ * How the Current Raw Product Balance splits as of a day: loose raw in the
+ * yard, bags still in finished stock (each at its own mesh's bag weight), and
+ * any billing adjustment — billable TON beyond the sold bags' weight.
+ *
+ *   loose + unsoldFinished − billingAdjustment = Current Raw Product Balance
+ *
+ * Mirrors `InventoryService::balanceBreakdown()`.
+ */
+export function balanceBreakdown(
+  productId: ID,
+  productionEntries: ProductionEntry[],
+  bagKgOf: (meshId: ID) => number,
+  asOf?: ISODate,
+  finishedSales: RawMaterialSaleMovement[] = [],
+): { unsoldFinishedTon: number; billingAdjustmentTon: number } {
+  const own = finishedSales.filter((s) => s.productId === productId && inDateWindow(s.date, undefined, asOf))
+  const soldByBags = own.reduce((sum, s) => sum + (Number(s.bagTon) || 0), 0)
+  const soldBillable = own.reduce((sum, s) => sum + (Number(s.ton) || 0), 0)
+  return {
+    unsoldFinishedTon: producedTonOf(productId, productionEntries, bagKgOf, undefined, asOf) - soldByBags,
+    billingAdjustmentTon: soldBillable - soldByBags,
+  }
+}
+
 /** The day before `date`, as an ISO string — the cut-off an opening balance is taken at. */
 function dayBefore(date: ISODate): ISODate {
   const d = new Date(`${date}T00:00:00`)
@@ -256,6 +281,7 @@ export function rawStockSummary(
     finishedSaleTon,
     openingBalanceTon,
     rawProductBalanceTon: openingBalanceTon + importedTon - finishedSaleTon - rawSaleTon - wastageTon,
+    ...balanceBreakdown(productId, productionEntries, bagKgOf, to, finishedSales),
     averageCostPerTon: averageCostPerTon(productId, imports),
     // Counted over the same window as the movements above, so the card never
     // captions period figures with an all-time shipment count.
@@ -322,6 +348,7 @@ export function rawMaterialStock(
     currentRawStockTon: importedTon - producedTon - wastageTon - rawSaleTon,
     finishedSaleTon,
     rawProductBalanceTon: importedTon - finishedSaleTon - rawSaleTon - wastageTon,
+    ...balanceBreakdown(productId, productionEntries, bagKgOf, undefined, finishedSales),
     availableTon: closingTon,
     openingTon,
     receivedTon,

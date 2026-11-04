@@ -200,4 +200,77 @@ class RawProductBalanceTest extends TestCase
             'date' => '2026-01-11', 'product_id' => $this->white->id, 'mesh_id' => $this->mesh->id, 'bags' => 1_200,
         ])->assertUnprocessable();
     }
+
+    // ------------------------------------------------------------ breakdown
+
+    private function assertReconciles(array $stock): void
+    {
+        $this->assertEqualsWithDelta(
+            $stock['raw_product_balance_ton'],
+            $stock['current_raw_stock_ton'] + $stock['unsold_finished_ton'] - $stock['billing_adjustment_ton'],
+            1e-9,
+            'loose + unsold finished − billing adjustment = balance',
+        );
+    }
+
+    public function test_breakdown_is_loose_plus_unsold_finished_goods(): void
+    {
+        $this->produce(2_000);   // 100 Ton
+        $this->finishedSale(500); // 25 Ton
+
+        $stock = $this->stock();
+        $this->assertEqualsWithDelta(900, $stock['current_raw_stock_ton'], 1e-9);
+        $this->assertEqualsWithDelta(75, $stock['unsold_finished_ton'], 1e-9);
+        $this->assertEqualsWithDelta(0, $stock['billing_adjustment_ton'], 1e-9);
+        $this->assertEqualsWithDelta(975, $stock['raw_product_balance_ton'], 1e-9);
+        $this->assertReconciles($stock);
+    }
+
+    public function test_unsold_finished_goods_use_each_mesh_own_bag_weight(): void
+    {
+        $small = MeshSize::factory()->create(['bag_kg' => 25]);
+        $this->produce(1_000); // 1,000 × 50 kg = 50 Ton
+        $this->postJson('/api/production-entries', [
+            'date' => '2026-01-10', 'product_id' => $this->white->id, 'mesh_id' => $small->id, 'bags' => 2_000,
+        ])->assertCreated(); // 2,000 × 25 kg = 50 Ton
+
+        $this->finishedSale(400); // 400 × 50 kg = 20 Ton
+        $this->postJson('/api/sales', [
+            'date' => '2026-02-01', 'customer_id' => $this->customer->id,
+            'items' => [['product_id' => $this->white->id, 'mesh_size_id' => $small->id, 'bags' => 400, 'rate_per_ton' => 2_000]],
+        ])->assertCreated(); // 400 × 25 kg = 10 Ton
+
+        $stock = $this->stock();
+        // (600 × 50 kg) + (1,600 × 25 kg) = 30 + 40 = 70 Ton still bagged
+        $this->assertEqualsWithDelta(70, $stock['unsold_finished_ton'], 1e-9);
+        $this->assertSame(600, $this->inventory()->availableBags($this->white->id, $this->mesh->id));
+        $this->assertSame(1_600, $this->inventory()->availableBags($this->white->id, $small->id));
+        $this->assertReconciles($stock);
+    }
+
+    public function test_an_edited_billable_ton_shows_as_a_billing_adjustment_not_in_unsold_goods(): void
+    {
+        $this->produce(2_000);
+        $this->finishedSale(200, 10.35); // bags weigh 10 Ton, billed 10.35
+
+        $stock = $this->stock();
+        $this->assertEqualsWithDelta(90, $stock['unsold_finished_ton'], 1e-9, '1,800 bags × 50 kg, untouched by billing');
+        $this->assertEqualsWithDelta(0.35, $stock['billing_adjustment_ton'], 1e-9);
+        $this->assertEqualsWithDelta(989.65, $stock['raw_product_balance_ton'], 1e-9);
+        $this->assertReconciles($stock);
+    }
+
+    public function test_breakdown_in_a_date_window_is_taken_at_the_window_end(): void
+    {
+        $this->produce(2_000);
+        $this->finishedSale(200, null, '2026-01-20');
+        $this->finishedSale(100, null, '2026-02-10');
+        $this->finishedSale(100, null, '2026-03-10'); // after the window
+
+        $row = collect($this->getJson('/api/raw-materials/report?from=2026-02-01&to=2026-02-28')->assertOk()->json())
+            ->firstWhere('product_id', $this->white->id);
+
+        $this->assertEqualsWithDelta(85, $row['unsold_finished_ton'], 1e-9); // 1,700 bags at 28 Feb
+        $this->assertReconciles($row);
+    }
 }

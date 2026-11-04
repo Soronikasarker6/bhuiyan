@@ -117,4 +117,6 @@ export interface RawMaterialSaleMovement {
   productId: ID
   date: ISODate
   ton: number
+  /** Finished sales only: bags × bag weight, which may differ from the billable `ton`. */
+  bagTon?: number
 }
