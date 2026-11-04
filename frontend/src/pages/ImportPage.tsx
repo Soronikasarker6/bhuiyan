@@ -582,7 +582,7 @@ export default function ImportPage() {
             : 'Everything ever received, less everything sold or lost.'}{' '}
           Current Raw Product Balance = Opening + Imported − Finished product sold (billable TON, as on the invoice) − Direct raw material sales − Wastage.
           Production is not deducted — it converts raw material into bags without selling it — so the balance includes unsold finished bags.
-          It splits into loose raw material in the yard (entries are checked against this) and unsold finished goods at each mesh's bag weight;
+          It splits into Raw Material Remaining in Yard (entries are checked against this) and unsold finished goods at each mesh's bag weight;
           where an invoice's billable TON differs from its bags' weight, the difference is shown as a billing adjustment so the two always add up.
         </p>
       </Section>

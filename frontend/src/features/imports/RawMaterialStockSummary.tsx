@@ -78,7 +78,7 @@ function MaterialCard({ row, ranged }: { row: RawStockSummary; ranged: boolean }
             {formatTons(row.rawProductBalanceTon)}
           </span>
           <span className="ml-1.5 font-sans text-sm font-medium text-muted-foreground">Ton</span>
-          <p className="mt-1 text-2xs text-muted-foreground">Unsold — loose in the yard plus unsold finished bags</p>
+          <p className="mt-1 text-2xs text-muted-foreground">Unsold — raw material remaining in yard plus unsold finished bags</p>
         </div>
       </div>
 
@@ -99,7 +99,7 @@ function MaterialCard({ row, ranged }: { row: RawStockSummary; ranged: boolean }
       {/* Where the balance physically is right now. Loose stock is also what
           production, raw sale and wastage entries are checked against. */}
       <dl className="mt-3 space-y-1.5 rounded-lg bg-secondary/50 px-3 py-2.5 text-2xs">
-        <Row label="Loose raw material in yard" value={row.currentRawStockTon} />
+        <Row label="Raw Material Remaining in Yard" value={row.currentRawStockTon} />
         <Row label="Unsold finished goods (raw material equivalent)" value={row.unsoldFinishedTon} />
         {/* Only when an invoice's Actual TON was edited away from bags × bag weight. */}
         {row.billingAdjustmentTon > 1e-9 && (
