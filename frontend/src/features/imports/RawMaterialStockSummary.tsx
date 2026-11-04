@@ -16,7 +16,7 @@ import { cn } from '@/utils/cn'
  *   − Direct raw material sales (net TON)
  *   − Wastage
  *   ─────────────────
- *   = Raw product balance
+ *   = Current Raw Product Balance
  *
  * Production is not a line here: bagging converts raw material into finished
  * bags, it sells nothing. Each sale and each wastage entry is subtracted once.
@@ -66,7 +66,7 @@ function MaterialCard({ row, ranged }: { row: RawStockSummary; ranged: boolean }
 
       {/* The number the business owner is actually here for. */}
       <div className="mt-2.5">
-        <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Raw product balance</p>
+        <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Current Raw Product Balance</p>
         <div className="mt-0.5">
           {/* §7 — the exact tonnage, decimals and all; never rounded to a whole ton. */}
           <span
@@ -91,7 +91,7 @@ function MaterialCard({ row, ranged }: { row: RawStockSummary; ranged: boolean }
         <Row label="Direct raw material sales" value={row.rawSaleTon} tone="negative" />
         <Row label="Wastage" value={row.wastageTon} tone="negative" />
         <div className="flex items-center justify-between gap-2 border-t border-border pt-1.5">
-          <dt className="font-semibold text-foreground">Raw product balance</dt>
+          <dt className="font-semibold text-foreground">Current Raw Product Balance</dt>
           <dd className="font-mono tabular font-bold text-foreground">{formatTons(row.rawProductBalanceTon)}</dd>
         </div>
       </dl>

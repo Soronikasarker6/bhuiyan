@@ -580,7 +580,7 @@ export default function ImportPage() {
           {from || to
             ? 'Movements within the selected period, opening the window at whatever was already on hand.'
             : 'Everything ever received, less everything sold or lost.'}{' '}
-          Raw product balance = Opening + Imported − Finished product sold (billable TON, as on the invoice) − Direct raw material sales − Wastage.
+          Current Raw Product Balance = Opening + Imported − Finished product sold (billable TON, as on the invoice) − Direct raw material sales − Wastage.
           Production is not deducted — it converts raw material into bags without selling it — so the balance includes unsold finished bags.
           Loose raw in yard additionally deducts what was used in production; entries are checked against it.
         </p>
