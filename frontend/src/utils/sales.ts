@@ -96,6 +96,24 @@ export function rawMaterialSaleMovements(sales: Sale[], saleItems: SaleItem[]): 
   })
 }
 
+/**
+ * Every finished-product sale line as a movement of its final billable TON —
+ * the edited Actual TON when one was entered at invoicing, else bags × bag
+ * weight; the same figure the invoice and the Sales Report bill. This is what
+ * the Raw Product Balance subtracts for finished sales. Finished sales are
+ * corrected by edit or delete, never reversed, so each live line counts once.
+ * Mirrors InventoryService::finishedSaleTon().
+ */
+export function finishedSaleMovements(sales: Sale[], saleItems: SaleItem[], meshSizes: MeshSize[]): RawMaterialSaleMovement[] {
+  const finished = new Map(sales.filter((s) => !isRawMaterialSale(s)).map((s) => [s.id, s]))
+  return saleItems.flatMap((item) => {
+    const sale = finished.get(item.saleId)
+    if (!sale) return []
+    const calculated = saleItemWeightTon(item.bags, item.meshSizeId ? bagKgOf(meshSizes, item.meshSizeId) : 0)
+    return [{ saleId: sale.id, productId: item.productId, date: sale.date, ton: billableWeightTon(calculated, item.actualWeightTon) }]
+  })
+}
+
 /** The theoretical weight from bag count alone — never what gets billed once an actual reading exists. */
 export function saleItemWeightTon(bags: number, bagKg: number): number {
   return kgToTons((Number(bags) || 0) * (Number(bagKg) || 0))

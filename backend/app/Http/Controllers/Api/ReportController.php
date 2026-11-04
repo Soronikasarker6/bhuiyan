@@ -124,6 +124,7 @@ class ReportController extends Controller
 
         return $this->payload('Raw Material Inventory', $rows, [
             'current_raw_stock_ton' => $rows->sum('current_raw_stock_ton'),
+            'raw_product_balance_ton' => $rows->sum('raw_product_balance_ton'),
         ]);
     }
 
