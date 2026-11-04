@@ -568,11 +568,12 @@ export default function ImportPage() {
           </div>
         }
       >
-        <RawMaterialStockSummary rows={rawStock} />
+        <RawMaterialStockSummary rows={rawStock} ranged={Boolean(from || to)} />
         <p className="mt-2.5 text-2xs text-muted-foreground">
           {from || to
             ? 'Movements within the selected period, opening the window at whatever was already on hand.'
-            : 'Everything ever received, less everything that has left the yard — what is physically there right now.'}
+            : 'Everything ever received, less everything that has left the yard — what is physically there right now.'}{' '}
+          Closing = Opening + Imported − Used in production − Direct raw material sales − Wastage. Finished-bag sales are not included, so these figures will not match the Sales Report.
         </p>
       </Section>
 
