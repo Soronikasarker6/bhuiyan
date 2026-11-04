@@ -170,6 +170,42 @@ describe('finished product sales are unaffected', () => {
   })
 })
 
+describe('sales report vs raw stock — the 22.02 / 5.75 scenario', () => {
+  // 1,000 bags (50 Ton) bagged before the window, 115 bags (5.75 Ton) inside it.
+  const production: ProductionEntry[] = [
+    { id: 'old', date: '2026-01-10', productId: 'p1', meshId: 'm1', bags: 1_000, createdAt: '' },
+    { id: 'new', date: '2026-02-05', productId: 'p1', meshId: 'm1', bags: 115, createdAt: '' },
+  ]
+  // 22.02 Ton of finished bags sold inside the window (440.4 bags ≈ 441, billed at actual weight).
+  const [sale, item] = finishedSale('f1', 441)
+  const finished: [Sale, SaleItem] = [{ ...sale, date: '2026-02-10' }, { ...item, actualWeightTon: 22.02 }]
+  const { sales, items } = split([finished])
+  const movements = rawMaterialSaleMovements(sales, items)
+  const summary = rawStockSummary('p1', products, imports, [], production, bagKg50, '2026-02-01', '2026-02-28', movements)
+
+  it('raw stock shows only production in the window, never the finished sale', () => {
+    expect(movements).toEqual([])
+    expect(summary.productionTon).toBeCloseTo(5.75, 6)
+    expect(summary.rawSaleTon).toBe(0)
+    // Opening 175 − 50 = 125; less 5.75 bagged in window.
+    expect(summary.openingTon).toBeCloseTo(125, 6)
+    expect(summary.currentRawStockTon).toBeCloseTo(119.25, 6)
+  })
+
+  it('the finished sale comes off bag stock only', () => {
+    expect(availableBags('p1', 'm1', production, items, sales)).toBe(1_115 - 441)
+    expect(currentRawStockTon('p1', imports, [], production, bagKg50, undefined, movements)).toBeCloseTo(119.25, 6)
+  })
+
+  it('a direct raw sale in the window comes off raw stock once, by its sale date', () => {
+    const both = split([finished, rawSale('r1', 3_000, 3_000, 'p1', '2026-02-12')])
+    const m = rawMaterialSaleMovements(both.sales, both.items)
+    const s = rawStockSummary('p1', products, imports, [], production, bagKg50, '2026-02-01', '2026-02-28', m)
+    expect(s.productionTon + s.rawSaleTon).toBeCloseTo(8.75, 6)
+    expect(s.currentRawStockTon).toBeCloseTo(116.25, 6)
+  })
+})
+
 describe('reports tell the two types apart', () => {
   const { sales, items } = split([rawSale('r1', 20_000), finishedSale('f1', 100)])
   const summaries = buildSaleSummaries(sales, items, products, meshSizes, customers, [])

@@ -9,17 +9,22 @@ import { cn } from '@/utils/cn'
  *
  * The card answers the one question the yard actually asks: *right now, how
  * many tons of this limestone do I physically have?* So Current Raw Stock is
- * the headline, and the three figures it comes from are listed underneath in
- * the order they subtract, with a rule above the result:
+ * the headline, and the figures it comes from are listed underneath in the
+ * order they apply, with a rule above the result:
  *
- *     Total Imported
- *   − Total Sold   (production consumption + raw material sold straight from the yard)
+ *     Opening Stock
+ *   + Imported
+ *   − Used in Production
+ *   − Direct Raw Material Sales
  *   − Wastage
  *   ─────────────────
- *   = Current Raw Stock
+ *   = Closing Stock (Current Raw Stock)
  *
- * Total Sold is shown with its two parts underneath, so it is visible that each
- * outflow is counted once: a ton bagged by production is never also a raw sale.
+ * Finished-goods sales never appear here: those bags already left raw stock
+ * when they were produced, and come off finished (bag) stock when sold.
+ *
+ * Production and direct sales are separate lines: a ton bagged by production
+ * is never also a raw sale, so each outflow is counted once.
  *
  * Wastage is listed separately from Production because they are two *different*
  * ways material leaves the yard — bagged into finished stock, versus lost — and
@@ -30,19 +35,19 @@ import { cn } from '@/utils/cn'
  * column still adds up rather than appearing to lose everything that came
  * before the window.
  */
-export function RawMaterialStockSummary({ rows }: { rows: RawStockSummary[] }) {
+export function RawMaterialStockSummary({ rows, ranged = false }: { rows: RawStockSummary[]; ranged?: boolean }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {[...rows].sort((a, b) => b.productName.localeCompare(a.productName, undefined, { sensitivity: 'base' })).map((row) => (
-        <MaterialCard key={row.productId} row={row} />
+        <MaterialCard key={row.productId} row={row} ranged={ranged} />
       ))}
     </div>
   )
 }
 
-function MaterialCard({ row }: { row: RawStockSummary }) {
+/** `ranged` — a date window is applied, so the shipment count covers only that window. */
+function MaterialCard({ row, ranged }: { row: RawStockSummary; ranged: boolean }) {
   const negative = row.currentRawStockTon < 0
-  const hasOpening = row.openingTon !== 0
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 shadow-card transition-shadow hover:shadow-raised">
@@ -51,8 +56,8 @@ function MaterialCard({ row }: { row: RawStockSummary }) {
           <p className="truncate font-display text-[0.9375rem] leading-tight">{row.productName}</p>
           <p className="mt-0.5 text-2xs text-muted-foreground">
             {row.shipmentCount === 0
-              ? 'No shipments yet'
-              : `${row.shipmentCount} shipment${row.shipmentCount === 1 ? '' : 's'}`}
+              ? ranged ? 'No shipments in this period' : 'No shipments yet'
+              : `${row.shipmentCount} shipment${row.shipmentCount === 1 ? '' : 's'}${ranged ? ' in this period' : ''}`}
           </p>
         </div>
         <span
@@ -83,15 +88,15 @@ function MaterialCard({ row }: { row: RawStockSummary }) {
       </div>
 
       <dl className="mt-3 space-y-1.5 border-t border-border pt-3 text-2xs">
-        {hasOpening && <Row label="Opening" value={row.openingTon} />}
-        <Row label="Total imported" value={row.importedTon} tone="positive" />
-        <Row label="Total sold" value={row.productionTon + row.rawSaleTon} tone="negative" />
-        {/* The two disjoint parts of Total sold — each ton is in exactly one. */}
-        <Row label="Production" value={row.productionTon} indent />
-        <Row label="Raw material sold" value={row.rawSaleTon} indent />
+        {/* Each movement on its own line, in the order it applies. Finished-bag
+            sales never appear here — they come off bag stock, not raw stock. */}
+        <Row label="Opening stock" value={row.openingTon} />
+        <Row label="Imported" value={row.importedTon} tone="positive" />
+        <Row label="Used in production" value={row.productionTon} tone="negative" />
+        <Row label="Direct raw material sales" value={row.rawSaleTon} tone="negative" />
         <Row label="Wastage" value={row.wastageTon} tone="negative" />
         <div className="flex items-center justify-between gap-2 border-t border-border pt-1.5">
-          <dt className="font-semibold text-foreground">Current raw stock</dt>
+          <dt className="font-semibold text-foreground">Closing stock</dt>
           <dd className="font-mono tabular font-bold text-foreground">{formatTons(row.currentRawStockTon)}</dd>
         </div>
       </dl>
