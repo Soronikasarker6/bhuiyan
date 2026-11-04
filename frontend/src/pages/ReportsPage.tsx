@@ -57,6 +57,7 @@ import {
   salesByMeshSize,
   salesByProduct,
   truckWeightRows,
+  finishedSaleMovements,
   rawMaterialSaleMovements,
   isRawMaterialSale,
   standingSales,
@@ -118,6 +119,10 @@ export default function ReportsPage() {
   const { data, loading } = useAppData()
   // Raw material sold straight from the yard — subtracted from raw stock beside production and wastage, never as either.
   const rawSales = useMemo(() => rawMaterialSaleMovements(data.sales, data.saleItems), [data.sales, data.saleItems])
+  const finishedSales = useMemo(
+    () => finishedSaleMovements(data.sales, data.saleItems, data.meshSizes),
+    [data.sales, data.saleItems, data.meshSizes],
+  )
   const { print } = usePrint()
 
   const thisYear = new Date().getFullYear()
@@ -241,6 +246,7 @@ export default function ReportsPage() {
       data.productionEntries,
       (meshId) => bagKgOf(data.meshSizes, meshId),
       rawSales,
+      finishedSales,
     )
     const shipmentCycleRows = allShipmentCycles(
       data.products,
@@ -455,7 +461,7 @@ export default function ReportsPage() {
         id: 'raw-material-stock',
         group: 'Production',
         name: 'Raw Material Stock',
-        description: 'Current shipment cycle — opening, received, used and closing — per limestone, with average cost. Never a combined total.',
+        description: 'Current shipment cycle — opening, received, used and closing — per limestone, plus the all-time Raw Product Balance (imported − finished sold by billable TON − direct raw sales − wastage) and average cost.',
         icon: Ship,
         count: rawStock.filter((s) => productFilter === ALL || s.productId === productFilter).length,
         build: () => {
@@ -471,6 +477,8 @@ export default function ReportsPage() {
               { key: 'rawSold', label: 'Raw Sold (Ton)', align: 'right' },
               { key: 'closing', label: 'Closing / Available (Ton)', align: 'right' },
               { key: 'imported', label: 'Imported All-Time (Ton)', align: 'right' },
+              { key: 'finishedSold', label: 'Finished Sold, Billable (Ton)', align: 'right' },
+              { key: 'balance', label: 'Raw Product Balance (Ton)', align: 'right' },
               { key: 'avgCost', label: 'Avg. Cost/Ton', align: 'right' },
             ],
             rows: rows.map((s) => ({
@@ -481,6 +489,8 @@ export default function ReportsPage() {
               rawSold: formatTons(s.cycleRawSaleTon),
               closing: formatTons(s.closingTon),
               imported: formatTons(s.importedTon),
+              finishedSold: formatTons(s.finishedSaleTon),
+              balance: formatTons(s.rawProductBalanceTon),
               avgCost: s.averageCostPerTon ? formatCurrency(s.averageCostPerTon) : '—',
             })),
             totals: {
@@ -491,6 +501,8 @@ export default function ReportsPage() {
               rawSold: formatTons(rows.reduce((s, r) => s + r.cycleRawSaleTon, 0)),
               closing: formatTons(rows.reduce((s, r) => s + r.closingTon, 0)),
               imported: formatTons(rows.reduce((s, r) => s + r.importedTon, 0)),
+              finishedSold: formatTons(rows.reduce((s, r) => s + r.finishedSaleTon, 0)),
+              balance: formatTons(rows.reduce((s, r) => s + r.rawProductBalanceTon, 0)),
             },
           }
         },
@@ -1060,7 +1072,7 @@ export default function ReportsPage() {
         balance: formatCurrency(row.balance),
       }
     }
-  }, [data, importsInRange, productionInRange, allSales, salesInRange, ledgerInRange, customerTxnsInRange, rangeLabel, year, to, rawSales, countedSalesInRange, countedRawSalesInRange, truckSalesInRange, canViewRate, saleTypeFilter])
+  }, [data, importsInRange, productionInRange, allSales, salesInRange, ledgerInRange, customerTxnsInRange, rangeLabel, year, to, rawSales, finishedSales, countedSalesInRange, countedRawSalesInRange, truckSalesInRange, canViewRate, saleTypeFilter])
 
   // ---------------------------------------------------------------- export
 

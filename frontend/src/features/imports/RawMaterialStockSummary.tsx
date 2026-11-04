@@ -7,33 +7,27 @@ import { cn } from '@/utils/cn'
  * Raw Material Stock (§1/§5) — one card per limestone type, never one blended
  * total.
  *
- * The card answers the one question the yard actually asks: *right now, how
- * many tons of this limestone do I physically have?* So Current Raw Stock is
- * the headline, and the figures it comes from are listed underneath in the
- * order they apply, with a rule above the result:
+ * The headline is the Raw Product Balance — how much of this material is
+ * still unsold, whether loose in the yard or already bagged:
  *
- *     Opening Stock
+ *     Opening balance
  *   + Imported
- *   − Used in Production
- *   − Direct Raw Material Sales
+ *   − Finished product sold   (each invoice line's final billable TON)
+ *   − Direct raw material sales (net TON)
  *   − Wastage
  *   ─────────────────
- *   = Closing Stock (Current Raw Stock)
+ *   = Raw product balance
  *
- * Finished-goods sales never appear here: those bags already left raw stock
- * when they were produced, and come off finished (bag) stock when sold.
+ * Production is not a line here: bagging converts raw material into finished
+ * bags, it sells nothing. Each sale and each wastage entry is subtracted once.
  *
- * Production and direct sales are separate lines: a ton bagged by production
- * is never also a raw sale, so each outflow is counted once.
+ * Underneath, set apart, is the physical figure — loose raw material in the
+ * yard (imported − used in production − direct raw sales − wastage). That one
+ * is what production, raw sale and wastage entries are checked against, since
+ * nothing can be bagged or sold loose that is not physically there.
  *
- * Wastage is listed separately from Production because they are two *different*
- * ways material leaves the yard — bagged into finished stock, versus lost — and
- * each ton belongs to exactly one of them. Neither is a share of the other, so
- * both are subtracted and nothing is counted twice (see `utils/rawMaterial.ts`).
- *
- * Over a date range the cards also show the opening stock carried in, so the
- * column still adds up rather than appearing to lose everything that came
- * before the window.
+ * Over a date range the opening figures carry in what was on hand the day
+ * before, so both columns still add up.
  */
 export function RawMaterialStockSummary({ rows, ranged = false }: { rows: RawStockSummary[]; ranged?: boolean }) {
   return (
@@ -47,7 +41,7 @@ export function RawMaterialStockSummary({ rows, ranged = false }: { rows: RawSto
 
 /** `ranged` — a date window is applied, so the shipment count covers only that window. */
 function MaterialCard({ row, ranged }: { row: RawStockSummary; ranged: boolean }) {
-  const negative = row.currentRawStockTon < 0
+  const negative = row.rawProductBalanceTon < 0
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 shadow-card transition-shadow hover:shadow-raised">
@@ -72,7 +66,7 @@ function MaterialCard({ row, ranged }: { row: RawStockSummary; ranged: boolean }
 
       {/* The number the business owner is actually here for. */}
       <div className="mt-2.5">
-        <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Current raw stock</p>
+        <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Raw product balance</p>
         <div className="mt-0.5">
           {/* §7 — the exact tonnage, decimals and all; never rounded to a whole ton. */}
           <span
@@ -81,23 +75,35 @@ function MaterialCard({ row, ranged }: { row: RawStockSummary; ranged: boolean }
               negative ? 'text-primary-700' : 'text-foreground',
             )}
           >
-            {formatTons(row.currentRawStockTon)}
+            {formatTons(row.rawProductBalanceTon)}
           </span>
           <span className="ml-1.5 font-sans text-sm font-medium text-muted-foreground">Ton</span>
+          <p className="mt-1 text-2xs text-muted-foreground">Unsold — loose in the yard plus unsold finished bags</p>
         </div>
       </div>
 
       <dl className="mt-3 space-y-1.5 border-t border-border pt-3 text-2xs">
-        {/* Each movement on its own line, in the order it applies. Finished-bag
-            sales never appear here — they come off bag stock, not raw stock. */}
-        <Row label="Opening stock" value={row.openingTon} />
+        {/* Each sale and loss on its own line, in the order it applies.
+            Production is not one of them — it converts, it does not sell. */}
+        <Row label="Opening balance" value={row.openingBalanceTon} />
         <Row label="Imported" value={row.importedTon} tone="positive" />
-        <Row label="Used in production" value={row.productionTon} tone="negative" />
+        <Row label="Finished product sold (billable)" value={row.finishedSaleTon} tone="negative" />
         <Row label="Direct raw material sales" value={row.rawSaleTon} tone="negative" />
         <Row label="Wastage" value={row.wastageTon} tone="negative" />
         <div className="flex items-center justify-between gap-2 border-t border-border pt-1.5">
-          <dt className="font-semibold text-foreground">Closing stock</dt>
-          <dd className="font-mono tabular font-bold text-foreground">{formatTons(row.currentRawStockTon)}</dd>
+          <dt className="font-semibold text-foreground">Raw product balance</dt>
+          <dd className="font-mono tabular font-bold text-foreground">{formatTons(row.rawProductBalanceTon)}</dd>
+        </div>
+      </dl>
+
+      {/* The physical figure — what entries are checked against. */}
+      <dl className="mt-3 space-y-1.5 rounded-lg bg-secondary/50 px-3 py-2.5 text-2xs">
+        <Row label="Used in production (converted to bags)" value={row.productionTon} />
+        <div className="flex items-center justify-between gap-2">
+          <dt className="font-semibold text-foreground">Loose raw in yard</dt>
+          <dd className={cn('font-mono tabular font-semibold', row.currentRawStockTon < 0 ? 'text-primary-700' : 'text-foreground')}>
+            {formatTons(row.currentRawStockTon)}
+          </dd>
         </div>
       </dl>
     </div>

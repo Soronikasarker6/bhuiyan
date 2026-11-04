@@ -142,6 +142,10 @@ export interface RawMaterialStock {
    * shipment makes the two differ, this is the one that describes the yard.
    */
   currentRawStockTon: number
+  /** Tons sold as finished bags, by final billable TON — all-time. */
+  finishedSaleTon: number
+  /** Imported − Finished sold (billable) − Direct raw sold − Wastage. Production is not subtracted. */
+  rawProductBalanceTon: number
   availableTon: number
   /** This material's current cycle — the latest shipment's opening balance, or 0 with no shipments yet. */
   openingTon: number
@@ -185,8 +189,17 @@ export interface RawStockSummary {
   wastageTon: number
   /** Tons sold as raw material (weighbridge net), within the window — never production. */
   rawSaleTon: number
-  /** The headline: tons physically available right now (or at the window's end). */
+  /** Loose raw material physically in the yard right now (or at the window's end) — what entries are guarded by. */
   currentRawStockTon: number
+  /** Tons sold as finished bags, by each line's final billable TON, within the window. */
+  finishedSaleTon: number
+  /** Raw Product Balance the day before the window opens — 0 when there is no `from`. */
+  openingBalanceTon: number
+  /**
+   * The headline: Imported − Finished sold (billable) − Direct raw sold − Wastage.
+   * Production is not subtracted, so this includes raw material sitting in unsold finished bags.
+   */
+  rawProductBalanceTon: number
   /** Weighted average of priced imports — undefined if nothing has been priced yet. */
   averageCostPerTon?: number
   shipmentCount: number

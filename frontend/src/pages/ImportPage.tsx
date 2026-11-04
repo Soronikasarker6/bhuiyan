@@ -38,7 +38,7 @@ import {
 import { downloadTextFile } from '@/utils/download'
 import { formatDate, formatNumber, formatTons, todayISO } from '@/utils/format'
 import { now, uid } from '@/utils/id'
-import { rawMaterialSaleMovements } from '@/utils/sales'
+import { finishedSaleMovements, rawMaterialSaleMovements } from '@/utils/sales'
 
 const ALL = '__all__'
 
@@ -56,6 +56,11 @@ export default function ImportPage() {
   const { data, loading, update, updateMany, updateRawMaterialImport, reverseStockEntry, reopenShipmentCycle } = useAppData()
   // Raw material sold straight from the yard — subtracted from raw stock beside production and wastage, never as either.
   const rawSales = useMemo(() => rawMaterialSaleMovements(data.sales, data.saleItems), [data.sales, data.saleItems])
+  // Finished sales by final billable TON — what the Raw Product Balance subtracts.
+  const finishedSales = useMemo(
+    () => finishedSaleMovements(data.sales, data.saleItems, data.meshSizes),
+    [data.sales, data.saleItems, data.meshSizes],
+  )
   const { print } = usePrint()
   const canCreate = usePermission(PERMISSIONS.RAW_MATERIAL_CREATE)
   const [productFilter, setProductFilter] = useState(ALL)
@@ -88,8 +93,8 @@ export default function ImportPage() {
     [data.rawMaterialImports],
   )
 
-  // §1/§5 — Total Imported − Production − Wastage = Current Raw Stock, per
-  // limestone type, honouring the type and date-range filters above.
+  // §1/§5 — Raw Product Balance (Imported − Finished sold − Direct raw sold −
+  // Wastage) and loose yard stock, per limestone type, honouring the filters above.
   const rawStock = useMemo(
     () =>
       allRawStockSummaries(
@@ -101,8 +106,9 @@ export default function ImportPage() {
         from || undefined,
         to || undefined,
         rawSales,
+        finishedSales,
       ),
-    [products, productFilter, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes, from, to, rawSales],
+    [products, productFilter, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes, from, to, rawSales, finishedSales],
   )
 
   // The live, all-time position — what the entry forms must validate against,
@@ -117,8 +123,9 @@ export default function ImportPage() {
         data.productionEntries,
         (meshId) => bagKgOf(data.meshSizes, meshId),
         rawSales,
+        finishedSales,
       ),
-    [data.products, data.shipmentCycles, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes, rawSales],
+    [data.products, data.shipmentCycles, data.rawMaterialImports, data.wastageEntries, data.productionEntries, data.meshSizes, rawSales, finishedSales],
   )
 
   // §2/§3 — one row per shipment cycle, never one per import.
@@ -534,7 +541,7 @@ export default function ImportPage() {
           Never combined into a single blended figure. */}
       <Section
         title="Raw Material Stock"
-        description="Total imported, less what went into production and what was lost — per limestone type."
+        description="Total imported, less everything sold (as finished bags or loose) and lost — per limestone type."
         className="mb-4"
         actions={
           <div className="flex items-center gap-2">
@@ -572,8 +579,10 @@ export default function ImportPage() {
         <p className="mt-2.5 text-2xs text-muted-foreground">
           {from || to
             ? 'Movements within the selected period, opening the window at whatever was already on hand.'
-            : 'Everything ever received, less everything that has left the yard — what is physically there right now.'}{' '}
-          Closing = Opening + Imported − Used in production − Direct raw material sales − Wastage. Finished-bag sales are not included, so these figures will not match the Sales Report.
+            : 'Everything ever received, less everything sold or lost.'}{' '}
+          Raw product balance = Opening + Imported − Finished product sold (billable TON, as on the invoice) − Direct raw material sales − Wastage.
+          Production is not deducted — it converts raw material into bags without selling it — so the balance includes unsold finished bags.
+          Loose raw in yard additionally deducts what was used in production; entries are checked against it.
         </p>
       </Section>
 

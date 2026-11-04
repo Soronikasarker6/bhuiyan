@@ -176,6 +176,32 @@ export function currentRawStockTon(
   )
 }
 
+/**
+ * Raw Product Balance — the unsold raw-material-equivalent quantity:
+ *
+ *     Imported − Finished sold (billable TON) − Direct raw sold (net TON) − Wastage
+ *
+ * Production is not subtracted (bagging converts, it does not sell), so this
+ * includes raw material sitting in unsold finished bags. It is the headline,
+ * not a physical limit — entries stay guarded by `currentRawStockTon`.
+ * Mirrors `InventoryService::rawProductBalance()`.
+ */
+export function rawProductBalanceTon(
+  productId: ID,
+  imports: RawMaterialImport[],
+  wastage: WastageEntry[],
+  asOf?: ISODate,
+  rawSales: RawMaterialSaleMovement[] = [],
+  finishedSales: RawMaterialSaleMovement[] = [],
+): number {
+  return (
+    importedTonOf(productId, imports, undefined, asOf) -
+    rawSaleTonOf(productId, finishedSales, undefined, asOf) -
+    rawSaleTonOf(productId, rawSales, undefined, asOf) -
+    wastageTonOf(productId, wastage, undefined, asOf)
+  )
+}
+
 /** The day before `date`, as an ISO string — the cut-off an opening balance is taken at. */
 function dayBefore(date: ISODate): ISODate {
   const d = new Date(`${date}T00:00:00`)
@@ -203,10 +229,15 @@ export function rawStockSummary(
   from?: ISODate,
   to?: ISODate,
   rawSales: RawMaterialSaleMovement[] = [],
+  finishedSales: RawMaterialSaleMovement[] = [],
 ): RawStockSummary {
   const openingTon = from
     ? currentRawStockTon(productId, imports, wastage, productionEntries, bagKgOf, dayBefore(from), rawSales)
     : 0
+  const openingBalanceTon = from
+    ? rawProductBalanceTon(productId, imports, wastage, dayBefore(from), rawSales, finishedSales)
+    : 0
+  const finishedSaleTon = rawSaleTonOf(productId, finishedSales, from, to)
 
   const importedTon = importedTonOf(productId, imports, from, to)
   const productionTon = producedTonOf(productId, productionEntries, bagKgOf, from, to)
@@ -222,6 +253,9 @@ export function rawStockSummary(
     wastageTon,
     rawSaleTon,
     currentRawStockTon: openingTon + importedTon - productionTon - wastageTon - rawSaleTon,
+    finishedSaleTon,
+    openingBalanceTon,
+    rawProductBalanceTon: openingBalanceTon + importedTon - finishedSaleTon - rawSaleTon - wastageTon,
     averageCostPerTon: averageCostPerTon(productId, imports),
     // Counted over the same window as the movements above, so the card never
     // captions period figures with an all-time shipment count.
@@ -239,9 +273,10 @@ export function allRawStockSummaries(
   from?: ISODate,
   to?: ISODate,
   rawSales: RawMaterialSaleMovement[] = [],
+  finishedSales: RawMaterialSaleMovement[] = [],
 ): RawStockSummary[] {
   return products.map((p) =>
-    rawStockSummary(p.id, products, imports, wastage, productionEntries, bagKgOf, from, to, rawSales),
+    rawStockSummary(p.id, products, imports, wastage, productionEntries, bagKgOf, from, to, rawSales, finishedSales),
   )
 }
 
@@ -254,8 +289,10 @@ export function rawMaterialStock(
   productionEntries: ProductionEntry[],
   bagKgOf: (meshId: ID) => number,
   rawSales: RawMaterialSaleMovement[] = [],
+  finishedSales: RawMaterialSaleMovement[] = [],
 ): RawMaterialStock {
   const importedTon = importedTonOf(productId, imports)
+  const finishedSaleTon = rawSaleTonOf(productId, finishedSales)
   const wastageTon = wastageTonOf(productId, wastage)
   const producedTon = producedTonOf(productId, productionEntries, bagKgOf)
   const rawSaleTon = rawSaleTonOf(productId, rawSales)
@@ -283,6 +320,8 @@ export function rawMaterialStock(
     producedTon,
     rawSaleTon,
     currentRawStockTon: importedTon - producedTon - wastageTon - rawSaleTon,
+    finishedSaleTon,
+    rawProductBalanceTon: importedTon - finishedSaleTon - rawSaleTon - wastageTon,
     availableTon: closingTon,
     openingTon,
     receivedTon,
@@ -304,9 +343,10 @@ export function allRawMaterialStock(
   productionEntries: ProductionEntry[],
   bagKgOf: (meshId: ID) => number,
   rawSales: RawMaterialSaleMovement[] = [],
+  finishedSales: RawMaterialSaleMovement[] = [],
 ): RawMaterialStock[] {
   return products.map((p) =>
-    rawMaterialStock(p.id, products, shipmentCycles, imports, wastage, productionEntries, bagKgOf, rawSales),
+    rawMaterialStock(p.id, products, shipmentCycles, imports, wastage, productionEntries, bagKgOf, rawSales, finishedSales),
   )
 }
 

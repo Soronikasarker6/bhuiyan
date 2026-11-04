@@ -181,6 +181,31 @@ class InventoryService
     }
 
     /**
+     * Raw Product Balance — the unsold raw-material-equivalent quantity:
+     *
+     *     Total Imported − Finished Product Sold (billable TON) − Direct Raw Sold (net TON) − Wastage
+     *
+     * Production is deliberately NOT subtracted: bagging only converts raw
+     * material into finished bags, it sells nothing. So this balance covers both
+     * the loose raw material in the yard and whatever sits in unsold finished
+     * bags. It is the business's headline figure, but not a physical limit —
+     * currentRawStock() above remains the yard figure every entry is guarded by.
+     *
+     * Each outflow is a separate record and counted once: a finished sale line
+     * by its final billable TON (the same figure as the invoice), a raw sale by
+     * its net TON, a wastage entry by its own weight.
+     */
+    public function rawProductBalance(int $productId, ?string $asOf = null): float
+    {
+        return $this->round(
+            $this->importedTon($productId, null, $asOf)
+            - $this->finishedSaleTon($productId, null, $asOf)
+            - $this->rawSaleTon($productId, null, $asOf)
+            - $this->wastageTon($productId, null, $asOf)
+        );
+    }
+
+    /**
      * Current raw stock for one material, broken into the figures the stock card
      * shows, optionally over a date window.
      *
@@ -200,9 +225,10 @@ class InventoryService
     {
         $product = Product::findOrFail($productId);
 
-        $opening = $from
-            ? $this->currentRawStock($productId, Carbon::parse($from)->subDay()->toDateString())
-            : 0.0;
+        $dayBefore = $from ? Carbon::parse($from)->subDay()->toDateString() : null;
+        $opening = $dayBefore ? $this->currentRawStock($productId, $dayBefore) : 0.0;
+        $openingBalance = $dayBefore ? $this->rawProductBalance($productId, $dayBefore) : 0.0;
+        $finishedSale = $this->finishedSaleTon($productId, $from, $to);
 
         $imported = $this->importedTon($productId, $from, $to);
         $production = $this->productionTon($productId, $from, $to);
@@ -218,6 +244,9 @@ class InventoryService
             'wastage_ton' => $this->round($wastage),
             'raw_sale_ton' => $this->round($rawSale),
             'current_raw_stock_ton' => $this->round($opening + $imported - $production - $wastage - $rawSale),
+            'finished_sale_ton' => $this->round($finishedSale),
+            'opening_balance_ton' => $this->round($openingBalance),
+            'raw_product_balance_ton' => $this->round($openingBalance + $imported - $finishedSale - $rawSale - $wastage),
             // Counted over the same window as the movements above, so a period
             // view never captions its figures with an all-time shipment count.
             'shipment_count' => $this->betweenDates(
@@ -296,6 +325,30 @@ class InventoryService
         }
 
         return (float) $sold->sum('sale_items.actual_weight_ton') - (float) $returned->sum('sale_items.actual_weight_ton');
+    }
+
+    /**
+     * Tons of this material sold as finished bags, by sale date: each line's
+     * final billable TON — the edited Actual TON when one was entered at
+     * invoicing, else bags × bag weight — exactly what the invoice and the
+     * Sales Report bill. Finished sales are corrected by edit or delete, never
+     * reversed, so the live lines are the whole story.
+     */
+    private function finishedSaleTon(int $productId, ?string $from = null, ?string $to = null): float
+    {
+        $query = SaleItem::with('meshSize')
+            ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+            ->where('sale_items.product_id', $productId)
+            ->where(fn ($q) => $q->whereNull('sales.sale_type')->orWhere('sales.sale_type', '!=', Sale::TYPE_RAW_MATERIAL))
+            ->select('sale_items.*');
+        if ($from) {
+            $query->where('sales.date', '>=', $from);
+        }
+        if ($to) {
+            $query->where('sales.date', '<=', $to);
+        }
+
+        return (float) $query->get()->sum(fn (SaleItem $item) => $item->billableWeightTon());
     }
 
     private function rawSaleItems(int $productId)
@@ -405,6 +458,7 @@ class InventoryService
         $wastageTon = $this->wastageTon($productId);
         $producedTon = $this->productionTon($productId);
         $rawSoldTon = $this->rawSaleTon($productId);
+        $finishedSoldTon = $this->finishedSaleTon($productId);
 
         $latest = $cycles->last();
         if ($latest) {
@@ -430,6 +484,8 @@ class InventoryService
             'produced_ton' => $this->round($producedTon),
             'raw_sale_ton' => $this->round($rawSoldTon),
             'current_raw_stock_ton' => $this->round($importedTon - $producedTon - $wastageTon - $rawSoldTon),
+            'finished_sale_ton' => $this->round($finishedSoldTon),
+            'raw_product_balance_ton' => $this->round($importedTon - $finishedSoldTon - $rawSoldTon - $wastageTon),
             'available_ton' => $this->round($closing),
             'opening_ton' => $this->round($opening),
             'received_ton' => $this->round($received),
