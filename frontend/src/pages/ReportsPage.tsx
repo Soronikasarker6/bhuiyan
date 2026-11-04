@@ -478,7 +478,7 @@ export default function ReportsPage() {
               { key: 'closing', label: 'Closing / Available (Ton)', align: 'right' },
               { key: 'imported', label: 'Imported All-Time (Ton)', align: 'right' },
               { key: 'finishedSold', label: 'Finished Sold, Billable (Ton)', align: 'right' },
-              { key: 'balance', label: 'Raw Product Balance (Ton)', align: 'right' },
+              { key: 'balance', label: 'Current Raw Product Balance (Ton)', align: 'right' },
               { key: 'avgCost', label: 'Avg. Cost/Ton', align: 'right' },
             ],
             rows: rows.map((s) => ({
