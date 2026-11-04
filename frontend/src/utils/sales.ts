@@ -110,7 +110,13 @@ export function finishedSaleMovements(sales: Sale[], saleItems: SaleItem[], mesh
     const sale = finished.get(item.saleId)
     if (!sale) return []
     const calculated = saleItemWeightTon(item.bags, item.meshSizeId ? bagKgOf(meshSizes, item.meshSizeId) : 0)
-    return [{ saleId: sale.id, productId: item.productId, date: sale.date, ton: billableWeightTon(calculated, item.actualWeightTon) }]
+    return [{
+      saleId: sale.id,
+      productId: item.productId,
+      date: sale.date,
+      ton: billableWeightTon(calculated, item.actualWeightTon),
+      bagTon: calculated,
+    }]
   })
 }
 

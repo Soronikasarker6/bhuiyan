@@ -247,6 +247,7 @@ class InventoryService
             'finished_sale_ton' => $this->round($finishedSale),
             'opening_balance_ton' => $this->round($openingBalance),
             'raw_product_balance_ton' => $this->round($openingBalance + $imported - $finishedSale - $rawSale - $wastage),
+            ...$this->breakdownFields($productId, $to),
             // Counted over the same window as the movements above, so a period
             // view never captions its figures with an all-time shipment count.
             'shipment_count' => $this->betweenDates(
@@ -255,6 +256,17 @@ class InventoryService
             'from' => $from,
             'to' => $to,
             'average_cost_per_ton' => $this->averageCostPerTon($productId),
+        ];
+    }
+
+    /** balanceBreakdown(), minus loose_ton (already reported as current_raw_stock_ton). */
+    private function breakdownFields(int $productId, ?string $asOf = null): array
+    {
+        $breakdown = $this->balanceBreakdown($productId, $asOf);
+
+        return [
+            'unsold_finished_ton' => $breakdown['unsold_finished_ton'],
+            'billing_adjustment_ton' => $breakdown['billing_adjustment_ton'],
         ];
     }
 
@@ -349,6 +361,57 @@ class InventoryService
         }
 
         return (float) $query->get()->sum(fn (SaleItem $item) => $item->billableWeightTon());
+    }
+
+    /**
+     * Finished sale lines by their bags × bag weight — the raw-material
+     * equivalent of the bags that left finished stock. Unlike the billable
+     * TON this never depends on a billing edit, so it is directly comparable
+     * with production (also bags × bag weight, mesh by mesh).
+     */
+    private function finishedSaleBagTon(int $productId, ?string $from = null, ?string $to = null): float
+    {
+        $query = SaleItem::with('meshSize')
+            ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+            ->where('sale_items.product_id', $productId)
+            ->whereNotNull('sale_items.mesh_size_id')
+            ->where(fn ($q) => $q->whereNull('sales.sale_type')->orWhere('sales.sale_type', '!=', Sale::TYPE_RAW_MATERIAL))
+            ->select('sale_items.*');
+        if ($from) {
+            $query->where('sales.date', '>=', $from);
+        }
+        if ($to) {
+            $query->where('sales.date', '<=', $to);
+        }
+
+        return (float) $query->get()->sum(fn (SaleItem $item) => ((float) $item->bags * (float) $item->meshSize->bag_kg) / 1000);
+    }
+
+    /**
+     * How the Current Raw Product Balance splits, as of a date (end of day):
+     *
+     *   loose_ton              — raw material in the yard, never bagged
+     *   unsold_finished_ton    — bags still in finished stock, at each mesh's
+     *                            bag weight (produced bags − sold bags, × bag kg)
+     *   billing_adjustment_ton — billable TON invoiced beyond (or below) the
+     *                            bags' own weight; 0 unless an invoice's Actual
+     *                            TON was edited away from bags × bag weight
+     *
+     *   loose + unsold_finished − billing_adjustment = Current Raw Product Balance
+     *
+     * @return array{loose_ton: float, unsold_finished_ton: float, billing_adjustment_ton: float}
+     */
+    public function balanceBreakdown(int $productId, ?string $asOf = null): array
+    {
+        $produced = $this->productionTon($productId, null, $asOf);
+        $soldByBags = $this->finishedSaleBagTon($productId, null, $asOf);
+        $soldBillable = $this->finishedSaleTon($productId, null, $asOf);
+
+        return [
+            'loose_ton' => $this->currentRawStock($productId, $asOf),
+            'unsold_finished_ton' => $this->round($produced - $soldByBags),
+            'billing_adjustment_ton' => $this->round($soldBillable - $soldByBags),
+        ];
     }
 
     private function rawSaleItems(int $productId)
@@ -486,6 +549,7 @@ class InventoryService
             'current_raw_stock_ton' => $this->round($importedTon - $producedTon - $wastageTon - $rawSoldTon),
             'finished_sale_ton' => $this->round($finishedSoldTon),
             'raw_product_balance_ton' => $this->round($importedTon - $finishedSoldTon - $rawSoldTon - $wastageTon),
+            ...$this->breakdownFields($productId),
             'available_ton' => $this->round($closing),
             'opening_ton' => $this->round($opening),
             'received_ton' => $this->round($received),
