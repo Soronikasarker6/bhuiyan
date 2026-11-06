@@ -73,7 +73,7 @@ export interface SaleInput {
   accountId?: ID
   items: SaleItemInput[]
   /** Raw material sales only: the material, its net weight in kg as entered at billing, and the rate. */
-  rawMaterial?: { productId: ID; netWeightKg: number; ratePerTon: number }
+  rawMaterial?: { productId: ID; netWeightKg: number; ratePerTon: number; grossWeightKg?: number; tareWeightKg?: number }
 }
 
 /**
@@ -310,6 +310,8 @@ function useLocalAppData(): AppDataValue {
         customerId: input.customerId,
         saleType: input.saleType ?? ('finished_product' as SaleType),
         truckNo: input.truckNo,
+        grossWeightKg: input.saleType === 'raw_material' ? input.rawMaterial?.grossWeightKg ?? null : null,
+        tareWeightKg: input.saleType === 'raw_material' ? input.rawMaterial?.tareWeightKg ?? null : null,
         notes: input.notes,
         paidAtSale: input.paidAtSale ?? 0,
         createdAt: stamp,
@@ -410,6 +412,8 @@ function useLocalAppData(): AppDataValue {
         customerId: input.customerId,
         saleType: input.saleType ?? ('finished_product' as SaleType),
         truckNo: input.truckNo,
+        grossWeightKg: input.saleType === 'raw_material' ? input.rawMaterial?.grossWeightKg ?? null : null,
+        tareWeightKg: input.saleType === 'raw_material' ? input.rawMaterial?.tareWeightKg ?? null : null,
         notes: input.notes,
         paidAtSale: input.paidAtSale ?? 0,
       }

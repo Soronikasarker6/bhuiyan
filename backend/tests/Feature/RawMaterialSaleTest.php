@@ -122,6 +122,94 @@ class RawMaterialSaleTest extends TestCase
             ->assertJsonPath('items.0.product_name', 'Vietnam White Limestone');
     }
 
+    // ------------------------------------------------- optional weighbridge
+
+    public function test_sale_with_gross_and_tare_stores_them_but_bills_the_edited_net(): void
+    {
+        // Gross − tare = 20,500 kg, edited down to 20,000 kg for billing.
+        $saleId = $this->postJson('/api/sales', $this->payload([
+            'gross_weight_kg' => 32_500, 'tare_weight_kg' => 12_000, 'net_weight_kg' => 20_000,
+        ]))
+            ->assertCreated()
+            ->assertJsonPath('gross_weight_kg', 32500)
+            ->assertJsonPath('tare_weight_kg', 12000)
+            ->assertJsonPath('total_weight_ton', 20)
+            ->assertJsonPath('total_amount', 60000)
+            ->json('id');
+
+        $this->assertEqualsWithDelta(155, $this->stock(), 0.0001, 'stock comes off the edited net, not gross − tare');
+        $this->assertEqualsWithDelta(60_000, $this->balance(), 0.001, 'ledger uses the edited net');
+        $this->assertEqualsWithDelta(20, Sale::find($saleId)->items()->sole()->actual_weight_ton, 0.00001);
+
+        $this->getJson('/api/reports/sales?sale_type=raw_material')->assertOk()
+            ->assertJsonPath('rows.0.total', 60000);
+    }
+
+    public function test_sale_with_only_net_weight_leaves_gross_and_tare_empty(): void
+    {
+        $saleId = $this->postJson('/api/sales', $this->payload(['gross_weight_kg' => null, 'tare_weight_kg' => '']))
+            ->assertCreated()
+            ->assertJsonPath('total_amount', 60000)
+            ->json('id');
+
+        $sale = Sale::find($saleId);
+        $this->assertNull($sale->gross_weight_kg);
+        $this->assertNull($sale->tare_weight_kg);
+        $this->assertEqualsWithDelta(155, $this->stock(), 0.0001);
+    }
+
+    public function test_editing_can_add_and_clear_weighbridge_readings(): void
+    {
+        $saleId = $this->postJson('/api/sales', $this->payload())->json('id');
+
+        $this->putJson("/api/sales/{$saleId}", $this->payload(['gross_weight_kg' => 30_000, 'tare_weight_kg' => 10_000]))
+            ->assertOk()->assertJsonPath('gross_weight_kg', 30000)->assertJsonPath('total_amount', 60000);
+
+        $this->putJson("/api/sales/{$saleId}", $this->payload())->assertOk()->assertJsonPath('gross_weight_kg', null);
+    }
+
+    public function test_rejects_invalid_weighbridge_readings(): void
+    {
+        $this->postJson('/api/sales', $this->payload(['gross_weight_kg' => -1, 'tare_weight_kg' => 0]))
+            ->assertUnprocessable()->assertJsonValidationErrors('gross_weight_kg');
+        $this->postJson('/api/sales', $this->payload(['gross_weight_kg' => 30_000, 'tare_weight_kg' => -5]))
+            ->assertUnprocessable()->assertJsonValidationErrors('tare_weight_kg');
+        $this->postJson('/api/sales', $this->payload(['gross_weight_kg' => 10_000, 'tare_weight_kg' => 10_000]))
+            ->assertUnprocessable()->assertJsonValidationErrors('gross_weight_kg');
+        $this->postJson('/api/sales', $this->payload(['gross_weight_kg' => 30_000]))
+            ->assertUnprocessable()->assertJsonValidationErrors('tare_weight_kg');
+        $this->postJson('/api/sales', $this->payload(['tare_weight_kg' => 10_000]))
+            ->assertUnprocessable()->assertJsonValidationErrors('gross_weight_kg');
+        $this->postJson('/api/sales', $this->payload(['gross_weight_kg' => 30_000, 'tare_weight_kg' => 10_000, 'net_weight_kg' => 0]))
+            ->assertUnprocessable()->assertJsonValidationErrors('net_weight_kg');
+
+        $this->assertSame(0, Sale::count());
+    }
+
+    public function test_finished_product_sales_never_store_gross_or_tare(): void
+    {
+        ProductionEntry::create(['date' => '2026-01-02', 'product_id' => $this->white->id, 'mesh_id' => $this->mesh->id, 'bags' => 300]);
+
+        $saleId = $this->postJson('/api/sales', [
+            'sale_type' => 'finished_product', 'date' => '2026-02-01', 'customer_id' => $this->customer->id,
+            'gross_weight_kg' => 30_000, 'tare_weight_kg' => 10_000,
+            'items' => [['product_id' => $this->white->id, 'mesh_size_id' => $this->mesh->id, 'bags' => 100, 'rate_per_ton' => 2_000]],
+        ])->assertCreated()->json('id');
+
+        $this->assertNull(Sale::find($saleId)->gross_weight_kg);
+        $this->assertNull(Sale::find($saleId)->tare_weight_kg);
+    }
+
+    public function test_an_older_sale_without_readings_still_edits_by_net_weight(): void
+    {
+        $saleId = $this->postJson('/api/sales', $this->payload())->json('id');
+        Sale::whereKey($saleId)->update(['gross_weight_kg' => null, 'tare_weight_kg' => null]);
+
+        $this->putJson("/api/sales/{$saleId}", $this->payload(['net_weight_kg' => 25_000]))
+            ->assertOk()->assertJsonPath('gross_weight_kg', null)->assertJsonPath('total_amount', 75000);
+        $this->assertEqualsWithDelta(150, $this->stock(), 0.0001);
+    }
+
     public function test_ton_keeps_decimal_precision(): void
     {
         // 5,137.35 kg = 5.13735 Ton @ 2,000 = 10,274.70

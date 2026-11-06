@@ -34,6 +34,11 @@ class StoreSaleRequest extends FormRequest
             'product_id' => ['required', 'exists:products,id'],
             'net_weight_kg' => ['required', 'numeric', 'gt:0'],
             'rate_per_ton' => ['required', 'numeric', 'gt:0'],
+            // Optional weighbridge readings — stored as a record only. The
+            // net weight above is what is billed and deducted, even when it
+            // was edited away from gross − tare.
+            'gross_weight_kg' => ['nullable', 'numeric', 'gte:0'],
+            'tare_weight_kg' => ['nullable', 'numeric', 'gte:0'],
         ] : [
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'exists:products,id'],
@@ -53,6 +58,10 @@ class StoreSaleRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
+            if ($this->isRawMaterial()) {
+                $this->validateWeighbridge($validator);
+            }
+
             $items = $this->isRawMaterial() ? [] : $this->input('items', []);
             $total = 0.0;
             foreach ($items as $item) {
@@ -78,5 +87,26 @@ class StoreSaleRequest extends FormRequest
                 $validator->errors()->add('paid_at_sale', 'Cannot collect more than the invoice total.');
             }
         });
+    }
+
+    /**
+     * Gross and tare go together: one without the other cannot give a net,
+     * so it is refused rather than half-recorded. When both are present the
+     * truck must weigh more loaded than empty.
+     */
+    private function validateWeighbridge($validator): void
+    {
+        $gross = $this->input('gross_weight_kg');
+        $tare = $this->input('tare_weight_kg');
+        $hasGross = $gross !== null && $gross !== '';
+        $hasTare = $tare !== null && $tare !== '';
+
+        if ($hasGross && ! $hasTare) {
+            $validator->errors()->add('tare_weight_kg', 'Enter the tare weight too, or clear the gross weight.');
+        } elseif ($hasTare && ! $hasGross) {
+            $validator->errors()->add('gross_weight_kg', 'Enter the gross weight too, or clear the tare weight.');
+        } elseif ($hasGross && $hasTare && is_numeric($gross) && is_numeric($tare) && (float) $gross <= (float) $tare) {
+            $validator->errors()->add('gross_weight_kg', 'Gross weight must be more than tare weight.');
+        }
     }
 }

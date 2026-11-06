@@ -30,6 +30,7 @@ import {
   nextInvoiceNo,
   standingSales,
   rawMaterialSaleMovements,
+  optionalKg,
   saleBilledNetKg,
   SALE_TYPE_LABEL,
 } from '@/utils/sales'
@@ -177,7 +178,13 @@ export default function SalesPage() {
       paidAtSale,
       accountId: paidAtSale > 0 ? values.accountId : undefined,
       items: [],
-      rawMaterial: { productId: values.productId, netWeightKg: Number(values.netWeightKg), ratePerTon: Number(values.ratePerTon) },
+      rawMaterial: {
+        productId: values.productId,
+        netWeightKg: Number(values.netWeightKg),
+        ratePerTon: Number(values.ratePerTon),
+        grossWeightKg: optionalKg(values.grossWeightKg),
+        tareWeightKg: optionalKg(values.tareWeightKg),
+      },
     }
   }
 
@@ -331,6 +338,8 @@ export default function SalesPage() {
       customerId: editing.customerId,
       productId: line?.productId ?? '',
       truckNo: editing.truckNo ?? '',
+      grossWeightKg: editing.grossWeightKg ?? ('' as unknown as number),
+      tareWeightKg: editing.tareWeightKg ?? ('' as unknown as number),
       // The net weight it was billed on — the line's stored billable ton, in kg.
       netWeightKg: saleBilledNetKg(editing) ?? ('' as unknown as number),
       ratePerTon: line?.ratePerTon ?? ('' as unknown as number),

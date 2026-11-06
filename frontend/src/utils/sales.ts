@@ -559,3 +559,40 @@ export function salesByMeshSize(
     .map(([meshSizeName, v]) => ({ meshSizeName, ...v }))
     .sort((a, b) => b.amount - a.amount)
 }
+
+/** A blank optional number input — `''`, null or undefined all mean "not entered". */
+function isBlankKg(value: unknown): boolean {
+  return value === undefined || value === null || (typeof value === 'string' && value.trim() === '')
+}
+
+export type WeighbridgeCheck =
+  | { status: 'blank' }
+  | { status: 'ok'; netKg: number }
+  | { status: 'invalid'; field: 'grossWeightKg' | 'tareWeightKg'; message: string }
+
+/**
+ * Optional gross/tare on a raw material sale. Both blank is fine (net weight
+ * is entered directly). One without the other, a negative reading, or a tare
+ * that is not lighter than the gross is reported — never silently turned
+ * into a net. `netKg` is only a suggestion for the editable Net Weight field;
+ * the final net weight, not this, is what gets billed and deducted.
+ */
+export function checkWeighbridge(gross: unknown, tare: unknown): WeighbridgeCheck {
+  const hasGross = !isBlankKg(gross)
+  const hasTare = !isBlankKg(tare)
+  if (!hasGross && !hasTare) return { status: 'blank' }
+
+  const g = Number(gross)
+  const t = Number(tare)
+  if (hasGross && (!Number.isFinite(g) || g < 0)) return { status: 'invalid', field: 'grossWeightKg', message: 'Gross weight cannot be negative.' }
+  if (hasTare && (!Number.isFinite(t) || t < 0)) return { status: 'invalid', field: 'tareWeightKg', message: 'Tare weight cannot be negative.' }
+  if (!hasTare) return { status: 'invalid', field: 'tareWeightKg', message: 'Enter the tare weight too, or clear the gross weight.' }
+  if (!hasGross) return { status: 'invalid', field: 'grossWeightKg', message: 'Enter the gross weight too, or clear the tare weight.' }
+  if (g <= t) return { status: 'invalid', field: 'grossWeightKg', message: 'Gross weight must be more than tare weight.' }
+  return { status: 'ok', netKg: Math.round((g - t) * 100) / 100 }
+}
+
+/** The optional kg value to send/store: a number, or undefined when left blank. */
+export function optionalKg(value: unknown): number | undefined {
+  return isBlankKg(value) ? undefined : Number(value)
+}

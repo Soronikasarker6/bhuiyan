@@ -26,7 +26,7 @@ export interface SaleInput {
   accountId?: ID
   items: SaleItemInput[]
   /** Raw material sales only: the material, its net weight in kg as entered at billing, and the rate. */
-  rawMaterial?: { productId: ID; netWeightKg: number; ratePerTon: number }
+  rawMaterial?: { productId: ID; netWeightKg: number; ratePerTon: number; grossWeightKg?: number; tareWeightKg?: number }
 }
 
 function toPayload(data: SaleInput) {
@@ -38,6 +38,8 @@ function toPayload(data: SaleInput) {
       product_id: data.rawMaterial.productId,
       net_weight_kg: data.rawMaterial.netWeightKg,
       rate_per_ton: data.rawMaterial.ratePerTon,
+      gross_weight_kg: data.rawMaterial.grossWeightKg ?? null,
+      tare_weight_kg: data.rawMaterial.tareWeightKg ?? null,
       truck_no: data.truckNo,
       notes: data.notes,
       paid_at_sale: data.paidAtSale ?? 0,

@@ -17,6 +17,9 @@ export interface Sale {
   /** Absent on data recorded before sale types existed — read as `finished_product` (see `saleTypeOf`). */
   saleType?: SaleType
   truckNo?: string
+  /** Raw material sales only: optional weighbridge readings, kept as a record. Never billed — the line's net weight is. */
+  grossWeightKg?: number | null
+  tareWeightKg?: number | null
   notes?: string
   /** Collected at the moment of sale — a real input, not a derived figure. */
   paidAtSale: number
