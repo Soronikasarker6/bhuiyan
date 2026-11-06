@@ -25,7 +25,7 @@ class Sale extends Model
     /** The stock IN row a reversed raw material sale posts on its reversal date. */
     public const TYPE_RAW_MATERIAL_REVERSAL_SOURCE = 'raw_material_sale_reversal';
 
-    protected $fillable = ['invoice_no', 'date', 'customer_id', 'sale_type', 'truck_no', 'notes', 'paid_at_sale',
+    protected $fillable = ['invoice_no', 'date', 'customer_id', 'sale_type', 'truck_no', 'gross_weight_kg', 'tare_weight_kg', 'notes', 'paid_at_sale',
         'reversed_on', 'reversed_at', 'reversed_by_user_id', 'reversal_reason'];
 
     protected function casts(): array
@@ -33,6 +33,8 @@ class Sale extends Model
         return [
             'date' => 'date:Y-m-d',
             'paid_at_sale' => 'float',
+            'gross_weight_kg' => 'float',
+            'tare_weight_kg' => 'float',
             'reversed_on' => 'date:Y-m-d',
             'reversed_at' => 'datetime',
         ];

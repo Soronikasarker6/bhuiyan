@@ -90,6 +90,8 @@ class SalesService
             'customer_id' => $payload['customer_id'],
             'sale_type' => $payload['sale_type'],
             'truck_no' => $payload['truck_no'] ?? null,
+            'gross_weight_kg' => $payload['gross_weight_kg'] ?? null,
+            'tare_weight_kg' => $payload['tare_weight_kg'] ?? null,
             'notes' => $payload['notes'] ?? null,
             'paid_at_sale' => $payload['paid_at_sale'] ?? 0,
         ]);
@@ -224,6 +226,8 @@ class SalesService
             'date' => $payload['date'],
             'customer_id' => $payload['customer_id'],
             'truck_no' => $payload['truck_no'] ?? null,
+            'gross_weight_kg' => $payload['gross_weight_kg'] ?? null,
+            'tare_weight_kg' => $payload['tare_weight_kg'] ?? null,
             'notes' => $payload['notes'] ?? null,
             'paid_at_sale' => $payload['paid_at_sale'] ?? 0,
         ]);
@@ -431,6 +435,10 @@ class SalesService
         }
 
         $payload['sale_type'] = Sale::TYPE_RAW_MATERIAL;
+        // Weighbridge readings are kept as a record only, never billed: the
+        // net weight above may have been edited away from gross − tare.
+        $payload['gross_weight_kg'] = $this->optionalKg($payload['gross_weight_kg'] ?? null);
+        $payload['tare_weight_kg'] = $this->optionalKg($payload['tare_weight_kg'] ?? null);
         $payload['items'] = [[
             'product_id' => (int) $payload['product_id'],
             'mesh_size_id' => null,
@@ -440,6 +448,11 @@ class SalesService
         ]];
 
         return $payload;
+    }
+
+    private function optionalKg(mixed $value): ?float
+    {
+        return $value === null || $value === '' ? null : round((float) $value, 2);
     }
 
     /** "INV-{year}-{seq}" — sequential within the year, never reused even after deletion. */

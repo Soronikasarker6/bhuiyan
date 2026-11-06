@@ -3,6 +3,8 @@ import type { Customer, MeshSize, Product, ProductionEntry, RawMaterialImport, S
 import {
   buildSaleSummaries,
   buildSaleTransactions,
+  checkWeighbridge,
+  optionalKg,
   filterSaleSummaries,
   isRawMaterialSale,
   rawMaterialSaleMovements,
@@ -218,5 +220,44 @@ describe('reports tell the two types apart', () => {
 
   it('keeps raw lines out of mesh-wise sales', () => {
     expect(salesByMeshSize(summaries).map((r) => r.meshSizeName)).toEqual(['250'])
+  })
+})
+
+describe('optional gross / tare weight', () => {
+  it('sale with gross and tare: prefills net, but the edited net is what is billed and deducted', () => {
+    const check = checkWeighbridge('32500', '12000')
+    expect(check).toEqual({ status: 'ok', netKg: 20_500 })
+
+    // Edited down to 20,000 kg at billing; gross/tare kept only as a record.
+    const [sale, item] = rawSale('w1', 20_000)
+    const recorded: Sale = { ...sale, grossWeightKg: optionalKg('32500'), tareWeightKg: optionalKg('12000') }
+    expect(recorded.grossWeightKg).toBe(32_500)
+    expect(saleBilledNetKg({ items: [item] })).toBe(20_000)
+    expect(currentRawStockTon('p1', imports, [], [], bagKg50, undefined, rawMaterialSaleMovements([recorded], [item]))).toBeCloseTo(155, 6)
+    const [summary] = buildSaleSummaries([recorded], [item], products, meshSizes, customers, [])
+    expect(summary.totalAmount).toBe(60_000)
+  })
+
+  it('sale with only net weight: gross and tare stay blank and nothing is forced', () => {
+    expect(checkWeighbridge('', '')).toEqual({ status: 'blank' })
+    expect(checkWeighbridge(undefined, null)).toEqual({ status: 'blank' })
+    expect(optionalKg('')).toBeUndefined()
+
+    const [sale, item] = rawSale('n1', 20_000)
+    expect(sale.grossWeightKg).toBeUndefined()
+    expect(currentRawStockTon('p1', imports, [], [], bagKg50, undefined, rawMaterialSaleMovements([sale], [item]))).toBeCloseTo(155, 6)
+  })
+
+  it('never calculates a net from incomplete or impossible readings', () => {
+    expect(checkWeighbridge('30000', '')).toMatchObject({ status: 'invalid', field: 'tareWeightKg' })
+    expect(checkWeighbridge('', '10000')).toMatchObject({ status: 'invalid', field: 'grossWeightKg' })
+    expect(checkWeighbridge('-1', '0')).toMatchObject({ status: 'invalid', field: 'grossWeightKg' })
+    expect(checkWeighbridge('30000', '-5')).toMatchObject({ status: 'invalid', field: 'tareWeightKg' })
+    expect(checkWeighbridge('10000', '10000')).toMatchObject({ status: 'invalid', field: 'grossWeightKg' })
+    expect(checkWeighbridge('9000', '10000')).toMatchObject({ status: 'invalid', field: 'grossWeightKg' })
+  })
+
+  it('keeps kg decimals — 25,137.35 − 20,000 = 5,137.35', () => {
+    expect(checkWeighbridge(25_137.35, 20_000)).toEqual({ status: 'ok', netKg: 5_137.35 })
   })
 })

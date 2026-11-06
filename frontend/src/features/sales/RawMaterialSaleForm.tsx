@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DatePicker } from '@/components/ui/date-picker'
 import { Money } from '@/components/Money'
 import { SaleTotalsSummary } from '@/features/sales/SaleTotalsSummary'
-import { saleItemAmount } from '@/utils/sales'
+import { checkWeighbridge, saleItemAmount } from '@/utils/sales'
 import { kgToTons } from '@/utils/imports'
 import { defaultCashAccountId } from '@/utils/ledger'
 import { customerDisplayLabel } from '@/utils/customerLedger'
@@ -22,7 +22,9 @@ import { formatCurrency, formatTons, todayISO } from '@/utils/format'
  * Record a raw material sale — raw limestone sold straight from the yard,
  * never through production.
  *
- *     Net Weight (KG)  — entered directly, and editable at billing
+ *     Gross / Tare (KG) — optional weighbridge readings, stored as a record
+ *     Net Weight (KG)  — prefilled from gross − tare when both are entered,
+ *                        or entered directly; always editable at billing
  *     Net Weight (TON) = Net Weight (KG) ÷ 1000
  *     Total Amount     = Net Weight (TON) × Rate / TON
  *
@@ -40,6 +42,9 @@ function buildSchema(availableTon: (productId: string) => number) {
       customerId: z.string().min(1, 'Choose a customer.'),
       productId: z.string().min(1, 'Choose the raw material.'),
       truckNo: z.string().max(40).optional(),
+      // Optional: '' means not entered. Checked together in superRefine.
+      grossWeightKg: z.union([z.literal(''), z.coerce.number()]).optional(),
+      tareWeightKg: z.union([z.literal(''), z.coerce.number()]).optional(),
       netWeightKg: z.coerce
         .number({ invalid_type_error: 'Enter the net weight in kg.' })
         .positive('Net weight must be more than zero.'),
@@ -49,6 +54,11 @@ function buildSchema(availableTon: (productId: string) => number) {
       notes: z.string().max(300).optional(),
     })
     .superRefine((values, ctx) => {
+      const weighbridge = checkWeighbridge(values.grossWeightKg, values.tareWeightKg)
+      if (weighbridge.status === 'invalid') {
+        ctx.addIssue({ code: 'custom', path: [weighbridge.field], message: weighbridge.message })
+      }
+
       const netKg = values.netWeightKg
       const available = availableTon(values.productId)
       if (kgToTons(netKg) > available + 1e-9) {
@@ -70,6 +80,9 @@ export type RawMaterialSaleValues = {
   customerId: string
   productId: string
   truckNo?: string
+  /** Optional weighbridge readings — stored, never billed. */
+  grossWeightKg?: number
+  tareWeightKg?: number
   /** Net weight in kg as entered at billing — becomes the line's billable ton. */
   netWeightKg: number
   ratePerTon: number
@@ -112,6 +125,8 @@ export function RawMaterialSaleForm({
     customerId: customers[0]?.id ?? '',
     productId: products[0]?.id ?? '',
     truckNo: '',
+    grossWeightKg: '' as unknown as number,
+    tareWeightKg: '' as unknown as number,
     netWeightKg: '' as unknown as number,
     ratePerTon: '' as unknown as number,
     paidAtSale: '' as unknown as number,
@@ -125,8 +140,10 @@ export function RawMaterialSaleForm({
     handleSubmit,
     watch,
     setValue,
+    getValues,
+    trigger,
     reset,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isSubmitted },
   } = useForm<RawMaterialSaleValues>({
     resolver: zodResolver(buildSchema(availableRawTon)),
     defaultValues: initialValues ?? blank(),
@@ -142,6 +159,27 @@ export function RawMaterialSaleForm({
   const netTon = netKg > 0 ? kgToTons(netKg) : 0
   const total = saleItemAmount(netTon, rate)
   const available = productId ? availableRawTon(productId) : 0
+
+  const weighbridge = checkWeighbridge(watch('grossWeightKg'), watch('tareWeightKg'))
+  const netEdited = weighbridge.status === 'ok' && netKg > 0 && Math.abs(netKg - weighbridge.netKg) > 0.001
+
+  // Gross − tare only *prefills* Net Weight, and only when one of them is
+  // typed. Editing Net Weight afterwards sticks until gross or tare changes.
+  const weighbridgeField = (name: 'grossWeightKg' | 'tareWeightKg') =>
+    register(name, {
+      onChange: () => {
+        const check = checkWeighbridge(getValues('grossWeightKg'), getValues('tareWeightKg'))
+        if (check.status === 'ok') setValue('netWeightKg', check.netKg, { shouldValidate: true })
+        if (isSubmitted) void trigger(['grossWeightKg', 'tareWeightKg'])
+      },
+    })
+
+  let netHint = 'Edit to the final billing quantity.'
+  if (weighbridge.status === 'ok') {
+    netHint = netEdited
+      ? `Edited from gross − tare (${weighbridge.netKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })} kg).`
+      : 'From gross − tare. Edit to the final billing quantity.'
+  }
 
   const submit = handleSubmit(async (values) => {
     await onSubmit(values)
@@ -222,8 +260,34 @@ export function RawMaterialSaleForm({
           <Scale className="h-3.5 w-3.5" aria-hidden />
           Weight
         </p>
-        <div className="grid gap-3 sm:grid-cols-3 sm:items-end">
-          <Field label="Net weight (kg)" error={errors.netWeightKg?.message} htmlFor={`${idPrefix}-net`} hint="Edit to the final billing quantity.">
+        <div className="grid gap-3 sm:grid-cols-3 sm:items-start">
+          <Field label="Gross weight (kg)" error={errors.grossWeightKg?.message} htmlFor={`${idPrefix}-gross`} hint="Optional — loaded truck">
+            <Input
+              id={`${idPrefix}-gross`}
+              type="number"
+              min={0}
+              step="0.01"
+              inputMode="decimal"
+              placeholder="Optional"
+              aria-invalid={Boolean(errors.grossWeightKg)}
+              {...weighbridgeField('grossWeightKg')}
+            />
+          </Field>
+
+          <Field label="Tare weight (kg)" error={errors.tareWeightKg?.message} htmlFor={`${idPrefix}-tare`} hint="Optional — empty truck">
+            <Input
+              id={`${idPrefix}-tare`}
+              type="number"
+              min={0}
+              step="0.01"
+              inputMode="decimal"
+              placeholder="Optional"
+              aria-invalid={Boolean(errors.tareWeightKg)}
+              {...weighbridgeField('tareWeightKg')}
+            />
+          </Field>
+
+          <Field label="Net weight (kg)" error={errors.netWeightKg?.message} htmlFor={`${idPrefix}-net`} hint={netHint}>
             <Input
               id={`${idPrefix}-net`}
               type="number"
@@ -231,10 +295,13 @@ export function RawMaterialSaleForm({
               step="0.01"
               inputMode="decimal"
               placeholder="20000"
+              aria-invalid={Boolean(errors.netWeightKg)}
               {...register('netWeightKg')}
             />
           </Field>
+        </div>
 
+        <div className="mt-3 grid gap-3 border-t border-border/60 pt-3 sm:grid-cols-3 sm:items-start">
           <Field label="Net weight (Ton)" hint="Billed and deducted from raw stock">
             <div className={readout}>{netTon > 0 ? formatTons(netTon) : '—'}</div>
           </Field>
