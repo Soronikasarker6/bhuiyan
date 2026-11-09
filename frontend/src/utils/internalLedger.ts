@@ -1,6 +1,8 @@
 import type { Customer, InternalLedgerRow, InternalLedgerSummary } from '@/types'
 import type { PrintPayload } from '@/features/reports/PrintSheet'
 import { formatCurrencyExact, formatDate } from '@/utils/format'
+import { balanceSummary } from '@/utils/amountInWords'
+import { customerPartyPrint } from '@/utils/customerLedger'
 
 /**
  * Presentation helpers for the owner's private bookkeeping ledger.
@@ -59,9 +61,16 @@ export function buildInternalLedgerPrintPayload(context: InternalLedgerPrintCont
   if (type) meta.push({ label: 'Showing', value: type === 'debit' ? 'Debit entries only' : 'Credit entries only' })
   if (search) meta.push({ label: 'Search', value: search })
 
+  // Dr (positive) = Due, Cr (negative) = Advance; paisa kept, as this ledger records them.
+  const closing = balanceSummary(summary.closingBalance, { paisa: true })
+
   return {
     title: 'Customer Ledger (Private)',
-    subtitle: `${rows.length} ${rows.length === 1 ? 'entry' : 'entries'}${customer ? ` · ${customer.name}` : ''}`,
+    party: customer ? customerPartyPrint(customer) : undefined,
+    balance: { label: closing.label, amount: formatCurrencyExact(closing.amount), words: closing.words },
+    subtitle: customer
+      ? `${rows.length} ${rows.length === 1 ? 'Entry' : 'Entries'} Recorded`
+      : `${rows.length} ${rows.length === 1 ? 'entry' : 'entries'}`,
     meta,
     columns: [
       { key: 'date', label: 'Date' },

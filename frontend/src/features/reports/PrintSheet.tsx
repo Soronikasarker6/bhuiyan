@@ -32,6 +32,16 @@ export interface PrintPayload {
   /** A closing total row, rendered in bold beneath the body. */
   totals?: Record<string, string>
   footnote?: string
+  /**
+   * The party a statement is about — printed as a prominent heading between
+   * the letterhead and the table, so whose ledger this is reads first.
+   */
+  party?: { name: string; details?: string[] }
+  /**
+   * The closing Due/Advance, printed beneath the table with the amount in
+   * words. `amount` is already formatted; `words` from `amountToWords`.
+   */
+  balance?: { label: string; amount: string; words: string }
 }
 
 interface PrintValue {
@@ -174,14 +184,67 @@ function PrintSheet({ payload }: { payload: PrintPayload }) {
         </div>
       </header>
 
-      <div style={{ marginBottom: 12 }}>
-        <h2 style={{ fontSize: '12.5pt', fontWeight: 700, margin: 0 }}>{payload.title}</h2>
-        {payload.subtitle && (
+      {payload.party && (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 16,
+            marginBottom: 12,
+            padding: '9px 14px',
+            background: '#f7f9fb',
+            border: '1px solid #dde3ea',
+            borderLeft: '3.5px solid #3a7fc1',
+            borderRadius: 4,
+            breakInside: 'avoid',
+            WebkitPrintColorAdjust: 'exact',
+            printColorAdjust: 'exact',
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: '7.5pt', fontWeight: 700, margin: 0, color: '#3a7fc1', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+              Statement for
+            </p>
+            <p style={{ fontSize: '17pt', fontWeight: 700, margin: '1px 0 0', lineHeight: 1.15, color: '#111827', overflowWrap: 'anywhere' }}>
+              {payload.party.name}
+            </p>
+            {payload.party.details && payload.party.details.length > 0 && (
+              <p style={{ fontSize: '9pt', margin: '3px 0 0', color: '#4b5563', overflowWrap: 'anywhere' }}>
+                {payload.party.details.join('  •  ')}
+              </p>
+            )}
+          </div>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <h2 style={{ fontSize: '13pt', fontWeight: 700, margin: 0, color: '#111827' }}>{payload.title}</h2>
+            {payload.subtitle && (
+              <span
+                style={{
+                  display: 'inline-block',
+                  marginTop: 4,
+                  padding: '2px 9px',
+                  borderRadius: 999,
+                  background: '#e3effa',
+                  color: '#2563a6',
+                  fontSize: '8.5pt',
+                  fontWeight: 600,
+                }}
+              >
+                {payload.subtitle}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginBottom: payload.party && !payload.meta?.length ? 0 : 12 }}>
+        {!payload.party && <h2 style={{ fontSize: '12.5pt', fontWeight: 700, margin: 0 }}>{payload.title}</h2>}
+        {!payload.party && payload.subtitle && (
           <p style={{ fontSize: '9.5pt', margin: '3px 0 0', color: '#333' }}>{payload.subtitle}</p>
         )}
 
         {payload.meta && payload.meta.length > 0 && (
-          <table style={{ border: 'none', marginTop: 8, fontSize: '9pt' }}>
+          <table style={{ border: 'none', marginTop: payload.party ? 0 : 8, fontSize: '9pt' }}>
             <tbody>
               {payload.meta.map((entry) => (
                 <tr key={entry.label}>
@@ -264,6 +327,20 @@ function PrintSheet({ payload }: { payload: PrintPayload }) {
           </tfoot>
         )}
       </table>
+
+      {payload.balance && (
+        <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end', breakInside: 'avoid' }}>
+          <div style={{ border: '1px solid #111', padding: '5px 10px', maxWidth: '70%', textAlign: 'right' }}>
+            <p style={{ fontSize: '10.5pt', margin: 0 }}>
+              <span style={{ fontWeight: 700 }}>{payload.balance.label}:</span>{' '}
+              <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{payload.balance.amount}</span>
+            </p>
+            <p style={{ fontSize: '8.5pt', margin: '2px 0 0', fontStyle: 'italic', color: '#333' }}>
+              In Words: {payload.balance.words}
+            </p>
+          </div>
+        </div>
+      )}
 
       {payload.footnote && (
         <p style={{ fontSize: '9.5pt', marginTop: 12, fontWeight: 600 }}>{payload.footnote}</p>

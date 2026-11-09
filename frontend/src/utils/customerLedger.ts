@@ -8,6 +8,7 @@ import type {
   ISODate,
   SaleSummary,
 } from '@/types'
+import { balanceSummary } from './amountInWords'
 import { formatBags, formatCurrency, formatDate, formatNumber, formatTons, isWithin } from './format'
 
 /**
@@ -240,6 +241,32 @@ export function dueOrAdvanceLabel(totals: { totalDue: number; availableAdvance: 
   return totals.totalDue > 0
     ? `Total Due: ${formatCurrency(totals.totalDue)}`
     : `Total Advance: ${formatCurrency(totals.availableAdvance)}`
+}
+
+/**
+ * The printed statement's closing balance — Due or Advance, with the figure
+ * in words. Whole Taka, matching `formatCurrency` beside it.
+ */
+export function dueOrAdvancePrint(totals: { totalDue: number; availableAdvance: number }): {
+  label: string
+  amount: string
+  words: string
+} {
+  const summary = balanceSummary(totals.totalDue > 0 ? totals.totalDue : -totals.availableAdvance)
+  return { label: summary.label, amount: formatCurrency(summary.amount), words: summary.words }
+}
+
+/** The statement's party heading: the customer's name, then company, phone and address when on file. */
+export function customerPartyPrint(customer: Pick<Customer, 'name' | 'company' | 'phone' | 'address'>): {
+  name: string
+  details: string[]
+} {
+  const company = customer.company?.trim()
+  return {
+    name: customer.name,
+    details: [company && company !== customer.name.trim() ? company : '', customer.phone?.trim(), customer.address?.trim()]
+      .filter((v): v is string => Boolean(v)),
+  }
 }
 
 /** The flat column set the print sheet renders the statement with — shared so both pages agree. */

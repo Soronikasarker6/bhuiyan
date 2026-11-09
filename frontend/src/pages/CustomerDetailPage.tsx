@@ -26,7 +26,8 @@ import {
   customerLedgerStatementPrintRows,
   customerNameOf,
   customerTotals,
-  dueOrAdvanceLabel,
+  customerPartyPrint,
+  dueOrAdvancePrint,
   statementTotals,
   transactionsForCustomer,
 } from '@/utils/customerLedger'
@@ -88,11 +89,12 @@ export default function CustomerDetailPage() {
     const { totalAmount, totalCredit } = statementTotals(statementRows)
     print({
       title: 'Customer Ledger',
-      subtitle: customer.name,
+      subtitle: `${statementRows.length} ${statementRows.length === 1 ? 'Entry' : 'Entries'} Recorded`,
+      party: customerPartyPrint(customer),
       columns: CUSTOMER_LEDGER_STATEMENT_COLUMNS,
       rows: customerLedgerStatementPrintRows(statementRows),
       totals: { date: '', detail: 'Total', total: formatCurrency(totalAmount), credit: formatCurrency(totalCredit) },
-      footnote: dueOrAdvanceLabel(totals),
+      balance: dueOrAdvancePrint(totals),
     })
   }
 

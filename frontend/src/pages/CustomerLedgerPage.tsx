@@ -21,7 +21,8 @@ import {
   customerLedgerStatementPrintRows,
   customerDisplayLabel,
   customerNameOf,
-  dueOrAdvanceLabel,
+  customerPartyPrint,
+  dueOrAdvancePrint,
   filterCustomerTransactions,
   openingBalanceTotal,
 } from '@/utils/customerLedger'
@@ -176,13 +177,15 @@ export default function CustomerLedgerPage() {
   const exportStatementPdf = () => {
     const totalAmount = statementRows.reduce((sum, r) => sum + (r.amount ?? 0), 0)
     const totalCredit = statementRows.reduce((sum, r) => sum + (r.credit ?? 0), 0)
+    const customer = customerId === ALL ? undefined : data.customers.find((c) => c.id === customerId)
     print({
       title: 'Customer Ledger',
-      subtitle: `${statementRows.length} entries${customerId !== ALL ? ` · ${customerNameOf(data.customers, customerId)}` : ''}`,
+      subtitle: `${statementRows.length} ${customer ? 'Entries Recorded' : 'entries'}${customer ? '' : customerId !== ALL ? ` · ${customerNameOf(data.customers, customerId)}` : ' · All customers'}`,
+      party: customer ? customerPartyPrint(customer) : undefined,
       columns: CUSTOMER_LEDGER_STATEMENT_COLUMNS,
       rows: customerLedgerStatementPrintRows(statementRows),
       totals: { date: '', detail: 'Total', total: formatCurrency(totalAmount), credit: formatCurrency(totalCredit) },
-      footnote: dueOrAdvanceLabel(statementDue),
+      balance: dueOrAdvancePrint(statementDue),
     })
   }
 

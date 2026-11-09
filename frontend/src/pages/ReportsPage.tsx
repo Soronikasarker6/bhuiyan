@@ -1,3 +1,4 @@
+import { amountToWords } from '@/utils/amountInWords'
 import { useMemo, useState } from 'react'
 import {
   BarChart3,
@@ -788,6 +789,10 @@ export default function ReportsPage() {
           ],
           rows: outstanding.map((c) => ({ customer: c.customer.name, due: formatCurrency(c.totals.totalDue) })),
           totals: { customer: 'Total', due: formatCurrency(outstanding.reduce((s, c) => s + c.totals.totalDue, 0)) },
+          balance: (() => {
+            const total = outstanding.reduce((s, c) => s + c.totals.totalDue, 0)
+            return { label: 'Total Due Amount', amount: formatCurrency(total), words: amountToWords(total) }
+          })(),
         }),
       },
       {
@@ -806,6 +811,10 @@ export default function ReportsPage() {
           ],
           rows: withAdvance.map((c) => ({ customer: c.customer.name, advance: formatCurrency(c.totals.availableAdvance) })),
           totals: { customer: 'Total', advance: formatCurrency(withAdvance.reduce((s, c) => s + c.totals.availableAdvance, 0)) },
+          balance: (() => {
+            const total = withAdvance.reduce((s, c) => s + c.totals.availableAdvance, 0)
+            return { label: 'Total Advance Amount', amount: formatCurrency(total), words: amountToWords(total) }
+          })(),
         }),
       },
       {
