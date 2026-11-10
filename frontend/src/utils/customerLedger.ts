@@ -256,15 +256,16 @@ export function dueOrAdvancePrint(totals: { totalDue: number; availableAdvance: 
   return { label: summary.label, amount: formatCurrency(summary.amount), words: summary.words }
 }
 
-/** The statement's party heading: the customer's name, then company, phone and address when on file. */
+/** The statement's party heading: the customer's company, then name, phone and address when on file. */
 export function customerPartyPrint(customer: Pick<Customer, 'name' | 'company' | 'phone' | 'address'>): {
   name: string
   details: string[]
 } {
   const company = customer.company?.trim()
+  const name = customer.name.trim()
   return {
-    name: customer.name,
-    details: [company && company !== customer.name.trim() ? company : '', customer.phone?.trim(), customer.address?.trim()]
+    name: company || name,
+    details: [company && company !== name ? name : '', customer.phone?.trim(), customer.address?.trim()]
       .filter((v): v is string => Boolean(v)),
   }
 }

@@ -69,14 +69,18 @@ describe('balanceSummary / dueOrAdvancePrint', () => {
 })
 
 describe('customerPartyPrint', () => {
-  it('lists company, phone and address, skipping blanks and a duplicated name', () => {
+  it('heads with the company, listing name, phone and address, skipping blanks and a duplicated name', () => {
     expect(customerPartyPrint({ name: 'Rahim Traders', company: 'Rahim Traders', phone: '01700', address: ' ' })).toEqual({
       name: 'Rahim Traders',
       details: ['01700'],
     })
-    expect(customerPartyPrint({ name: 'Rahim', company: 'Rahim Traders Ltd', address: 'Sylhet' }).details).toEqual([
-      'Rahim Traders Ltd',
-      'Sylhet',
-    ])
+    expect(customerPartyPrint({ name: 'Rahim', company: 'Rahim Traders Ltd', address: 'Sylhet' })).toEqual({
+      name: 'Rahim Traders Ltd',
+      details: ['Rahim', 'Sylhet'],
+    })
+    expect(customerPartyPrint({ name: 'Rahim', phone: '01700' })).toEqual({
+      name: 'Rahim',
+      details: ['01700'],
+    })
   })
 })
