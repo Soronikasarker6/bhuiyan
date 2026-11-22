@@ -28,7 +28,7 @@ import {
 } from '@/utils/customerLedger'
 import { buildSaleSummaries, filterSaleSummaries } from '@/utils/sales'
 import { downloadTextFile } from '@/utils/download'
-import { formatCurrency, formatDate, todayISO } from '@/utils/format'
+import { formatCurrency, formatDate, formatTons, todayISO } from '@/utils/format'
 
 const ALL = '__all__'
 
@@ -177,6 +177,7 @@ export default function CustomerLedgerPage() {
   const exportStatementPdf = () => {
     const totalAmount = statementRows.reduce((sum, r) => sum + (r.amount ?? 0), 0)
     const totalCredit = statementRows.reduce((sum, r) => sum + (r.credit ?? 0), 0)
+    const totalTon = statementRows.reduce((sum, r) => sum + (r.weightTon ?? 0), 0)
     const customer = customerId === ALL ? undefined : data.customers.find((c) => c.id === customerId)
     print({
       title: 'Customer Ledger',
@@ -184,7 +185,7 @@ export default function CustomerLedgerPage() {
       party: customer ? customerPartyPrint(customer) : undefined,
       columns: CUSTOMER_LEDGER_STATEMENT_COLUMNS,
       rows: customerLedgerStatementPrintRows(statementRows),
-      totals: { date: '', detail: 'Total', total: formatCurrency(totalAmount), credit: formatCurrency(totalCredit) },
+      totals: { date: '', detail: 'Total', ton: formatTons(totalTon), total: formatCurrency(totalAmount), credit: formatCurrency(totalCredit) },
       balance: dueOrAdvancePrint(statementDue),
     })
   }
