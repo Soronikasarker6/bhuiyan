@@ -229,8 +229,9 @@ export function buildCustomerLedgerStatementRows(
 }
 
 /** The Total row's two figures — Total (sum of item amounts) and Credit (sum of payments). */
-export function statementTotals(rows: CustomerLedgerStatementRow[]): { totalAmount: number; totalCredit: number } {
+export function statementTotals(rows: CustomerLedgerStatementRow[]): { totalAmount: number; totalCredit: number; totalTon: number } {
   return {
+    totalTon: rows.reduce((sum, r) => sum + (r.weightTon ?? 0), 0),
     totalAmount: rows.reduce((sum, r) => sum + (r.amount ?? 0), 0),
     totalCredit: rows.reduce((sum, r) => sum + (r.credit ?? 0), 0),
   }
@@ -312,7 +313,7 @@ export function customerLedgerStatementCsv(
   rows: CustomerLedgerStatementRow[],
   totals: { totalDue: number; availableAdvance: number },
 ): string {
-  const { totalAmount, totalCredit } = statementTotals(rows)
+  const { totalAmount, totalCredit, totalTon } = statementTotals(rows)
   const isDue = totals.totalDue > 0
   const dueValue = isDue ? totals.totalDue : totals.availableAdvance
 
@@ -337,7 +338,7 @@ export function customerLedgerStatementCsv(
         num(row.credit),
       ]),
     ),
-    line(['', '', '', '', '', '', '', 'TOTAL', num(totalAmount), num(totalCredit)]),
+    line(['', '', '', '', '', '', num(totalTon), 'TOTAL', num(totalAmount), num(totalCredit)]),
     line([]),
     line(['', '', '', '', isDue ? 'TOTAL DUE' : 'TOTAL ADVANCE', '', num(dueValue), '', '', '']),
   ]

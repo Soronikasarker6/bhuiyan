@@ -32,7 +32,7 @@ import {
   transactionsForCustomer,
 } from '@/utils/customerLedger'
 import { downloadTextFile } from '@/utils/download'
-import { formatCurrency, formatDate, formatDateTime, todayISO } from '@/utils/format'
+import { formatCurrency, formatDate, formatTons, formatDateTime, todayISO } from '@/utils/format'
 import { SALE_STATUS_LABEL, SALE_STATUS_VARIANT } from '@/constants/saleStatus'
 
 /**
@@ -86,14 +86,14 @@ export default function CustomerDetailPage() {
 
   const exportStatementPdf = () => {
     if (!customer) return
-    const { totalAmount, totalCredit } = statementTotals(statementRows)
+    const { totalAmount, totalCredit, totalTon } = statementTotals(statementRows)
     print({
       title: 'Customer Ledger',
       subtitle: `${statementRows.length} ${statementRows.length === 1 ? 'Entry' : 'Entries'} Recorded`,
       party: customerPartyPrint(customer),
       columns: CUSTOMER_LEDGER_STATEMENT_COLUMNS,
       rows: customerLedgerStatementPrintRows(statementRows),
-      totals: { date: '', detail: 'Total', total: formatCurrency(totalAmount), credit: formatCurrency(totalCredit) },
+      totals: { date: '', detail: 'Total', ton: formatTons(totalTon), total: formatCurrency(totalAmount), credit: formatCurrency(totalCredit) },
       balance: dueOrAdvancePrint(totals),
     })
   }
