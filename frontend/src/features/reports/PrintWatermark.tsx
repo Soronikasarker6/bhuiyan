@@ -21,7 +21,7 @@ const SEAL_TINT = '#eff0f1'
  */
 export function PrintWatermark({
   title = 'BHUIYAN INDUSTRY',
-  subtitle = 'LIMESTONE MANUFACTURING',
+  subtitle = 'Agro-Based Limestone Manufacturing Company',
 }: {
   title?: string
   subtitle?: string
