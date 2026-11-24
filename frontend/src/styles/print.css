@@ -47,4 +47,23 @@
   .print-sheet tr {
     break-inside: avoid;
   }
+
+  /* The company seal (`PrintWatermark`). `position: fixed` in print repeats
+     the element on every page, centred in each page's printable area. It
+     sits at z-index 0; `.print-sheet-content` is lifted above it. */
+  .print-watermark {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 130mm;
+    height: 130mm;
+    transform: translate(-50%, -50%);
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .print-sheet-content {
+    position: relative;
+    z-index: 1;
+  }
 }
