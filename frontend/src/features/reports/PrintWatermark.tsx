@@ -1,23 +1,53 @@
-import { useId } from 'react'
+import { useId, useMemo } from 'react'
 
 /**
  * Slate grey (#1f2937) at 7% over white paper, pre-mixed into one solid
- * colour. Deliberately NOT an `opacity` on the SVG: any opacity puts the
- * seal in a transparency layer, and Chrome then paints a `position: fixed`
- * element on the last printed page only instead of on every page.
+ * colour rather than an `opacity` on the SVG: a solid colour needs no
+ * transparency layer, which print drivers and PDF viewers handle unevenly.
  */
 const SEAL_TINT = '#eff0f1'
+
+const SEAL_FONT = 'Georgia, "Times New Roman", serif'
+
+/**
+ * Each arc of lettering at its full size, and how much of its arc it may use.
+ * The arcs are half-circles (top r=150, bottom r=172, so about 471 and 540
+ * units long); the limits leave room for the divider dots at either end.
+ */
+const TOP_LINE = { size: 31, weight: 700, spacing: 5, maxLength: 420 }
+const BOTTOM_LINE = { size: 17, weight: 600, spacing: 4.5, maxLength: 470 }
+
+let measureContext: CanvasRenderingContext2D | null | undefined
+
+/**
+ * The font size (and matching letter spacing) at which `text` fits its arc:
+ * the full size when it already fits, otherwise scaled down just enough.
+ * Measured with a canvas in the seal's own font, so it works while the sheet
+ * is hidden; without a canvas (tests) the text keeps its full size.
+ */
+function fitToArc(text: string, line: typeof TOP_LINE): { size: number; spacing: number } {
+  if (measureContext === undefined) {
+    measureContext = typeof document === 'undefined' ? null : document.createElement('canvas').getContext('2d')
+  }
+  if (!measureContext) return { size: line.size, spacing: line.spacing }
+
+  measureContext.font = `${line.weight} ${line.size}px ${SEAL_FONT}`
+  const width = measureContext.measureText(text).width + line.spacing * text.length
+  // Size and spacing shrink together, so the width shrinks in proportion.
+  const scale = width > line.maxLength ? line.maxLength / width : 1
+  return { size: line.size * scale, spacing: line.spacing * scale }
+}
 
 /**
  * The company seal stamped faintly behind every printed document.
  *
- * Rendered once by `PrintSheet`; `print.css` pins it with `position: fixed`,
- * which browsers repeat on every printed page, so a ten-page ledger carries
- * the seal on all ten without the document knowing how many pages it has.
+ * Rendered by `PrintSheet` once per printed page (see `paginate.ts`), centred
+ * in that page, so a ten-page ledger carries the seal on all ten in every
+ * browser — Safari included, which prints a `position: fixed` element once.
  *
- * Kept deliberately faint (see `SEAL_TINT`) and behind the content (`PrintSheet` lifts its content above
- * it) — a seal marks the paper as the company's, it must never compete with
- * the figures printed over it.
+ * Kept deliberately faint (see `SEAL_TINT`) and behind the content
+ * (`PrintSheet` lifts its content above it) — a seal marks the paper as the
+ * company's, it must never compete with the figures printed over it.
  */
 export function PrintWatermark({
   title = 'BHUIYAN INDUSTRY',
@@ -30,6 +60,8 @@ export function PrintWatermark({
   const uid = useId().replace(/:/g, '')
   const topArc = `seal-top-${uid}`
   const bottomArc = `seal-bottom-${uid}`
+  const top = useMemo(() => fitToArc(title, TOP_LINE), [title])
+  const bottom = useMemo(() => fitToArc(subtitle, BOTTOM_LINE), [subtitle])
 
   return (
     <div className="print-watermark" aria-hidden>
@@ -44,20 +76,20 @@ export function PrintWatermark({
         <g
           fill={SEAL_TINT}
           stroke={SEAL_TINT}
-          fontFamily='Georgia, "Times New Roman", serif'
+          fontFamily={SEAL_FONT}
           textAnchor="middle"
         >
           {/* Two thin concentric borders. */}
           <circle cx="200" cy="200" r="195" fill="none" strokeWidth="2.5" />
           <circle cx="200" cy="200" r="185" fill="none" strokeWidth="1" />
 
-          <text fontSize="31" fontWeight="700" letterSpacing="5" stroke="none">
+          <text fontSize={top.size} fontWeight={TOP_LINE.weight} letterSpacing={top.spacing} stroke="none">
             <textPath href={`#${topArc}`} startOffset="50%">
               {title}
             </textPath>
           </text>
 
-          <text fontSize="17" fontWeight="600" letterSpacing="4.5" stroke="none">
+          <text fontSize={bottom.size} fontWeight={BOTTOM_LINE.weight} letterSpacing={bottom.spacing} stroke="none">
             <textPath href={`#${bottomArc}`} startOffset="50%">
               {subtitle}
             </textPath>

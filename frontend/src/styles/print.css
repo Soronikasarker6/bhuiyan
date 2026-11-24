@@ -8,6 +8,79 @@
    Deliberately untouched by the UI5 theme: a printed report stays a plain
    document regardless of what the on-screen UI looks like.
    --------------------------------------------------------------------------- */
+/* The printed document's own rules. Not inside `@media print`: the sheet is
+   also laid out off-screen (`.print-measure`) to measure it before it is cut
+   into pages, and that measurement must use exactly the printed styles. On
+   screen the sheet is otherwise hidden, so nothing else sees these. */
+.print-sheet table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10.5pt;
+}
+
+.print-sheet th,
+.print-sheet td {
+  border: 1px solid #999;
+  padding: 5px 8px;
+}
+
+.print-sheet thead {
+  display: table-header-group;
+}
+
+.print-sheet tr {
+  break-inside: avoid;
+}
+
+/* Keeps each part's margins inside it, so the measured height is the
+   height it takes on the page. */
+.print-part {
+  display: flow-root;
+}
+
+/* Off-screen, at the printed content width (A4 less the 14mm margins). */
+.print-measure {
+  position: absolute;
+  top: 0;
+  left: -10000px;
+  width: 182mm;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* One printed page (see `paginate.ts`). A fixed height under every
+   browser's printable area, forced onto its own sheet. */
+.print-page {
+  position: relative;
+  height: 245mm;
+  break-after: page;
+  page-break-after: always;
+}
+
+.print-page:last-child {
+  break-after: auto;
+  page-break-after: auto;
+}
+
+/* The company seal (`PrintWatermark`), centred in its page. Rendered once
+   per page rather than as one `position: fixed` element, which Safari prints
+   only once in the whole document. */
+.print-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 130mm;
+  height: 130mm;
+  transform: translate(-50%, -50%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.print-sheet-content {
+  position: relative;
+  z-index: 1;
+}
+
 @media print {
   .no-print {
     display: none !important;
@@ -28,42 +101,7 @@
     display: block !important;
   }
 
-  .print-sheet table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 10.5pt;
-  }
-
-  .print-sheet th,
-  .print-sheet td {
-    border: 1px solid #999;
-    padding: 5px 8px;
-  }
-
-  .print-sheet thead {
-    display: table-header-group;
-  }
-
-  .print-sheet tr {
-    break-inside: avoid;
-  }
-
-  /* The company seal (`PrintWatermark`). `position: fixed` in print repeats
-     the element on every page, centred in each page's printable area. It
-     sits at z-index 0; `.print-sheet-content` is lifted above it. */
-  .print-watermark {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    width: 130mm;
-    height: 130mm;
-    transform: translate(-50%, -50%);
-    z-index: 0;
-    pointer-events: none;
-  }
-
-  .print-sheet-content {
-    position: relative;
-    z-index: 1;
+  .print-measure {
+    display: none !important;
   }
 }
