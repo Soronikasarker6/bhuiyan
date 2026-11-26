@@ -35,20 +35,17 @@
 }
 
 /*
- * The footer's own photograph — the same balanced-cairn image the sidebar's
- * mark is built from (`.stone-rail::after` in `stone-shell.css`), reused
- * rather than a second stone photo introduced just for this band. It's a
- * tall, narrow composition, so `contain` at the corner (not `cover`, which
- * would crop a short wide band down to almost nothing recognisable) keeps
- * the whole stack visible as a quiet accent behind the copy, not a hero image.
+ * The footer: a dark green band with the factory-and-livestock illustration
+ * (`.landing-footer-art`) fading in from the right edge.
  */
 .landing-footer.landing-hero {
-  background-image:
-    linear-gradient(178deg, hsl(88 18% 20% / 0.88) 0%, hsl(88 20% 15% / 0.9) 55%, hsl(90 24% 9% / 0.93) 100%),
-    url('../assets/stone-cairn.jpg');
-  background-size: cover, contain;
-  background-position: center, right bottom;
-  background-repeat: no-repeat, no-repeat;
+  background-image: linear-gradient(178deg, hsl(100 16% 17%) 0%, hsl(100 18% 13%) 60%, hsl(100 20% 10%) 100%);
+}
+
+.landing-footer-art {
+  background: url('../assets/footer-agro.jpg') right center / cover no-repeat;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 45%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 45%);
 }
 
 /*
