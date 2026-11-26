@@ -100,7 +100,7 @@
   bottom: 0;
   z-index: 0;
   height: 66%;
-  background: url('../assets/stone-cairn.jpg') center bottom / contain no-repeat;
+  background: url('../assets/footer-agro.jpg') 30% bottom / cover no-repeat;
   -webkit-mask-image: linear-gradient(
     180deg,
     transparent 0%,
@@ -121,13 +121,8 @@
     rgb(0 0 0 / 0.6) 90%,
     rgb(0 0 0 / 0.24) 100%
   );
-  /*
-   * Brought down into the dark rail rather than dropped on top of it. The
-   * original is a brightly lit studio shot, and left alone it glares out of a
-   * dark panel; darkened and warmed it reads as the same quarried stone the
-   * rail is cut from, with the lit faces of the cairn still catching the eye.
-   */
-  filter: sepia(0.4) saturate(0.85) brightness(0.42) contrast(1.15);
+  /* The factory-and-livestock drawing (shared with the landing footer), lifted a touch so it reads against the green rail. */
+  filter: brightness(1.15) contrast(1.05);
   pointer-events: none;
 }
 

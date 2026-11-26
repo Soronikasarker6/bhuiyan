@@ -10,6 +10,7 @@ import {
   Phone,
   Receipt,
   ShieldCheck,
+  Leaf,
   Tractor,
   Truck,
   UserRound,
@@ -433,27 +434,30 @@ function Footer() {
   const { email } = contactOf(profile)
 
   return (
-    <footer className="landing-hero landing-footer no-print px-4 py-10 sm:px-6">
-      <div className="mx-auto max-w-[1100px] text-center">
-        <div className="flex items-center justify-center gap-3 text-brass-300/60">
-          <Wheat className="h-5 w-5" />
-          <Tractor className="h-7 w-7" />
-          <Wheat className="h-5 w-5" />
+    <footer className="landing-hero landing-footer no-print relative overflow-hidden px-4 py-14 sm:px-6">
+      {/* Factory and livestock illustration, fading in from the right. */}
+      <div className="landing-footer-art pointer-events-none absolute inset-y-0 right-0 hidden w-[42%] md:block" aria-hidden />
+
+      <div className="relative mx-auto max-w-[1100px] text-center">
+        <div className="flex items-center justify-center gap-5 text-[#c9a96b]">
+          <Leaf className="h-7 w-7" strokeWidth={1.6} />
+          <Tractor className="h-9 w-9" strokeWidth={1.6} />
+          <Wheat className="h-7 w-7" strokeWidth={1.6} />
         </div>
 
-        <p className="mt-4 font-display text-lg text-sidebar-foreground">{profile.name}</p>
-        <p className="mt-1 text-sm text-sidebar-muted">Agro-Based Limestone Manufacturing Company</p>
+        <p className="mt-6 font-display text-3xl tracking-wide text-[#f1e6c8]">{profile.name}</p>
+        <p className="mt-2 text-base text-[#e6d7ae] sm:text-lg">Agro-Based Limestone Manufacturing Company</p>
 
         <a
           href={`mailto:${email}`}
-          className="mt-3 inline-block text-xs text-sidebar-muted hover:text-sidebar-foreground hover:underline"
+          className="mt-4 inline-block text-sm text-[#c9b88f] hover:text-[#f1e6c8] hover:underline"
         >
           {email}
         </a>
 
-        <div className="mx-auto mt-6 h-px w-16 bg-sidebar-border" />
+        <div className="mx-auto mt-8 h-px w-28 bg-[#c9b88f]/30" />
 
-        <p className="mt-5 text-2xs text-sidebar-muted">
+        <p className="mt-6 text-xs text-[#e6d7ae]/90">
           © {new Date().getFullYear()} {profile.name}. All rights reserved.
         </p>
       </div>
