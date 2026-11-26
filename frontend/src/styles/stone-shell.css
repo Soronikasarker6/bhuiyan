@@ -154,15 +154,6 @@
 
 /* ---------------------------------------------------------------- rail details */
 
-/* The stacked-stone mark beside the wordmark — a small polished tile. */
-.stone-mark {
-  background: linear-gradient(150deg, hsl(40 24% 97%), hsl(36 16% 82%));
-  color: hsl(88 20% 20%);
-  box-shadow:
-    0 1px 0 hsl(0 0% 100% / 0.9) inset,
-    0 2px 6px hsl(90 24% 6% / 0.5);
-}
-
 /*
  * The active nav item: a lit tile cut into the dark stone, edged in brass down
  * its left side so the current page survives being scanned quickly without the

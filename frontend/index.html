@@ -52,25 +52,16 @@
       }
     </script>
     <!--
-      The house mark — the same stacked stones the sidebar draws (`StoneStack`
-      in src/layouts/Sidebar.tsx), so the browser tab is identifiable at a
-      glance among a row of them.
+      The house mark — the company seal (src/assets/company-seal.png), the same
+      mark the sidebar, the letterhead and the printed watermark carry.
 
       Written inline as a data URI rather than shipped as public/favicon.svg on
       purpose: `build:single` folds the whole app into one double-clickable
       file, and a favicon referenced by path would be a loose asset alongside
       it — missing the moment that file is emailed or copied on its own. A data
       URI travels inside the document and costs no request anywhere.
-
-      Simplified from the drawn mark: the stones are more opaque and slightly
-      larger here, because the subtle opacity fade that reads well at 36px in
-      the rail turns to mud at the 16px a tab actually renders.
     -->
-    <link
-      rel="icon"
-      type="image/svg+xml"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%232e3725'/%3E%3Cg fill='%23f4eee2'%3E%3Cellipse cx='12' cy='18.9' rx='8' ry='2.5'/%3E%3Cellipse cx='10.4' cy='13.8' rx='5.9' ry='2.3' opacity='.88'/%3E%3Cellipse cx='13.4' cy='8.8' rx='4.1' ry='2' opacity='.76'/%3E%3Cellipse cx='11.2' cy='4.6' rx='2.3' ry='1.4' opacity='.64'/%3E%3C/g%3E%3C/svg%3E"
-    />
+    <link rel="icon" type="image/png" href="data:image/png;base64,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" />
     <!--
       Real files for the icon too: Google Search (and some crawlers) ignore a
       data-URI favicon and want a fetchable one, at least 48×48. The

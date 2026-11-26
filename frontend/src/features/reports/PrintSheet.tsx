@@ -3,6 +3,7 @@ import { formatDateTime, todayISO, formatDateLong } from '@/utils/format'
 import { useCompanyProfile } from '@/hooks/useCompanyProfile'
 import type { CompanyProfile } from '@/types'
 import { PrintWatermark } from './PrintWatermark'
+import companySeal from '../../assets/company-seal.png'
 import { paginate, type PageSpec } from './paginate'
 
 /**
@@ -114,19 +115,6 @@ export function printPayloadToCsv(payload: PrintPayload): string {
   }
 
   return '﻿' + lines.join('\r\n')
-}
-
-/**
- * The letterhead's contact line — phone, email, location and website, in
- * that order, joined onto one row and skipping whichever fields are empty.
- * An empty Company Profile field never prints as a bare, meaningless label
- * (`Website:` with nothing after it) — it simply isn't there.
- */
-function contactLine(profile: CompanyProfile): string {
-  return [profile.phone, profile.email, profile.address, profile.website]
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .join('  ·  ')
 }
 
 /** One millimetre in CSS pixels. */
@@ -249,9 +237,32 @@ function PrintSheet({ payload }: { payload: PrintPayload }) {
 }
 
 /** Letterhead, party heading, title and meta — the top of page one. */
+const CONTACT_ICONS = {
+  person: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8c0-3.3 3.1-6 7-6s7 2.7 7 6Z',
+  phone: 'M6.6 10.8a15 15 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1Z',
+  pin: 'M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Z',
+  mail: 'M3 5h18v14H3Zm2 2v.5l7 4.5 7-4.5V7Z',
+}
+
+function ContactIcon({ icon }: { icon: keyof typeof CONTACT_ICONS }) {
+  return (
+    <svg viewBox="0 0 24 24" width="9" height="9" aria-hidden style={{ flexShrink: 0 }}>
+      <path d={CONTACT_ICONS[icon]} fill={icon === 'pin' ? '#2e7d32' : '#1f3a5f'} />
+    </svg>
+  )
+}
+
+/** One letterhead contact line with its small icon. */
+function ContactRow({ icon, children }: { icon: keyof typeof CONTACT_ICONS; children: ReactNode }) {
+  return (
+    <p style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '7.8pt', margin: '2px 0 0', color: '#222' }}>
+      <ContactIcon icon={icon} />
+      <span>{children}</span>
+    </p>
+  )
+}
+
 function SheetTop({ payload, profile }: { payload: PrintPayload; profile: CompanyProfile }) {
-  const contact = contactLine(profile)
-  const ownerLine = [profile.designation, profile.ownerName].filter(Boolean).join(': ')
 
   return (
     <>
@@ -265,32 +276,71 @@ function SheetTop({ payload, profile }: { payload: PrintPayload; profile: Compan
         document printed, invoice or register alike, with nothing to keep in
         sync by hand.
       */}
-      <header style={{ borderBottom: '1.5px solid #111', paddingBottom: 7, marginBottom: 10 }}>
+      <header
+        style={{
+          borderBottom: '2px solid #1f3a5f',
+          paddingBottom: 8,
+          marginBottom: 10,
+          WebkitPrintColorAdjust: 'exact',
+          printColorAdjust: 'exact',
+        }}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-            {profile.logoUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={profile.logoUrl}
-                alt=""
-                style={{ height: 30, width: 30, objectFit: 'contain', flexShrink: 0 }}
-              />
-            )}
-            <div>
-              <h1 style={{ fontSize: '15.5pt', fontWeight: 700, margin: 0, letterSpacing: '0.02em' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* The company seal — the same mark printed faintly behind every page. */}
+            <img
+              src={companySeal}
+              alt=""
+              style={{ height: 66, width: 66, objectFit: 'contain', borderRadius: '50%', flexShrink: 0 }}
+            />
+            <div style={{ alignSelf: 'stretch', width: 1.5, background: '#1f3a5f' }} />
+            <div style={{ color: '#1f3a5f' }}>
+              <h1
+                style={{
+                  fontFamily: 'Georgia, "Times New Roman", serif',
+                  fontSize: '19pt',
+                  fontWeight: 700,
+                  margin: 0,
+                  lineHeight: 1.05,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                }}
+              >
                 {profile.name}
               </h1>
               {profile.tagline && (
-                <p style={{ fontSize: '8.5pt', margin: '2px 0 0', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                <p style={{ fontSize: '8.5pt', fontWeight: 600, margin: '3px 0 0', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
                   {profile.tagline}
                 </p>
               )}
-              {ownerLine && (
-                <p style={{ fontSize: '8pt', margin: '2px 0 0', color: '#444' }}>{ownerLine}</p>
+              {profile.ownerName && (
+                <ContactRow icon="person">
+                  {profile.designation && `${profile.designation}: `}
+                  <strong style={{ fontWeight: 700, color: '#1f3a5f' }}>{profile.ownerName}</strong>
+                </ContactRow>
               )}
-              {contact && (
-                <p style={{ fontSize: '7.5pt', margin: '2px 0 0', color: '#555' }}>{contact}</p>
-              )}
+              {(() => {
+                // Phone, address, email and website share one line to keep the header short.
+                const items = (
+                  [
+                    ['phone', profile.phone],
+                    ['pin', profile.address],
+                    ['mail', profile.email],
+                    ['mail', profile.website],
+                  ] as const
+                ).filter(([, v]) => v.trim())
+                if (items.length === 0) return null
+                return (
+                  <p style={{ display: 'flex', flexWrap: 'wrap', columnGap: 10, rowGap: 1, fontSize: '7.8pt', margin: '2px 0 0', color: '#222' }}>
+                    {items.map(([icon, value], i) => (
+                      <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        {(i === 0 || items[i - 1][0] !== icon) && <ContactIcon icon={icon} />}
+                        {value.trim()}
+                      </span>
+                    ))}
+                  </p>
+                )
+              })()}
             </div>
           </div>
           <p style={{ fontSize: '8.5pt', margin: 0, textAlign: 'right', whiteSpace: 'nowrap' }}>

@@ -84,7 +84,7 @@
   /* Round seal: clip the square image's corners just outside its outer ring. */
   border-radius: 50%;
   clip-path: circle(49.6% at 50% 50%);
-  opacity: 0.08;
+  opacity: 0.20;
   /* Multiply drops the image's light background into the white paper. */
   mix-blend-mode: multiply;
   -webkit-print-color-adjust: exact;

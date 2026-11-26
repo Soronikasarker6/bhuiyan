@@ -114,9 +114,7 @@ function Nav() {
               className="h-9 w-9 shrink-0 rounded-lg object-contain"
             />
           ) : (
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-700 text-white">
-              <StoneMark className="h-5 w-5" />
-            </span>
+            <StoneMark className="h-9 w-9" />
           )}
           <span className="min-w-0">
             <span className="block font-display text-base leading-tight tracking-wide text-foreground">

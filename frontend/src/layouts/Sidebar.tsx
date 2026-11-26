@@ -188,9 +188,7 @@ function Wordmark({
   onToggleCollapsed?: () => void
 }) {
   const badge = (
-    <span className="stone-mark grid h-8 w-8 shrink-0 place-items-center rounded-lg">
-      <StoneMark />
-    </span>
+    <StoneMark className="h-8 w-8" />
   )
 
   if (!onToggleCollapsed) {

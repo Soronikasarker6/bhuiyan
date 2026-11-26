@@ -49,9 +49,7 @@ export default function LoginPage() {
     <div className="grid min-h-screen place-items-center bg-secondary/40 px-4">
       <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-pop">
         <div className="mb-5 text-center">
-          <span className="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-primary-700 text-white">
-            <StoneMark className="h-6 w-6" />
-          </span>
+          <StoneMark className="mx-auto block h-16 w-16" />
           <h1 className="mt-3 font-display text-lg font-semibold">BHUIYAN INDUSTRY</h1>
           <p className="mt-0.5 text-xs text-muted-foreground">Sign in to continue</p>
         </div>
